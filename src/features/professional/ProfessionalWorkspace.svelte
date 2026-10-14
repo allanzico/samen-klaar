@@ -52,7 +52,7 @@
   {#if activeJob && job}
     {#if !app.serverState?.cancelled}
     <section id="current-plan" class="task-panel" aria-label={t('Current decision')}>
-      <PlanNegotiation {app} {actions} {job} {money}/>
+      <PlanNegotiation {app} {job} {money}/>
       {#if job.location}
         <section class="service-address-panel" aria-label={t('Customer visit area and address')}>
           <h3>{t('Visit location')}</h3>

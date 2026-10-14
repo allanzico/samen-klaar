@@ -86,7 +86,7 @@
 
 {#if activeJob && job}
   <section id="current-plan" class="task-panel" aria-label={t('Current decision')}>
-    <PlanNegotiation {app} {actions} {job} {money}/>
+    <PlanNegotiation {app} {job} {money}/>
     {#if job.change?.status === 'pending'}
       <section class="offer-card awaiting-you" aria-label={t('Review the additional work')}>
         <div class="offer-head"><h2>{t('Review the additional work')}</h2><span class="pill pill--your-turn">{t('Your turn')}</span></div>
