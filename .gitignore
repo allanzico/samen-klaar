@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+coverage/
+.samen-klaar-data/
+.DS_Store
+.secrets/
+.deploy/
+.backups/
+.agents/skills/
+.impersonate/
+.impeccable/

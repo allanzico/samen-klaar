@@ -1,0 +1,409 @@
+{
+  "ai_errors": 0,
+  "ai_routing": {
+    "samples": 14,
+    "p50_ms": 4268.855,
+    "p95_ms": 7119.597,
+    "max_ms": 7119.597
+  },
+  "cases": [
+    {
+      "prompt": "My kitchen sink is leaking underneath, but water still runs from the tap.",
+      "expected_category": "Plumbing",
+      "actual_category": "Plumbing",
+      "route": "catalog",
+      "question": "Which option best describes what is happening at the sink?",
+      "options": [
+        "Water runs normally with a dripping pipe underneath",
+        "No water running from the tap",
+        "Drain is backing up or overflowing",
+        "Not sure of the exact cause"
+      ],
+      "ai_ms": 7119.597,
+      "directory_ms": 3974.87,
+      "pipeline_ms": 11107.337,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_3447",
+      "first_service": "Sink leak repair",
+      "expected_services": [
+        "Sink leak repair"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 8500,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "My kitchen sink is blocked and water backs up when I turn on the tap.",
+      "expected_category": "Plumbing",
+      "actual_category": "Plumbing",
+      "route": "catalog",
+      "question": "How does the water behave in the sink?",
+      "options": [
+        "Water drains very slowly",
+        "Water is completely standing and does not drain",
+        "Water also leaks under the sink",
+        "Unsure of drainage speed"
+      ],
+      "ai_ms": 4796.641,
+      "directory_ms": 3441.058,
+      "pipeline_ms": 8254.067,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_4122",
+      "first_service": "Drain clearing",
+      "expected_services": [
+        "Drain clearing"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 15000,
+      "first_callout_minor": 5000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "The whole building's drains are backing up. I need the earliest available person with suitable drain equipment.",
+      "expected_category": "Plumbing",
+      "actual_category": "Plumbing",
+      "route": "assessment",
+      "question": "Where are the drains currently overflowing or backing up in the building?",
+      "options": [
+        "Drains overflowing on multiple floors",
+        "Backing up only on the lowest floor",
+        "Sewage coming up through fixtures",
+        "Not sure of exact backup points"
+      ],
+      "ai_ms": 5350.611,
+      "directory_ms": 2920.59,
+      "pipeline_ms": 8284.169,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_3769",
+      "first_service": "Industrial drain assessment",
+      "expected_services": [
+        "Industrial drain assessment"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 24400,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "My toilet keeps running after flushing.",
+      "expected_category": "Plumbing",
+      "actual_category": "Plumbing",
+      "route": "catalog",
+      "question": "Where are you observing the running water?",
+      "options": [
+        "Water runs constantly into the bowl",
+        "Water is leaking onto the bathroom floor",
+        "Tank refills very slowly or intermittently",
+        "Not sure of the exact cause"
+      ],
+      "ai_ms": 4843.727,
+      "directory_ms": 2953.832,
+      "pipeline_ms": 7816.944,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_1131",
+      "first_service": "Toilet repair",
+      "expected_services": [
+        "Toilet repair"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 8200,
+      "first_callout_minor": 3000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "The wooden bedroom door sticks and will not close.",
+      "expected_category": "Carpentry",
+      "actual_category": "Carpentry",
+      "route": "catalog",
+      "question": "Where does the door appear to be catching?",
+      "options": [
+        "Rubbing against the door frame",
+        "Dragging on the floor or carpet",
+        "Loose or misaligned hinges",
+        "Unsure where it catches"
+      ],
+      "ai_ms": 5214.704,
+      "directory_ms": 3313.468,
+      "pipeline_ms": 8545.292,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_36",
+      "first_service": "Door adjustment",
+      "expected_services": [
+        "Door adjustment"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 3700,
+      "first_callout_minor": 5000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "A kitchen cabinet hinge has come loose and the door is hanging crooked.",
+      "expected_category": "Carpentry",
+      "actual_category": "Carpentry",
+      "route": "catalog",
+      "question": "Is the cabinet wood damaged around the loose hinge?",
+      "options": [
+        "Screw holes stripped or wood damaged",
+        "Hinge loose but wood intact",
+        "Hinge hardware bent or broken",
+        "Uncertain of damage"
+      ],
+      "ai_ms": 3906.041,
+      "directory_ms": 2406.864,
+      "pipeline_ms": 6326.208,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_1495",
+      "first_service": "Cabinet repair",
+      "expected_services": [
+        "Cabinet repair"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 14500,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "I need two wooden shelves installed in my living room.",
+      "expected_category": "Carpentry",
+      "actual_category": "Carpentry",
+      "route": "catalog",
+      "question": "What type of wall will the shelves be mounted to?",
+      "options": [
+        "Drywall or plasterboard",
+        "Solid brick or masonry",
+        "Wood stud wall",
+        "Not sure"
+      ],
+      "ai_ms": 2402.058,
+      "directory_ms": 2758.71,
+      "pipeline_ms": 5199.243,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_3055",
+      "first_service": "Shelf installation",
+      "expected_services": [
+        "Shelf installation"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 18400,
+      "first_callout_minor": 1000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "My wooden table legs wobble and the joints are loose.",
+      "expected_category": "Carpentry",
+      "actual_category": "Carpentry",
+      "route": "catalog",
+      "question": "Are the table joints primarily loose at the fasteners, or is the wood itself cracked?",
+      "options": [
+        "Fasteners or screws are loose",
+        "Wood is cracked or split",
+        "Glued joints have separated",
+        "Unsure of the joint condition"
+      ],
+      "ai_ms": 2967.359,
+      "directory_ms": 5963.18,
+      "pipeline_ms": 8947.477,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_3778",
+      "first_service": "Furniture repair",
+      "expected_services": [
+        "Furniture repair"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 15200,
+      "first_callout_minor": 2000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "My circuit breaker keeps tripping when I turn on the oven.",
+      "expected_category": "Electrical assessment",
+      "actual_category": "Electrical assessment",
+      "route": "assessment",
+      "question": "Does the breaker trip immediately when you turn on the oven, or after it has been heating for some time?",
+      "options": [
+        "Trips immediately when turned on",
+        "Trips after heating for a few minutes",
+        "Trips intermittently",
+        "Not sure"
+      ],
+      "ai_ms": 3129.004,
+      "directory_ms": 5379.923,
+      "pipeline_ms": 8522.829,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_1451",
+      "first_service": "Circuit breaker assessment",
+      "expected_services": [
+        "Circuit breaker assessment",
+        "Appliance circuit assessment"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 8200,
+      "first_callout_minor": 1000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "A wall socket sparks when I plug something in. I need the earliest available qualified professional.",
+      "expected_category": "Electrical assessment",
+      "actual_category": "Electrical assessment",
+      "route": "assessment",
+      "question": "Are there any visible scorch marks, discoloration, or heat around the sparking socket?",
+      "options": [
+        "Visible scorch marks or discoloration",
+        "No visible scorch marks",
+        "Socket feels warm to touch",
+        "Unsure of visible damage"
+      ],
+      "ai_ms": 4688.032,
+      "directory_ms": 3561.236,
+      "pipeline_ms": 8267.086,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_321",
+      "first_service": "Socket fault assessment",
+      "expected_services": [
+        "Socket fault assessment",
+        "Wiring safety assessment"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 12400,
+      "first_callout_minor": 2000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "The ceiling light flickers even with a new bulb.",
+      "expected_category": "Electrical assessment",
+      "actual_category": "Electrical assessment",
+      "route": "assessment",
+      "question": "When does the ceiling light usually flicker?",
+      "options": [
+        "Flickers continuously",
+        "Flickers randomly or intermittently",
+        "Flickers when other appliances run",
+        "Unsure when the flickering happens"
+      ],
+      "ai_ms": 3787.599,
+      "directory_ms": 2644.351,
+      "pipeline_ms": 6448.318,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_2311",
+      "first_service": "Lighting fault assessment",
+      "expected_services": [
+        "Lighting fault assessment"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 9300,
+      "first_callout_minor": 5000,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "The outdoor power outlet no longer works.",
+      "expected_category": "Electrical assessment",
+      "actual_category": "Electrical assessment",
+      "route": "assessment",
+      "question": "What have you observed with the circuit breaker or the outlet itself?",
+      "options": [
+        "GFCI or circuit breaker tripped",
+        "Breaker is on but outlet has no power",
+        "Visible damage, moisture, or scorch marks",
+        "Not sure / haven't checked"
+      ],
+      "ai_ms": 3755.136,
+      "directory_ms": 4218.704,
+      "pipeline_ms": 7988.876,
+      "category_correct": true,
+      "first_profile_id": "prof_seed_1558",
+      "first_service": "Outdoor power assessment",
+      "expected_services": [
+        "Outdoor power assessment"
+      ],
+      "service_suitable": true,
+      "first_price_minor": 16800,
+      "first_availability_utc": "2026-10-13T08:00:00Z"
+    },
+    {
+      "prompt": "Something in my house is broken and I need help.",
+      "expected_category": "Unclear",
+      "actual_category": "Unclear",
+      "route": "catalog",
+      "question": "Which item or area in your home is having the issue?",
+      "options": [
+        "Leaking pipe or running water",
+        "Power, switch, or lighting issue",
+        "Damaged door, trim, or woodwork",
+        "Not sure / other issue"
+      ],
+      "ai_ms": 4268.855,
+      "directory_ms": 0,
+      "pipeline_ms": 4268.856,
+      "category_correct": true
+    },
+    {
+      "prompt": "I need someone to fix a problem tomorrow, but I am not sure how to describe it.",
+      "expected_category": "Unclear",
+      "actual_category": "Unclear",
+      "route": "catalog",
+      "question": "What type of fixture or area in your home is having the issue?",
+      "options": [
+        "Pipes, drains, or water fixtures",
+        "Wiring, switches, or power outlets",
+        "Doors, cabinets, or woodwork",
+        "Not sure or something else"
+      ],
+      "ai_ms": 5672.333,
+      "directory_ms": 0,
+      "pipeline_ms": 5672.339,
+      "category_correct": true
+    }
+  ],
+  "categories": {
+    "Carpentry": 3257,
+    "Electrical assessment": 3441,
+    "Plumbing": 3302
+  },
+  "category_cases": 14,
+  "category_correct": 14,
+  "earliest_and_category_checks_passed": true,
+  "future_available_slots": 60072,
+  "legacy_trade_directory_concurrent_10": {
+    "samples": 100,
+    "p50_ms": 298.639,
+    "p95_ms": 601.114,
+    "max_ms": 806.839
+  },
+  "legacy_trade_directory_first_call_ms": 24.748,
+  "legacy_trade_directory_serial": {
+    "samples": 300,
+    "p50_ms": 11.046,
+    "p95_ms": 13.868,
+    "max_ms": 34.507
+  },
+  "limitations": [
+    "Direct production coordinator and repository calls; excludes browser, HTTP, login, price negotiation and booking latency.",
+    "Live AI service selection requests are sequential. Both legacy trade and service-specific directory reads measure 300 serial queries and 100 queries with 10 concurrent workers. Database timings exclude AI selection; routing_and_matching includes both live AI calls.",
+    "Published service scope is selected by AI before earliest eligible availability ranking. Budget is a preference; published prices are never invented. Catalog input is bounded to 200 distinct scopes.",
+    "AI categorization on 14 labeled prompts is a smoke evaluation, not proof of best-provider quality or model reliability."
+  ],
+  "measured_at": "2026-10-12T13:23:22.453022167Z",
+  "model": "gemini-3.8-flash",
+  "professionals": 10000,
+  "provider": "gemini",
+  "routing_and_matching": {
+    "samples": 14,
+    "p50_ms": 7988.876,
+    "p95_ms": 11107.337,
+    "max_ms": 11107.337
+  },
+  "self_booking_exclusion_passed": true,
+  "service_directory_concurrent_10": {
+    "samples": 100,
+    "p50_ms": 90.319,
+    "p95_ms": 110.527,
+    "max_ms": 207.976
+  },
+  "service_directory_serial": {
+    "samples": 300,
+    "p50_ms": 2.546,
+    "p95_ms": 3.122,
+    "max_ms": 18.946
+  },
+  "service_relevance_cases": 12,
+  "service_relevance_correct": 12,
+  "service_relevance_passed": true
+}

@@ -1,0 +1,15 @@
+.env
+.env.*
+.git
+.gitignore
+.samen-klaar-data
+node_modules
+dist
+coverage
+*.log
+.secrets
+.deploy
+.backups
+.agents
+.codex
+.aws

@@ -9,6 +9,7 @@
   import ProfessionalWorkspace from './features/professional/ProfessionalWorkspace.svelte';
   import WorkspaceNavigation from './features/workspaces/WorkspaceNavigation.svelte';
   import NotificationCenter from './features/notifications/NotificationCenter.svelte';
+  import PayPalPayoutSetup from './features/professional/PayPalPayoutSetup.svelte';
   import type { WorkspaceRole } from './lib/types';
   import { createAppActions } from './state/create-app-controller';
   import { createAppState } from './state/app-state.svelte';
@@ -26,6 +27,12 @@
   let viewportHeight = $state(0);
   let keyboardOpen = $state(false);
   let requestsOpen = $state(false);
+  const proTabs = [
+    { view: 'jobs' as const, label: 'Jobs', icon: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>' },
+    { view: 'times' as const, label: 'Free times', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/>' },
+    { view: 'profile' as const, label: 'Profile & services', icon: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>' }
+  ];
+  let proView = $state<'jobs' | 'times' | 'profile'>('jobs');
   let requestsButton = $state<HTMLButtonElement>();
   let requestPane = $state<HTMLElement>();
   let accountName = $derived(app.session?.account?.displayName || app.session?.account?.email || t('Your account'));
@@ -74,7 +81,7 @@
     if (event.shiftKey && (active === first || !requestPane.contains(active))) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && (active === last || !requestPane.contains(active))) { event.preventDefault(); first.focus(); }
   }
-  const selectRequest = (id: string) => { closeRequests(false); return actions.selectRequest(id); };
+  const selectRequest = (id: string) => { closeRequests(false); proView = 'jobs'; return actions.selectRequest(id); };
   const createRequest = () => { closeRequests(false); return actions.createRequest(); };
   onMount(() => {
     document.documentElement.lang = currentLocale();
@@ -155,6 +162,11 @@
     <header class="topbar">
       <a class="brand" href="/" aria-label="{app.brandName} home"><svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12"/><g fill="none" stroke-width="3" stroke-linecap="round"><path d="M24 11v26M11 24h26M15 15l18 18M15 33l18-18"/></g></svg>{app.brandName}</a>
       {#if app.role === 'professional' || app.role === 'operator'}<span class="role-tag">{t(app.role === 'operator' ? 'Operator' : 'Pro')}</span>{/if}
+      {#if workspaceLayout && app.role === 'professional'}
+      <nav class="pro-nav" aria-label={t('Professional navigation')}>
+        {#each proTabs as tab (tab.view)}<button type="button" class:current={proView === tab.view} aria-current={proView === tab.view ? 'page' : undefined} onclick={() => { proView = tab.view; }}>{t(tab.label)}</button>{/each}
+      </nav>
+      {/if}
       <div class="topbar-actions">
       <div class="language-switch language-switch-wide" role="group" aria-label={t('Language')}>
         <button class:active={currentLocale() === 'en'} aria-pressed={currentLocale() === 'en'} onclick={() => setLocale('en')}>EN</button>
@@ -169,8 +181,8 @@
         {/each}
       </nav>
       {/if}
-      {#if workspaceLayout}<button type="button" class="requests-button" bind:this={requestsButton} aria-controls="request-list" aria-expanded={requestsOpen} onclick={openRequests}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="requests-label">{t('Requests')}</span></button>{/if}
-      {#if app.role === 'customer' || app.role === 'professional'}<NotificationCenter onSelect={actions.selectRequest}/>{/if}
+      {#if workspaceLayout && (app.role !== 'professional' || proView === 'jobs')}<button type="button" class="requests-button" bind:this={requestsButton} aria-controls="request-list" aria-expanded={requestsOpen} onclick={openRequests}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="requests-label">{t('Requests')}</span></button>{/if}
+      {#if app.role === 'customer' || app.role === 'professional'}<NotificationCenter onSelect={selectRequest}/>{/if}
       <details class="account-menu">
         <summary aria-label={accountName}><span aria-hidden="true">{initials}</span></summary>
         <div class="account-menu-panel">
@@ -230,6 +242,17 @@
         {/key}
         </div>
         </div>
+      {:else if app.role === 'professional' && proView !== 'jobs'}
+        <section class="pro-page" aria-labelledby="pro-page-title">
+          <h1 id="pro-page-title">{t(proView === 'times' ? 'Free times' : 'Profile & services')}</h1>
+          {#if proView === 'times'}
+            <p class="lead">{t('Customers can book the times you add here. Add future times so they can pick one.')}</p>
+            <ProfessionalAvailability show="times"/>
+          {:else}
+            <ProfessionalAvailability show="profile"/>
+            <PayPalPayoutSetup/>
+          {/if}
+        </section>
       {:else if app.role === 'professional'}
         <div class="request-shell">
         {@render requestPaneContent(false)}
@@ -240,5 +263,10 @@
       {/if}
       {#if !workspaceLayout}<footer><span>{t('Made for a little less back-and-forth.')}</span><span>{app.session.account?.email ?? t('Your account workspace')}</span></footer>{/if}
     </main>
+    {#if workspaceLayout && app.role === 'professional'}
+    <nav class="pro-tabs" aria-label={t('Professional navigation')}>
+      {#each proTabs as tab (tab.view)}<button type="button" class:current={proView === tab.view} aria-current={proView === tab.view ? 'page' : undefined} onclick={() => { proView = tab.view; }}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">{@html tab.icon}</svg><span>{t(tab.label)}</span></button>{/each}
+    </nav>
+    {/if}
   </div>
 {/if}

@@ -1,0 +1,24 @@
+ALTER TABLE relay_demo_state RENAME TO demo_state;
+ALTER TABLE demo_state RENAME CONSTRAINT relay_demo_state_pkey TO demo_state_pkey;
+ALTER TABLE demo_state RENAME CONSTRAINT relay_demo_state_id_check TO demo_state_id_check;
+
+ALTER TABLE relay_scope_versions RENAME TO scope_versions;
+ALTER TABLE scope_versions RENAME CONSTRAINT relay_scope_versions_pkey TO scope_versions_pkey;
+ALTER TABLE scope_versions RENAME CONSTRAINT relay_scope_versions_version_check TO scope_versions_version_check;
+ALTER TABLE scope_versions RENAME CONSTRAINT relay_scope_versions_total_minor_check TO scope_versions_total_minor_check;
+
+ALTER TABLE relay_booking_reservations RENAME TO booking_reservations;
+ALTER TABLE booking_reservations RENAME CONSTRAINT relay_booking_reservations_pkey TO booking_reservations_pkey;
+ALTER TABLE booking_reservations RENAME CONSTRAINT relay_booking_reservations_status_check TO booking_reservations_status_check;
+ALTER TABLE booking_reservations RENAME CONSTRAINT relay_booking_reservations_check TO booking_reservations_check;
+ALTER INDEX relay_booking_professional_window_idx RENAME TO booking_professional_window_idx;
+
+ALTER TABLE relay_audit_events RENAME TO audit_events;
+ALTER TABLE audit_events RENAME CONSTRAINT relay_audit_events_pkey TO audit_events_pkey;
+ALTER SEQUENCE relay_audit_events_id_seq RENAME TO audit_events_id_seq;
+ALTER INDEX relay_audit_job_created_idx RENAME TO audit_job_created_idx;
+
+ALTER TABLE relay_notification_outbox RENAME TO notification_outbox;
+ALTER TABLE notification_outbox RENAME CONSTRAINT relay_notification_outbox_pkey TO notification_outbox_pkey;
+ALTER TABLE notification_outbox RENAME CONSTRAINT relay_notification_outbox_recipient_role_check TO notification_outbox_recipient_role_check;
+ALTER TABLE notification_outbox RENAME CONSTRAINT relay_notification_outbox_status_check TO notification_outbox_status_check;

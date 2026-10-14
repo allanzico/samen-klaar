@@ -39,3 +39,9 @@ export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   return (words.length > 1 ? [words[0], words[words.length - 1]] : [words[0] ?? '']).map((word) => word.charAt(0).toUpperCase()).join('') || '?';
 }
+
+// "Sanne van der Berg" becomes "Sanne B." — a first name and initial is all a professional needs.
+export function shortName(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return words.length > 1 ? `${words[0]} ${words[words.length - 1].charAt(0).toUpperCase()}.` : words[0] ?? name;
+}

@@ -1,0 +1,7 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+  gateway:
+    ports: ["127.0.0.1:8090:80"]
