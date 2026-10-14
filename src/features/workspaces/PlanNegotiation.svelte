@@ -5,7 +5,7 @@
   let { app, actions, job, money }: { app: AppState; actions: AppActions; job: Job; money: (minor: number) => string } = $props();
   let other = $derived(app.role === 'customer' ? job.professional : job.customer);
   // Customers answer in the next-step panel; professionals keep their buttons on the card until their own phase.
-  let inline = $derived(app.role !== 'customer');
+  let inline = $derived(false);
 </script>
 
 {#snippet answerHint()}
