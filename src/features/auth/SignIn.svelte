@@ -30,7 +30,7 @@
       <h1 id="hero-heading">{t('Describe the problem. We handle the back‑and‑forth.')}</h1>
       <p class="hero-description">{t('AI clarifies the job and helps professionals respond sooner. Quotes, plans, and decisions stay together until the work is resolved.')}</p>
       {#if authMessage}<p class="error" role="alert">{t(authMessage)}</p>{/if}
-      {#if app.error}<p class="error" role="status">{app.error}</p>{/if}
+      {#if app.error}<p class="error" role="status">{t(app.error)}</p>{/if}
       {#if app.session?.configured === false}
         <p class="hero-notice" role="status">{t('Sign-in is temporarily unavailable. Please try again later.')}</p>
       {:else}

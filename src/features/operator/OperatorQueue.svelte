@@ -131,7 +131,7 @@
   {/if}
   {#if loading && !updatedAt}<div class="card loading" role="status">{t('Loading the review queue…')}</div>
   {:else if !applications.length && !cases.length}
-    <div class="card empty-state"><span>✓</span><h2>{t('Nothing needs review.')}</h2><p>{t('The queue is clear.')}</p></div>
+    <div class="card empty-state"><span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span><h2>{t('Nothing needs review.')}</h2><p>{t('The queue is clear.')}</p></div>
   {:else}
     <div class="operator-layout">
       <div class="operator-list">

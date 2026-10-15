@@ -104,7 +104,7 @@
     {#if job}<JobReviewPanel {app} {actions} {job}/>{/if}
     <IntakeConversation {app} {actions} {job} {intake} {activeJob} composing={false}/>
   {:else}
-    <div class="card empty-state"><span>✓</span><h2>{t('Nothing to act on yet.')}</h2><p>{t('A job will appear here once the customer chooses a professional.')}</p></div>
+    <div class="card empty-state"><span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span><h2>{t('Nothing to act on yet.')}</h2><p>{t('A job will appear here once the customer chooses a professional.')}</p></div>
   {/if}
   {#if app.pending}<p class="thinking" role="status">{t('Saving your update…')}</p>{/if}
   <div id="conversation-end"></div>

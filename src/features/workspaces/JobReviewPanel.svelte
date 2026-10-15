@@ -26,7 +26,7 @@
     <p class="review-stars" aria-label={t('{rating} out of 5 stars', { rating: job.review.rating })}>{'★'.repeat(job.review.rating)}{'☆'.repeat(5 - job.review.rating)} <span>{job.review.rating}/5</span></p>
     {#if job.review.comment}<blockquote>{job.review.comment}</blockquote>{:else}<p class="quiet-note">{t('The customer left a rating without a written comment.')}</p>{/if}
     {#if job.review.professionalResponse}
-      <div class="professional-response"><strong>Professional response</strong><p>{job.review.professionalResponse}</p></div>
+      <div class="professional-response"><strong>{t('Professional response')}</strong><p>{job.review.professionalResponse}</p></div>
     {:else if app.role === 'professional'}
       <form class="stack" onsubmit={submitResponse}>
         <label for="review-response">{t('Your response')}<textarea id="review-response" bind:value={response} required minlength="3" maxlength="1000" rows="3" placeholder={t('Respond to the customer’s feedback.')}></textarea></label>
