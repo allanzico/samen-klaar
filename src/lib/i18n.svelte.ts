@@ -3,6 +3,14 @@ export type Locale = 'en' | 'nl';
 const translations: Record<Locale, Record<string, string>> = {
   en: {},
   nl: {
+    'Dismiss error': 'Melding sluiten',
+    'Set up your service and times': 'Stel je dienst en tijden in',
+    'We couldn’t check your sign-in. You can try signing in again.': 'We konden je login niet controleren. Probeer opnieuw in te loggen.',
+    'We couldn’t connect right now. Please try again.': 'Verbinden lukt nu niet. Probeer het opnieuw.',
+    'Request loaded, but the request list could not be refreshed.': 'Het verzoek is geladen, maar de lijst met verzoeken kon niet worden vernieuwd.',
+    'Your change was saved, but the request list could not be refreshed.': 'Je wijziging is opgeslagen, maar de lijst met verzoeken kon niet worden vernieuwd.',
+    'Payment succeeded, but the request list could not be refreshed.': 'De betaling is gelukt, maar de lijst met verzoeken kon niet worden vernieuwd.',
+    'Payment status was updated, but the request list could not be refreshed.': 'De betaalstatus is bijgewerkt, maar de lijst met verzoeken kon niet worden vernieuwd.',
     'Sign-in was cancelled. You can start again when you’re ready.': 'Inloggen is geannuleerd. Je kunt het opnieuw proberen wanneer je wilt.',
     'We couldn’t finish that sign-in. Please start again from this page in the same browser.': 'Inloggen is niet voltooid. Start opnieuw vanaf deze pagina in dezelfde browser.',
     'That sign-in link has expired or was already used. Please start again.': 'Deze inloglink is verlopen of al gebruikt. Start opnieuw.',

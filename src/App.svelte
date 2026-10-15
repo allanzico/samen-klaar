@@ -34,6 +34,7 @@
   ];
   let proView = $state<'jobs' | 'times' | 'profile'>('jobs');
   let requestsButton = $state<HTMLButtonElement>();
+  let accountMenu = $state<HTMLDetailsElement>();
   let requestPane = $state<HTMLElement>();
   let accountName = $derived(app.session?.account?.displayName || app.session?.account?.email || t('Your account'));
   let initials = $derived.by(() => {
@@ -81,7 +82,16 @@
     if (event.shiftKey && (active === first || !requestPane.contains(active))) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && (active === last || !requestPane.contains(active))) { event.preventDefault(); first.focus(); }
   }
-  const selectRequest = (id: string) => { closeRequests(false); proView = 'jobs'; return actions.selectRequest(id); };
+  function closeAccountMenu(event: Event) {
+    if (!accountMenu?.open) return;
+    if (event instanceof KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      accountMenu.open = false;
+      accountMenu.querySelector('summary')?.focus();
+    } else if (!accountMenu.contains(event.target as Node)) accountMenu.open = false;
+  }
+  function onWindowKeydown(event: KeyboardEvent) { closeAccountMenu(event); trapRequests(event); }
+  const selectRequest = (id: string) => { closeRequests(false); proView = 'jobs'; app.error = ''; return actions.selectRequest(id); };
   const createRequest = () => { closeRequests(false); return actions.createRequest(); };
   onMount(() => {
     document.documentElement.lang = currentLocale();
@@ -124,7 +134,7 @@
   }
 </script>
 
-<svelte:window onkeydown={trapRequests}/>
+<svelte:window onkeydown={onWindowKeydown} onclick={closeAccountMenu}/>
 
 {#snippet requestPaneContent(canCreate: boolean)}
   <button type="button" class="drawer-scrim" class:open={requestsOpen} tabindex="-1" aria-hidden="true" onclick={() => closeRequests()}></button>
@@ -183,12 +193,12 @@
       {/if}
       {#if workspaceLayout && (app.role !== 'professional' || proView === 'jobs')}<button type="button" class="requests-button" bind:this={requestsButton} aria-controls="request-list" aria-expanded={requestsOpen} onclick={openRequests}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="requests-label">{t('Requests')}</span></button>{/if}
       {#if app.role === 'customer' || app.role === 'professional'}<NotificationCenter onSelect={selectRequest}/>{/if}
-      <details class="account-menu">
+      <details class="account-menu" bind:this={accountMenu}>
         <summary aria-label={accountName}><span aria-hidden="true">{initials}</span></summary>
         <div class="account-menu-panel">
           <p class="account-panel-name">{accountName}</p>
           {#if (app.session.memberships?.filter((m) => m.status !== 'disabled').length ?? 0) > 1}
-          <nav class="role-switch role-switch-mobile" aria-label="Account workspace">
+          <nav class="role-switch role-switch-mobile" aria-label={t('Account workspace')}>
             {#each app.session.memberships ?? [] as membership (membership.role)}
               {#if membership.status !== 'disabled'}<button class:active={membership.role === app.role} disabled={app.pending || app.loading} aria-pressed={membership.role === app.role} onclick={() => { if (membership.role !== app.role) void actions.switchWorkspace(membership.role); }}>{roleLabel(membership.role)}</button>{/if}
             {/each}
@@ -200,15 +210,15 @@
             <button class:active={currentLocale() === 'nl'} aria-pressed={currentLocale() === 'nl'} onclick={() => setLocale('nl')}>NL</button>
           </div>
           {#if app.session.account?.displayName}<small>{app.session.account?.email}</small>{/if}
-          {#if canBecomeProfessional}<button class="workspace-link" disabled={app.pending} onclick={actions.beginProfessional}>Become a professional</button>{/if}
-          <button class="sign-out-button" onclick={actions.logout}>Sign out</button>
+          {#if canBecomeProfessional}<button class="workspace-link" disabled={app.pending} onclick={actions.beginProfessional}>{t('Become a professional')}</button>{/if}
+          <button class="sign-out-button" onclick={actions.logout}>{t('Sign out')}</button>
         </div>
       </details>
       </div>
     </header>
 
     <main id="main-content" class:workspace-main={workspaceLayout}>
-      {#if app.error}<div class="error" role="alert">{app.error}<button class="text-button" onclick={actions.dismissError} aria-label="Dismiss error">×</button></div>{/if}
+      {#if app.error}<div class="error" role="alert">{t(app.error)}<button class="text-button" onclick={actions.dismissError} aria-label={t('Dismiss error')}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>{/if}
       {#if app.loading}
         <div class="card loading" role="status">{t('Loading your requests…')}</div>
       {:else if app.role === 'professional' && app.session.memberships?.some((item) => item.role === 'professional' && item.status === 'pending')}
@@ -218,10 +228,10 @@
       {:else if app.role === 'professional' && !app.serverState}
         
         <WorkspaceNavigation items={app.workspaces} currentID={app.workspaceId} canCreate={false} canLoadMore={!!app.workspaceCursor} busy={app.pending || app.loading} onSelect={actions.selectRequest} onCreate={actions.createRequest} onLoadMore={actions.loadMoreWorkspaces}/>
-        <details class="service-settings"><summary>Manage your service and availability</summary><ProfessionalAvailability/></details>
-        <div class="card empty-state"><span>✓</span><h2>No assigned requests yet.</h2><p>Your customer bookings will appear here. You can keep your service profile and availability up to date.</p></div>
+        <section class="card service-setup" aria-labelledby="service-setup-title"><h2 id="service-setup-title">{t('Set up your service and times')}</h2><ProfessionalAvailability/></section>
+        <div class="card empty-state"><span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span><h2>{t('No assigned requests yet.')}</h2><p>{t('Your customer bookings will appear here. You can keep your service profile and availability up to date.')}</p></div>
       {:else if !app.serverState}
-        <div class="card"><h2>Workspace unavailable</h2><p>Your account is signed in, but its workspace data could not be loaded.</p><button onclick={actions.loadState}>Try again</button></div>
+        <div class="card"><h2>{t('Workspace unavailable')}</h2><p>{t('Your account is signed in, but its workspace data could not be loaded.')}</p><button onclick={actions.loadState}>{t('Try again')}</button></div>
       {:else if app.role === 'customer'}
         <div class="request-shell">
         {@render requestPaneContent(true)}
