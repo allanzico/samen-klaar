@@ -2,8 +2,8 @@
 # Secrets and provider settings live in the dashboard environment group "samenklaar-env" (see README, "Deploy on Render").
 databases:
   - name: samenklaar-db
-    databaseName: relay
-    user: relay
+    databaseName: samenklaar
+    user: samenklaar
     region: frankfurt
     plan: basic-256mb
     postgresMajorVersion: "16"

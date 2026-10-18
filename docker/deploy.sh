@@ -108,7 +108,7 @@ backup() {
   umask 077
   mkdir -p ".backups/$mode"
   backup_path=".backups/$mode/$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
-  if compose exec -T db pg_dump -U relay -d relay --format=custom > "$backup_path.tmp"; then
+  if compose exec -T db pg_dump -U samenklaar -d samenklaar --format=custom > "$backup_path.tmp"; then
     mv "$backup_path.tmp" "$backup_path"
     echo "Database backup: $backup_path"
   else

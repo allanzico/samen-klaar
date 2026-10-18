@@ -86,7 +86,7 @@ esac
         active = local / "app.env"
         active.write_text(
             "AUTH0_ISSUER_URL=\nAUTH0_CLIENT_ID=already-configured\nAUTH0_CLIENT_SECRET=\n"
-            "DATABASE_URL=postgres://relay@db/relay\nAPP_BASE_URL=http://localhost:8090\n"
+            "DATABASE_URL=postgres://samenklaar@db/samenklaar\nAPP_BASE_URL=http://localhost:8090\n"
             "AUTH0_REDIRECT_URI=http://localhost:8090/api/auth/callback\n"
         )
         source = self.root / ".env"
@@ -104,7 +104,7 @@ esac
         self.assertEqual(settings["AUTH0_ISSUER_URL"], "https://tenant.test/")
         self.assertEqual(settings["AUTH0_CLIENT_ID"], "already-configured")
         self.assertEqual(settings["AUTH0_CLIENT_SECRET"], "dummy-local-secret")
-        self.assertEqual(settings["DATABASE_URL"], "postgres://relay@db/relay")
+        self.assertEqual(settings["DATABASE_URL"], "postgres://samenklaar@db/samenklaar")
         self.assertEqual(settings["APP_BASE_URL"], "http://localhost:8090")
         self.assertEqual(settings["AUTH0_REDIRECT_URI"], "http://localhost:8090/api/auth/callback")
         self.assertNotIn("dummy-local-secret", result.stdout + result.stderr)

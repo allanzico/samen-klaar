@@ -29,7 +29,7 @@ func TestConfigRejectsMismatchedCallbackAndInsecureProduction(t *testing.T) {
 	t.Setenv("APP_BASE_URL", "https://demo.example.com")
 	t.Setenv("AUTH0_REDIRECT_URI", "https://demo.example.com/api/auth/callback")
 	t.Setenv("AUTH0_ISSUER_URL", "https://tenant.example.com/")
-	t.Setenv("DATABASE_URL", "postgres://relay:test-password@db:5432/relay")
+	t.Setenv("DATABASE_URL", "postgres://samenklaar:test-password@db:5432/samenklaar")
 	t.Setenv("PAYPAL_ENV", "sandbox")
 	if err := checkConfig(); err != nil {
 		t.Fatal(err)
