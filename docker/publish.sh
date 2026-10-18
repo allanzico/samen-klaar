@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 : "${IMAGE_REPO:?Set IMAGE_REPO to the destination registry/repository}"
 printf '%s\n' "$IMAGE_REPO" | grep -Eq '^[a-zA-Z0-9./:_-]+$' || { echo 'Invalid IMAGE_REPO' >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo 'Commit the release source before publishing; the working tree must be clean.' >&2; exit 1; }
+sh ./docker/verify-flow.sh
 revision=$(git rev-parse HEAD)
 mkdir -p .deploy
 umask 077

@@ -12,12 +12,16 @@ const (
 )
 
 // AppointmentConfirmationDeadline uses a two-business-hour response window,
-// Monday to Friday, 09:00–17:00 in the appointment's timezone. A request made
+// Monday to Friday, 09:00–17:00 Europe/Amsterdam. The appointment timezone is
+// validated for display but cannot change the operational response clock. A request made
 // outside those hours starts counting at the next opening time.
 func AppointmentConfirmationDeadline(from time.Time, timezone string) (time.Time, error) {
-	location, err := time.LoadLocation(timezone)
-	if err != nil {
+	if _, err := time.LoadLocation(timezone); err != nil {
 		return time.Time{}, errors.New("appointment timezone is invalid")
+	}
+	location, err := time.LoadLocation("Europe/Amsterdam")
+	if err != nil {
+		return time.Time{}, err
 	}
 	current := from.In(location)
 	remaining := confirmationWindow

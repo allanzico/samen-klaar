@@ -36,6 +36,9 @@ func (s *intentStoreFixture) UpdatePaymentIntent(_ context.Context, record Inten
 		return errors.New("simulated database failure")
 	}
 	current := s.records[key]
+	if !samePaymentAttempt(intentFromRecord(current), record) {
+		return errors.New("payment attempt changed")
+	}
 	matched := false
 	for _, status := range expected {
 		if current.Status == status {
@@ -52,6 +55,16 @@ func (s *intentStoreFixture) ClaimPaymentIntent(_ context.Context, _, job string
 	key := intentKey(job, scope)
 	record := s.records[key]
 	if record.Status != from {
+		return false, nil
+	}
+	record.Status = to
+	s.records[key] = record
+	return true, nil
+}
+func (s *intentStoreFixture) ClaimPaymentIntentAttempt(_ context.Context, expected IntentRecord, from, to string) (bool, error) {
+	key := intentKey(expected.JobID, expected.ScopeVersion)
+	record := s.records[key]
+	if record.Status != from || !samePaymentAttempt(intentFromRecord(record), expected) {
 		return false, nil
 	}
 	record.Status = to

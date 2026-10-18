@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -23,11 +24,17 @@ import (
 )
 
 type Store struct {
-	pool        *pgxpool.Pool
-	river       *river.Client[pgx.Tx]
-	riverCancel context.CancelFunc
-	sender      mailadapter.Sender
-	appBaseURL  string
+	pool          *pgxpool.Pool
+	river         *river.Client[pgx.Tx]
+	riverCancel   context.CancelFunc
+	loopCancel    context.CancelFunc
+	loopWG        sync.WaitGroup
+	sender        mailadapter.Sender
+	appBaseURL    string
+	releaseMu     sync.RWMutex
+	releaser      AuthorizationReleaser
+	coordinatorMu sync.RWMutex
+	coordinator   ContextCoordinator
 }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
@@ -68,6 +75,8 @@ func startRiver(ctx context.Context, store *Store) error {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &NotificationWorker{pool: store.pool, sender: store.sender, appBaseURL: store.appBaseURL})
 	river.AddWorker(workers, &PayPalWebhookWorker{store: store})
+	river.AddWorker(workers, &AuthorizationReleaseWorker{store: store})
+	river.AddWorker(workers, &CoordinationWorker{store: store})
 	client, err := river.NewClient(driver, &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 2}},
 		Workers: workers,
@@ -75,8 +84,8 @@ func startRiver(ctx context.Context, store *Store) error {
 	if err != nil {
 		return fmt.Errorf("create River client: %w", err)
 	}
-	workerCtx, cancel := context.WithCancel(context.Background())
-	if err := client.Start(workerCtx); err != nil {
+	riverCtx, cancel := context.WithCancel(context.Background())
+	if err := client.Start(riverCtx); err != nil {
 		cancel()
 		return fmt.Errorf("start River workers: %w", err)
 	}
@@ -89,10 +98,13 @@ func startRiver(ctx context.Context, store *Store) error {
 		cancel()
 		return fmt.Errorf("requeue undelivered notifications: %w", err)
 	}
-	go store.runAppointmentConfirmationExpiry(workerCtx)
-	go store.runNotificationRecovery(workerCtx)
-	go store.runJobLifecycleNotifications(workerCtx)
-	go store.runAuthCleanup(workerCtx)
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+	store.loopCancel = loopCancel
+	store.loopWG.Add(4)
+	go func() { defer store.loopWG.Done(); store.runAppointmentConfirmationExpiry(loopCtx) }()
+	go func() { defer store.loopWG.Done(); store.runNotificationRecovery(loopCtx) }()
+	go func() { defer store.loopWG.Done(); store.runJobLifecycleNotifications(loopCtx) }()
+	go func() { defer store.loopWG.Done(); store.runAuthCleanup(loopCtx) }()
 	return nil
 }
 
@@ -160,6 +172,7 @@ func Migrate(ctx context.Context, databaseURL string) error {
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 func (s *Store) Close() {
+	s.stopBackgroundLoops()
 	if s.river != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := s.river.Stop(ctx)
@@ -177,6 +190,14 @@ func (s *Store) Close() {
 		s.riverCancel()
 	}
 	s.pool.Close()
+}
+
+func (s *Store) stopBackgroundLoops() {
+	if s.loopCancel != nil {
+		s.loopCancel()
+		s.loopCancel = nil
+	}
+	s.loopWG.Wait()
 }
 
 func (s *Store) Load(ctx context.Context, accountID string) (workflow.State, error) {
@@ -324,6 +345,7 @@ func (s *Store) CreateWorkspace(ctx context.Context, accountID string) (workflow
 	id := hex.EncodeToString(idBytes[:])
 	state := workflow.NewState()
 	state.WorkspaceID = id
+	state.ParentRequestID = id
 	raw, err := json.Marshal(state)
 	if err != nil {
 		return workflow.State{}, err
@@ -449,6 +471,26 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 			return workflow.State{}, err
 		}
 	}
+	if input.Action == "defer-payment-authorization" {
+		if err := deferPaymentAuthorizationTx(ctx, tx, current); err != nil {
+			return workflow.State{}, err
+		}
+	}
+	if input.Action == "record-payment-authorization" {
+		if err := validatePaymentAuthorizationProjectionTx(ctx, tx, current, input); err != nil {
+			return workflow.State{}, err
+		}
+	}
+	if (input.Action == "confirm-appointment" || input.Action == "start-job") && current.Job.PaymentAuthorizationTiming == workflow.PaymentAuthorizationAtBooking {
+		if err := validateBookingAuthorizationTx(ctx, tx, current); err != nil {
+			return workflow.State{}, err
+		}
+	}
+	if current.Job.Appointment == nil && (input.Action == "book-appointment" || input.Action == "approve-and-book" || input.Action == "accept-date") {
+		if err := validateBookingPaymentReleaseTx(ctx, tx, current); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	if input.Action == "approve-change" || input.Action == "report-issue" {
 		var paymentStatus string
 		err = tx.QueryRow(ctx, `SELECT status FROM paypal_payment_operations WHERE job_id=$1 AND scope_version=$2`, current.Job.ID, current.Job.ScopeVersion).Scan(&paymentStatus)
@@ -456,7 +498,7 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 			return workflow.State{}, err
 		}
 		if err == nil {
-			if input.Action == "approve-change" && paymentStatus != "voided" && paymentStatus != "denied" && paymentStatus != "expired" {
+			if input.Action == "approve-change" && paymentStatus != "voided" && paymentStatus != "denied" && paymentStatus != "expired" && paymentStatus != "deferred" {
 				return workflow.State{}, errors.New("resolve the existing PayPal payment before changing scope")
 			}
 			if input.Action == "report-issue" && (paymentStatus == "capturing" || paymentStatus == "capture_uncertain" || paymentStatus == "captured") {
@@ -465,16 +507,31 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 		}
 	}
 
+	if err := prepareConsumerPolicyActionTx(ctx, tx, &current, &input); err != nil {
+		return workflow.State{}, err
+	}
+	previousTiming := current.Job.PaymentAuthorizationTiming
 	if err = workflow.Apply(&current, input); err != nil {
 		return workflow.State{}, err
 	}
 	state := current
+	if input.Action != "defer-payment-authorization" && previousTiming != state.Job.PaymentAuthorizationTiming {
+		if err := deferPaymentAuthorizationTx(ctx, tx, state); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	if input.Action == "cancel-request" && state.Cancelled && state.Job.ProfessionalAccountID != "" {
 		if err = releaseCancelledBooking(ctx, tx, state.Job); err != nil {
 			return workflow.State{}, err
 		}
 	}
-	if input.Action == "accept-date" {
+	if input.Action == "decline-appointment" || input.Action == "cancel-request" && state.Cancelled {
+		if err := s.enqueueAuthorizationReleaseTx(ctx, tx, workspaceID, state.Job); err != nil {
+			return workflow.State{}, err
+		}
+		state.Job.PaymentAuthorizedVersion = 0
+	}
+	if input.Action == "accept-date" && state.Job.DateProposal != nil && state.Job.DateProposal.Status == "accepted" {
 		if err = reserveAgreedDate(ctx, tx, &state.Job); err != nil {
 			return workflow.State{}, err
 		}
@@ -493,11 +550,17 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 		return workflow.State{}, err
 	}
 	state.WorkspaceID = workspaceID
+	if err := persistConsumerPolicyAcknowledgmentTx(ctx, tx, actorAccountID, state, input); err != nil {
+		return workflow.State{}, err
+	}
 	stateBytes, err := json.Marshal(state)
 	if err != nil {
 		return workflow.State{}, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE account_workspaces SET state_json = $2, revision = revision + 1, updated_at = now() WHERE id = $1`, workspaceID, stateBytes); err != nil {
+		return workflow.State{}, err
+	}
+	if err = s.enqueueCoordinationTx(ctx, tx, workspaceID, state, input, revision+1); err != nil {
 		return workflow.State{}, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO audit_events (account_id, actor_account_id, workspace_id, job_id, actor, action, scope_version, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, ownerID, actorAccountID, workspaceID, state.Job.ID, input.Actor, input.Action, int32(state.Job.ScopeVersion), revision+1); err != nil {
@@ -545,7 +608,7 @@ func persistScopeHistory(ctx context.Context, tx pgx.Tx, job workflow.Job) error
 	return nil
 }
 
-func reserveBooking(ctx context.Context, tx pgx.Tx, job workflow.Job) error {
+func reserveBooking(ctx context.Context, tx pgx.Tx, job workflow.Job, agreed ...bool) error {
 	if job.Appointment == nil {
 		return errors.New("appointment is required")
 	}
@@ -568,6 +631,11 @@ func reserveBooking(ctx context.Context, tx pgx.Tx, job workflow.Job) error {
 	// Serialize overlap checks by professional. The lock and insert share the same transaction.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, professionalID); err != nil {
 		return err
+	}
+	if len(agreed) == 0 || !agreed[0] {
+		if err := validateScheduledBookingTx(ctx, tx, professionalID, requestedStart, requestedEnd, job.ID); err != nil {
+			return err
+		}
 	}
 	var startsAt, endsAt time.Time
 	err = tx.QueryRow(ctx, `
@@ -649,7 +717,7 @@ func reserveAgreedDate(ctx context.Context, tx pgx.Tx, job *workflow.Job) error 
 	if err != nil {
 		return err
 	}
-	return reserveBooking(ctx, tx, *job)
+	return reserveBooking(ctx, tx, *job, true)
 }
 
 func mustParseUTC(value string) time.Time {

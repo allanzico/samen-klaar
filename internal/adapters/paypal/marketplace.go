@@ -160,7 +160,7 @@ func safePayPalURL(value string) bool {
 	if err != nil || parsed.Scheme != "https" {
 		return false
 	}
-	return parsed.Host == "api-m.sandbox.paypal.com" || parsed.Host == "www.sandbox.paypal.com" || parsed.Host == "www.paypal.com"
+	return parsed.Host == "api-m.sandbox.paypal.com" || parsed.Host == "api.sandbox.paypal.com" || parsed.Host == "www.sandbox.paypal.com" || parsed.Host == "www.paypal.com"
 }
 
 func (p *Service) SellerOnboardingStatus(ctx context.Context, accountID, merchantIDFromReturn string) (PayoutSetupStatus, error) {

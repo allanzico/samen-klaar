@@ -1,0 +1,22 @@
+name: Check request flow
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-flow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify with disposable PostgreSQL and provider fixtures
+        run: make check-flow

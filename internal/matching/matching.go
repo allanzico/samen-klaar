@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"github.com/allanzico/samen-klaar/internal/workflow"
-	"sort"
 	"strings"
 )
 
@@ -68,19 +67,11 @@ func Find(ctx context.Context, directory Directory, selector Selector, category,
 			matches = append(matches, candidate)
 		}
 	}
-	sort.SliceStable(matches, func(i, j int) bool {
-		a, b := matches[i].EarliestAppointment, matches[j].EarliestAppointment
-		if a == nil {
-			return false
-		}
-		if b == nil {
-			return true
-		}
-		if a.StartUTC == b.StartUTC {
-			return matches[i].ID < matches[j].ID
-		}
-		return a.StartUTC < b.StartUTC
-	})
+	if len(locations) > 0 {
+		workflow.OrderMatches(matches, &locations[0])
+	} else {
+		workflow.OrderMatches(matches, nil)
+	}
 	if len(matches) > 3 {
 		matches = matches[:3]
 	}

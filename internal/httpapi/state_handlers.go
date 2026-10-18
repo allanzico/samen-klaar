@@ -42,51 +42,63 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	principal := principalForRequest(r)
 	input.Actor = string(principal.ActiveRole)
+	input.Locale = principal.User.Locale
 	input.CustomerAccountID = principal.User.ID
 	if s.ai != nil && actionMayCallAI(input.Action) && !s.limiter.allow("ai:"+principal.User.ID, 0.2, 20, time.Now()) {
 		w.Header().Set("Retry-After", "5")
-		http.Error(w, "AI requests are temporarily limited; try again shortly", http.StatusTooManyRequests)
-		return
-	}
-	if input.Action == "reset" {
-		http.Error(w, "workspace resets are not supported", http.StatusGone)
-		return
-	}
-	if input.Action == "create-request" {
-		http.Error(w, "create a request through the conversation", http.StatusBadRequest)
+		http.Error(w, "Please wait a moment before trying again", http.StatusTooManyRequests)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
 	defer cancel()
-	if input.Action == "confirm-payment" && s.paypal != nil {
-		http.Error(w, "use the separate PayPal capture action after authorization", http.StatusConflict)
+	state, status, err := s.runAction(ctx, principal, input)
+	if err != nil {
+		http.Error(w, err.Error(), status)
 		return
+	}
+	writeJSON(w, state)
+	s.TriggerAgents(state.WorkspaceID)
+}
+
+// runAction prepares and applies one workflow action for a signed-in principal: the same path whether a
+// person clicked a button or their agent acted within a mandate. It returns an HTTP status for errors.
+func (s *Server) runAction(ctx context.Context, principal identity.Principal, input Action) (State, int, error) {
+	if input.Action == "reset" {
+		return State{}, http.StatusGone, errors.New("workspace resets are not supported")
+	}
+	if (input.Action == "approve-and-book" || input.Action == "book-appointment" || input.Action == "approve-quote" || input.Action == "accept-date") && input.PaymentAuthorizationTiming == workflow.PaymentAuthorizationAtBooking && s.paypal == nil {
+		return State{}, http.StatusServiceUnavailable, errors.New("booking-time PayPal authorization is not available for this environment")
+	}
+	if input.Action == "record-payment-authorization" {
+		return State{}, http.StatusForbidden, errors.New("PayPal authorizations must be recorded by the payment callback")
+	}
+	if input.Action == "create-request" {
+		return State{}, http.StatusBadRequest, errors.New("create a request through the conversation")
+	}
+	if input.Action == "confirm-payment" && s.paypal != nil {
+		return State{}, http.StatusConflict, errors.New("use the separate PayPal capture action after authorization")
 	}
 	if (input.Action == "start-intake" || input.Action == "revise-intake") && s.ai != nil {
 		if input.Actor != string(identity.Customer) || len(strings.TrimSpace(input.Value)) < 5 || len(strings.TrimSpace(input.Value)) > 500 {
-			http.Error(w, "describe the job in 5 to 500 characters as the customer", http.StatusBadRequest)
-			return
+			return State{}, http.StatusBadRequest, errors.New("describe the job in 5 to 500 characters as the customer")
 		}
 		suggestion, err := s.ai.Clarify(ctx, "Infer from description", strings.TrimSpace(input.Value))
 		if err != nil {
-			http.Error(w, "request clarification is unavailable", http.StatusBadGateway)
-			return
+			return State{}, http.StatusBadGateway, errors.New("request clarification is unavailable")
 		}
 		input.Suggestion = &suggestion
 	}
 	if input.Action == "set-location" {
 		location, err := workflow.ResolveLocation(input.Location, input.Value)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return State{}, http.StatusBadRequest, errors.New(err.Error())
 		}
 		input.Location = &location
 	}
 	if (input.Action == "answer-intake" || input.Action == "set-location" || input.Action == "refresh-matches" || input.Action == "return-to-matches") && principal.ActiveRole == identity.Customer {
 		current, err := s.currentState(ctx, principal.User.ID, string(principal.ActiveRole), input.WorkspaceID)
 		if err != nil {
-			http.Error(w, "request could not be loaded", http.StatusConflict)
-			return
+			return State{}, http.StatusConflict, errors.New("request could not be loaded")
 		}
 		category := ""
 		if current.Intake != nil {
@@ -96,8 +108,7 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 			if s.ai != nil {
 				suggestion, err := s.ai.Clarify(ctx, "Continue clarifying the trade from the original request and this answer", current.Intake.Description+"\nAdditional detail: "+input.Value)
 				if err != nil {
-					http.Error(w, "request clarification is unavailable", http.StatusBadGateway)
-					return
+					return State{}, http.StatusBadGateway, errors.New("request clarification is unavailable")
 				}
 				input.Suggestion = &suggestion
 			}
@@ -108,12 +119,10 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 		searchAfterAnswer := input.Action == "answer-intake" && (current.Intake != nil && current.Intake.Step == "budget" && current.Intake.Location != nil || readyAfterDetail)
 		if current.Intake != nil && (searchRequested || searchAfterAnswer) {
 			if s.directory == nil {
-				http.Error(w, "professional directory is unavailable", http.StatusServiceUnavailable)
-				return
+				return State{}, http.StatusServiceUnavailable, errors.New("professional directory is unavailable")
 			}
 			if s.ai == nil {
-				http.Error(w, "service matching is unavailable", http.StatusServiceUnavailable)
-				return
+				return State{}, http.StatusServiceUnavailable, errors.New("service matching is unavailable")
 			}
 			detail := current.Intake.Detail
 			if current.Intake.Step == "detail" && input.Action == "answer-intake" {
@@ -127,20 +136,17 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			input.Matches, input.SuggestedQuestion, err = matching.Find(ctx, s.directory, s.ai, category, current.Intake.Description+"\n"+detail, principal.User.ID, location)
 			if err != nil {
-				http.Error(w, "professional directory could not be searched", http.StatusServiceUnavailable)
-				return
+				return State{}, http.StatusServiceUnavailable, errors.New("professional directory could not be searched")
 			}
 		}
 	}
 	if input.Action == "select-match" && principal.ActiveRole == identity.Customer {
 		current, err := s.currentState(ctx, principal.User.ID, string(principal.ActiveRole), input.WorkspaceID)
 		if err != nil || current.Intake == nil {
-			http.Error(w, "the request is no longer available", http.StatusConflict)
-			return
+			return State{}, http.StatusConflict, errors.New("the request is no longer available")
 		}
 		if s.directory == nil {
-			http.Error(w, "professional directory is unavailable", http.StatusServiceUnavailable)
-			return
+			return State{}, http.StatusServiceUnavailable, errors.New("professional directory is unavailable")
 		}
 		found := false
 		for _, match := range current.Intake.Matches {
@@ -150,59 +156,56 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !found {
-			http.Error(w, "choose an active professional from these results", http.StatusConflict)
-			return
+			return State{}, http.StatusConflict, errors.New("choose an active professional from these results")
 		}
 		offer, err := s.directory.CatalogOffer(ctx, input.Value)
 		if err != nil {
-			http.Error(w, "the selected professional catalog is no longer available", http.StatusConflict)
-			return
+			return State{}, http.StatusConflict, errors.New("the selected professional catalog is no longer available")
 		}
 		if offer.AccountID == principal.User.ID {
-			http.Error(w, "you cannot book your own services", http.StatusConflict)
-			return
+			return State{}, http.StatusConflict, errors.New("you cannot book your own services")
 		}
 		for _, match := range current.Intake.Matches {
 			if match.ID == input.Value && match.ServiceName != "" && (match.ServiceName != offer.ServiceName || match.ServiceDescription != offer.ServiceDescription || match.TotalMinor != offer.PriceMinor+offer.CalloutMinor || match.Currency != offer.Currency || match.DurationMinutes != offer.DurationMinutes || match.MaterialsPolicy != offer.MaterialsPolicy || !sameStrings(match.Exclusions, offer.Exclusions)) {
-				http.Error(w, "this service or price changed; refresh the recommendations before choosing", http.StatusConflict)
-				return
+				return State{}, http.StatusConflict, errors.New("this service or price changed; refresh the recommendations before choosing")
 			}
+		}
+		if policies, ok := s.store.(evidencePolicyStore); ok {
+			policy, policyErr := policies.EvidencePolicy(ctx, offer.ProfileID)
+			if policyErr != nil {
+				return State{}, http.StatusServiceUnavailable, errors.New("service evidence requirements unavailable")
+			}
+			offer.EvidenceRequirements = policy.Requirements
 		}
 		input.SelectedOffer = &offer
 		input.CustomerName = principal.User.DisplayName
 		input.AvailableSlots, err = s.directory.AvailableProfessionalSlots(ctx, offer.AccountID, "")
 		if err != nil {
-			http.Error(w, "professional availability could not be loaded", http.StatusServiceUnavailable)
-			return
+			return State{}, http.StatusServiceUnavailable, errors.New("professional availability could not be loaded")
 		}
 	}
 	if input.Action == "record-evidence" {
-		http.Error(w, "use the private evidence upload endpoint", http.StatusBadRequest)
-		return
+		return State{}, http.StatusBadRequest, errors.New("use the private evidence upload endpoint")
 	}
 	if input.Action == "record-evidence-review" {
-		http.Error(w, "use the customer evidence review endpoint", http.StatusBadRequest)
-		return
+		return State{}, http.StatusBadRequest, errors.New("use the customer evidence review endpoint")
 	}
 	if input.Action == "approve-change" && principal.ActiveRole == identity.Customer && s.paypal != nil {
 		current, err := s.currentState(ctx, principal.User.ID, string(principal.ActiveRole), input.WorkspaceID)
 		if err != nil {
-			http.Error(w, "account workspace is unavailable", http.StatusServiceUnavailable)
-			return
+			return State{}, http.StatusServiceUnavailable, errors.New("account workspace is unavailable")
 		}
 		if current.Job.Change != nil && current.Job.Change.Status == "pending" {
 			if err := s.paypal.VoidCurrent(ctx, current); err != nil {
-				http.Error(w, "the existing PayPal authorization could not be released", http.StatusConflict)
-				return
+				return State{}, http.StatusConflict, errors.New("the existing PayPal authorization could not be released")
 			}
 		}
 	}
 	state, err := s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), input, input.WorkspaceID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return State{}, http.StatusConflict, err
 	}
-	writeJSON(w, state)
+	return state, http.StatusOK, nil
 }
 
 func actionMayCallAI(action string) bool {
@@ -251,9 +254,18 @@ func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, struct {
-		AppName string `json:"appName"`
-		ProviderConfig
-	}{AppName: s.appName, ProviderConfig: s.providers})
+		AppName                  string `json:"appName"`
+		GuidedReviewAvailable    bool   `json:"guidedReviewAvailable"`
+		EvidenceUploadsAvailable bool   `json:"evidenceUploadsAvailable"`
+		PaymentsAvailable        bool   `json:"paymentsAvailable"`
+		TestPayments             bool   `json:"testPayments"`
+	}{
+		AppName:                  s.appName,
+		GuidedReviewAvailable:    s.providers.AIProvider != "",
+		EvidenceUploadsAvailable: s.providers.EvidenceProvider != "",
+		PaymentsAvailable:        s.providers.PaymentProvider == "paypal_sandbox",
+		TestPayments:             s.providers.PaymentProvider == "paypal_sandbox",
+	})
 }
 
 func sameStrings(a, b []string) bool {

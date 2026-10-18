@@ -55,7 +55,18 @@ type geminiModel struct {
 }
 
 func newGemini(ctx context.Context, key, model string) (core.ModelClient, error) {
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: key, Backend: genai.BackendGeminiAPI})
+	return newGeminiWithHTTPClient(ctx, key, model, nil)
+}
+
+func newGeminiWithHTTPClient(ctx context.Context, key, model string, httpClient *http.Client) (core.ModelClient, error) {
+	attempts, initialDelay, maxDelay, jitter := int32(3), 0.5, 2.0, 0.25
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: key, Backend: genai.BackendGeminiAPI, HTTPClient: httpClient,
+		HTTPOptions: genai.HTTPOptions{RetryOptions: &genai.HTTPRetryOptions{
+			Attempts: &attempts, InitialDelay: &initialDelay, MaxDelay: &maxDelay, Jitter: &jitter,
+			HTTPStatusCodes: []int32{408, 429, 500, 502, 503, 504},
+		}},
+	})
 	if err != nil {
 		return nil, errors.New("could not initialize Gemini provider")
 	}

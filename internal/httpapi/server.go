@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/allanzico/samen-klaar/internal/adapters/paypal"
 	"github.com/allanzico/samen-klaar/internal/identity"
 	"github.com/allanzico/samen-klaar/internal/matching"
 	"github.com/allanzico/samen-klaar/internal/workflow"
@@ -40,6 +42,7 @@ type PaymentGateway interface {
 	Status(context.Context, workflow.State) (string, error)
 	CaptureID(context.Context, workflow.State) (string, error)
 	VoidCurrent(context.Context, workflow.State) error
+	VerifiedAuthorization(context.Context, workflow.State) (paypal.IntentRecord, error)
 }
 
 type RefundGateway interface {
@@ -72,29 +75,34 @@ type Dependencies struct {
 	Professionals ProfessionalService
 	Directory     ProfessionalDirectory
 	Operators     OperatorService
+	Agents        AgentStore
 	Readiness     func(context.Context) error
 }
 
 type Server struct {
-	appName       string
-	webDirectory  string
-	store         workflow.StateStore
-	auth          *identity.Auth
-	sessions      SessionResolver
-	appOrigin     string
-	providers     ProviderConfig
-	ai            IntakeAI
-	r2            EvidenceStorage
-	paypal        PaymentGateway
-	refunds       RefundGateway
-	marketplace   PayPalMarketplace
-	webhook       PaymentWebhookReceiver
-	professionals ProfessionalService
-	directory     ProfessionalDirectory
-	operators     OperatorService
-	readiness     func(context.Context) error
-	limiter       *rateLimiter
-	draining      atomic.Bool
+	appName         string
+	webDirectory    string
+	store           workflow.StateStore
+	auth            *identity.Auth
+	sessions        SessionResolver
+	appOrigin       string
+	providers       ProviderConfig
+	ai              IntakeAI
+	r2              EvidenceStorage
+	paypal          PaymentGateway
+	refunds         RefundGateway
+	marketplace     PayPalMarketplace
+	webhook         PaymentWebhookReceiver
+	professionals   ProfessionalService
+	directory       ProfessionalDirectory
+	operators       OperatorService
+	agents          AgentStore
+	agentLocks      sync.Map
+	interpretations sync.Map // workspace|role|seq -> *workflow.ReplyIntent
+	interpretFailed sync.Map // the same key -> time.Time of the last failed model call
+	readiness       func(context.Context) error
+	limiter         *rateLimiter
+	draining        atomic.Bool
 }
 
 func New(deps Dependencies) *Server {
@@ -110,7 +118,7 @@ func New(deps Dependencies) *Server {
 	if sessions == nil && deps.Auth != nil {
 		sessions = deps.Auth
 	}
-	return &Server{appName: appName, webDirectory: deps.WebDirectory, store: deps.Store, auth: deps.Auth, sessions: sessions, appOrigin: origin, providers: deps.Providers, ai: deps.AI, r2: deps.Evidence, paypal: deps.Payments, refunds: deps.Refunds, marketplace: deps.Marketplace, webhook: deps.Webhook, professionals: deps.Professionals, directory: deps.Directory, operators: deps.Operators, readiness: deps.Readiness, limiter: newRateLimiter()}
+	return &Server{appName: appName, webDirectory: deps.WebDirectory, store: deps.Store, auth: deps.Auth, sessions: sessions, appOrigin: origin, providers: deps.Providers, ai: deps.AI, r2: deps.Evidence, paypal: deps.Payments, refunds: deps.Refunds, marketplace: deps.Marketplace, webhook: deps.Webhook, professionals: deps.Professionals, directory: deps.Directory, operators: deps.Operators, agents: deps.Agents, readiness: deps.Readiness, limiter: newRateLimiter()}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -127,10 +135,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/auth/role", s.protect(false, identity.Customer, identity.Professional, identity.Operator)(http.HandlerFunc(s.roleHandler)))
 	mux.Handle("/api/professional/onboarding", s.protect(false, identity.Customer)(s.authHandler(func(w http.ResponseWriter, r *http.Request, auth *identity.Auth) { auth.BeginProfessional(w, r) })))
 	mux.HandleFunc("/api/auth/logout", s.authHandler(func(w http.ResponseWriter, r *http.Request, auth *identity.Auth) { auth.Logout(w, r) }))
+	mux.Handle("/api/coordination", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.coordinationHandler)))
+	mux.Handle("/api/request-plan", s.protect(false, identity.Customer)(http.HandlerFunc(s.parentRequestHandler)))
 	mux.Handle("/api/workspaces", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.workspacesHandler)))
 	mux.Handle("/api/notifications", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.notificationListHandler)))
 	mux.Handle("/api/notifications/read", s.protect(true, identity.Customer, identity.Professional)(http.HandlerFunc(s.notificationReadHandler)))
 	mux.Handle("/api/state", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.stateHandler)))
+	mux.Handle("/api/agent/mandate", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.agentMandateHandler)))
+	mux.Handle("/api/agent/activity", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.agentActivityHandler)))
+	mux.Handle("/api/agent/escalations", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.agentEscalationsHandler)))
 	mux.Handle("/api/actions", s.protect(true, identity.Customer, identity.Professional)(http.HandlerFunc(s.actionHandler)))
 	mux.Handle("/api/paypal/create-order", s.protect(true, identity.Customer)(http.HandlerFunc(s.paypalCreateOrderHandler)))
 	mux.Handle("/api/paypal/authorize", s.protect(true, identity.Customer)(http.HandlerFunc(s.paypalAuthorizeHandler)))
@@ -140,11 +153,27 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/paypal/webhook", s.paypalWebhookHandler)
 	mux.Handle("/api/evidence", s.protect(true, identity.Professional)(http.HandlerFunc(s.evidenceUploadHandler)))
 	mux.Handle("/api/evidence/{id}", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.evidenceGetHandler)))
+	mux.Handle("/api/request-photos", s.protect(true, identity.Customer)(http.HandlerFunc(s.requestPhotoUploadHandler)))
+	mux.Handle("/api/request-photos/{id}", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.requestPhotoGetHandler)))
 	mux.Handle("/api/evidence/review", s.protect(true, identity.Customer)(http.HandlerFunc(s.evidenceReviewHandler)))
 	mux.Handle("/api/professional/profile", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalProfileHandler)))
 	mux.Handle("/api/professional/paypal/onboarding", s.protect(false, identity.Professional)(http.HandlerFunc(s.paypalSellerOnboardingHandler)))
 	mux.Handle("/api/professional/paypal/status", s.protect(false, identity.Professional)(http.HandlerFunc(s.paypalSellerStatusHandler)))
+	mux.Handle("/api/professional/schedule", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalScheduleHandler)))
+	mux.Handle("/api/professional/schedule/preview", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalSchedulePreviewHandler)))
+	mux.Handle("/api/professional/days-off", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalDaysOffHandler)))
+	mux.Handle("/api/professional/days-off/", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalDaysOffHandler)))
+	mux.Handle("/api/professional/days-off/preview", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalDaysOffPreviewHandler)))
+	mux.Handle("/api/professional/availability/", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalAvailabilityMaintenanceHandler)))
 	mux.Handle("/api/professional/availability", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalAvailabilityHandler)))
+	mux.Handle("/api/operator/cases/{workspaceId}", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorCaseDetailHandler)))
+	mux.Handle("/api/operator/cases/{workspaceId}/evidence/{id}", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorEvidenceHandler)))
+	mux.Handle("/api/operator/evidence-policies", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorEvidencePolicyHandler)))
+	mux.Handle("/api/professional/evidence-policy", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalEvidencePolicyHandler)))
+	mux.Handle("/api/policies", s.protect(false, identity.Customer, identity.Professional, identity.Operator)(http.HandlerFunc(s.consumerPoliciesHandler)))
+	mux.Handle("/api/operator/policies", s.protect(true, identity.Operator)(http.HandlerFunc(s.operatorPolicyPublishHandler)))
+	mux.Handle("/api/support/messages", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.participantSupportHandler)))
+	mux.Handle("/api/account/locale", s.protect(false, identity.Customer, identity.Professional, identity.Operator)(http.HandlerFunc(s.accountLocaleHandler)))
 	mux.Handle("/api/operator/queue", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorQueueHandler)))
 	mux.Handle("/api/operator/professionals/{id}/review", s.protect(true, identity.Operator)(http.HandlerFunc(s.professionalReviewHandler)))
 	mux.Handle("/api/operator/cases/{workspaceId}/resolve", s.protect(true, identity.Operator)(http.HandlerFunc(s.resolveWorkCaseHandler)))
@@ -196,7 +225,7 @@ func (s *Server) readinessHandler(w http.ResponseWriter, r *http.Request) {
 		status = "not_ready"
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	writeJSON(w, map[string]any{"status": status, "ready": ready, "providers": s.providers})
+	writeJSON(w, map[string]any{"status": status, "ready": ready})
 }
 
 type SessionResolver interface {
@@ -258,7 +287,7 @@ func (s *Server) protect(activeOnly bool, roles ...identity.Role) func(http.Hand
 			}
 			if r.URL.Path == "/api/evidence/review" && !s.limiter.allow("ai:"+principal.User.ID, 0.2, 20, time.Now()) {
 				w.Header().Set("Retry-After", "5")
-				http.Error(w, "AI requests are temporarily limited; try again shortly", http.StatusTooManyRequests)
+				http.Error(w, "Please wait a moment before trying again", http.StatusTooManyRequests)
 				return
 			}
 			ctx := context.WithValue(r.Context(), principalContextKey{}, principal)

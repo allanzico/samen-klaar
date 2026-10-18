@@ -30,6 +30,7 @@ const (
 
 type User struct {
 	ID          string `json:"id"`
+	Locale      string `json:"locale,omitempty"`
 	Email       string `json:"email,omitempty"`
 	DisplayName string `json:"displayName,omitempty"`
 }
@@ -148,9 +149,12 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	// Authentication establishes one identity. Memberships and the persisted
-	// preference decide the workspace after login; URL parameters grant no roles.
+	// The requested destination only selects an existing membership. It never
+	// provisions operator access.
 	role := Customer
+	if r.URL.Query().Get("workspace") == string(Operator) {
+		role = Operator
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	// Cookies are scoped to a host, not a port. Start on the callback's origin
@@ -158,6 +162,9 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	base, _ := url.Parse(a.config.AppBaseURL)
 	if !strings.EqualFold(r.Host, base.Host) {
 		login := strings.TrimRight(a.config.AppBaseURL, "/") + "/api/auth/login"
+		if role == Operator {
+			login += "?workspace=operator"
+		}
 		http.Redirect(w, r, login, http.StatusFound)
 		return
 	}
@@ -269,7 +276,7 @@ func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
 		a.loginFailed(w, r, "access", "membership_denied")
 		return
 	}
-	role, membership, err := a.loginWorkspace(r.Context(), user.ID)
+	role, membership, operatorDenied, err := a.loginWorkspace(r.Context(), user.ID, txn.Role)
 	if err != nil {
 		a.loginFailed(w, r, "unavailable", "workspace_preference_unavailable")
 		return
@@ -285,16 +292,30 @@ func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: session, Path: "/", HttpOnly: true, Secure: a.config.SecureCookie, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: int(sessionTTL.Seconds())})
+	if operatorDenied {
+		http.Redirect(w, r, a.config.AppBaseURL+"/operator?auth_error=access", http.StatusFound)
+		return
+	}
 	http.Redirect(w, r, a.config.AppBaseURL+rolePath(role, membership.Status), http.StatusFound)
 }
 
-func (a *Auth) loginWorkspace(ctx context.Context, accountID string) (Role, Membership, error) {
+func (a *Auth) loginWorkspace(ctx context.Context, accountID string, requested Role) (Role, Membership, bool, error) {
 	role, err := a.repo.PreferredRole(ctx, accountID)
 	if err != nil {
-		return "", Membership{}, err
+		return "", Membership{}, false, err
 	}
 	membership, err := a.repo.EnsureMembership(ctx, accountID, role)
-	return role, membership, err
+	if err != nil {
+		return "", Membership{}, false, err
+	}
+	if requested == Operator {
+		operator, err := a.repo.EnsureMembership(ctx, accountID, Operator)
+		if err == nil && operator.Status == "active" {
+			return Operator, operator, false, nil
+		}
+		return role, membership, true, nil
+	}
+	return role, membership, false, nil
 }
 
 // BeginProfessional adds only pending professional access to the same identity.

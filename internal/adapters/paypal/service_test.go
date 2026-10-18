@@ -148,7 +148,7 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 				t.Errorf("authorize request missing seller context or idempotency: %v", r.Header)
 			}
 			authorized = true
-			_, _ = fmt.Fprint(w, `{"purchase_units":[{"payments":{"authorizations":[{"id":"auth-1","status":"CREATED"}]}}]}`)
+			_, _ = fmt.Fprint(w, `{"id":"order-1","intent":"AUTHORIZE","purchase_units":[{"reference_id":"job-1-v2","amount":{"value":"123.45","currency_code":"EUR"},"payee":{"merchant_id":"seller-merchant"},"payments":{"authorizations":[{"id":"auth-1","status":"CREATED","amount":{"value":"123.45","currency_code":"EUR"}}]}}]}`)
 		case "/v2/payments/authorizations/auth-1/capture":
 			var body struct {
 				PaymentInstruction struct {
@@ -164,6 +164,8 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 			}
 			captured = true
 			_, _ = fmt.Fprint(w, `{"id":"capture-1","status":"COMPLETED"}`)
+		case "/v2/payments/authorizations/auth-1":
+			_, _ = fmt.Fprint(w, `{"id":"auth-1","status":"CREATED","expiration_time":"2099-01-01T00:00:00Z","amount":{"value":"123.45","currency_code":"EUR"},"payee":{"merchant_id":"seller-merchant"},"supplementary_data":{"related_ids":{"order_id":"order-1"}}}`)
 		default:
 			t.Errorf("unexpected PayPal marketplace request: %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -173,8 +175,10 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 
 	service := newTestMarketplaceService(server, store)
 	state := workflow.State{WorkspaceID: "workspace-1", Job: workflow.Job{
-		ID: "job-1", ProfessionalAccountID: "professional-1", ScopeVersion: 2, CompletionApproved: true,
-		PaymentApprovedVersion: 2, Quote: workflow.Quote{Currency: "EUR", TotalMinor: 12345},
+		ID: "job-1", ProfessionalAccountID: "professional-1", ScopeVersion: 2, QuoteApproved: true,
+		PaymentAuthorizationTiming: workflow.PaymentAuthorizationAtBooking,
+		Appointment:                &workflow.Appointment{SlotID: "slot-1"},
+		Quote:                      workflow.Quote{Currency: "EUR", TotalMinor: 12345},
 	}}
 	orderID, approvalURL, err := service.CreateOrder(context.Background(), state)
 	if err != nil || orderID != "order-1" || approvalURL == "" {
@@ -183,6 +187,11 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 	if err := service.Authorize(context.Background(), state, orderID); err != nil {
 		t.Fatalf("Authorize() = %v", err)
 	}
+	if err := service.Capture(context.Background(), state); err == nil {
+		t.Fatal("booking-time authorization allowed capture before completion and payment approval")
+	}
+	state.Job.CompletionApproved = true
+	state.Job.PaymentApprovedVersion = state.Job.ScopeVersion
 	if err := service.Capture(context.Background(), state); err != nil {
 		t.Fatalf("Capture() = %v", err)
 	}
@@ -224,7 +233,7 @@ func TestSellerReferralUsesPlatformAssertionAndRequestsRequiredPermissions(t *te
 				t.Errorf("referral request missing partner, platform assertion, or idempotency headers: %v", r.Header)
 			}
 			referralCreated = true
-			_, _ = fmt.Fprint(w, `{"links":[{"href":"https://api-m.sandbox.paypal.com/v2/customer/partner-referrals/referral-1","rel":"self"},{"href":"https://www.sandbox.paypal.com/bizsignup/partner/entry?token=referral-1","rel":"action_url"}]}`)
+			_, _ = fmt.Fprint(w, `{"links":[{"href":"https://api.sandbox.paypal.com/v2/customer/partner-referrals/referral-1","rel":"self"},{"href":"https://www.sandbox.paypal.com/bizsignup/partner/entry?token=referral-1","rel":"action_url"}]}`)
 		default:
 			t.Errorf("unexpected PayPal onboarding request: %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)

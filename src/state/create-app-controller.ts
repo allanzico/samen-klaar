@@ -1,3 +1,4 @@
+import { setLocale } from '../lib/i18n.svelte';
 import { draftKey, readDraft, saveDraft, clearAccountDrafts } from '../lib/drafts';
 import { api } from '../lib/api';
 import type { AppActions, AppState, Location, NegotiationInput } from '../lib/types';
@@ -8,21 +9,98 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
   let stateGeneration = 0;
   function currentDraftKey() { return draftKey(app.session?.account?.id, app.role, app.workspaceId); }
   function persistDraft() { app.draftRestored = false; app.draftSaved = saveDraft(currentDraftKey(), app.draft); }
-  function rememberRequest() {
+  function requestedWorkspace(url: URL) {
+    const route = url.pathname.match(/^\/requests\/([^/]+)\/?$/);
+    if (route) {
+      try { return decodeURIComponent(route[1]); } catch { return null; }
+    }
+    return url.searchParams.get('workspaceId');
+  }
+  function rememberRequest(replace = false) {
     const url = new URL(window.location.href);
-    if (app.workspaceId) url.searchParams.set('workspaceId', app.workspaceId);
-    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    if (app.role === 'customer' && app.workspaceId) {
+      url.pathname = `/requests/${encodeURIComponent(app.workspaceId)}`;
+      url.searchParams.delete('workspaceId');
+      app.customerPage = 'detail';
+    } else if (app.workspaceId) url.searchParams.set('workspaceId', app.workspaceId);
+    if (replace) window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    else window.history.pushState({}, '', url.pathname + url.search + url.hash);
+  }
+  // Professionals land on their jobs list (F01); a job opens with ?workspaceId=.
+  function showJobs(navigate = true) {
+    if (app.role !== 'professional' || app.pending) return;
+    stateGeneration++;
+    persistDraft();
+    app.workspaceId = null;
+    app.serverState = null;
+    app.composeMode = 'message';
+    app.loading = false;
+    app.error = '';
+    if (navigate) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('workspaceId');
+      window.history.pushState({}, '', url.pathname + url.search + url.hash);
+    }
+    window.scrollTo?.(0, 0);
   }
   function restoreDraft() { app.draft = readDraft(currentDraftKey()); app.draftRestored = !!app.draft; app.draftSaved = true; }
+  function setCustomerPage(page: 'home' | 'requests', navigate = true) {
+    if (app.role !== 'customer') return;
+    stateGeneration++;
+    persistDraft();
+    app.workspaceId = null;
+    app.serverState = null;
+    app.newConversation = false;
+    app.paypalStatus = 'not_started';
+    app.customerPage = page;
+    app.loading = false;
+    app.error = '';
+    restoreDraft();
+    if (navigate) window.history.pushState({}, '', page === 'home' ? '/' : '/requests');
+    window.scrollTo?.(0, 0);
+  }
+  function showHome() { if (!app.pending) setCustomerPage('home'); }
+  function showRequests() { if (!app.pending) setCustomerPage('requests'); }
+  async function restoreLocation() {
+    if (app.role === 'professional') {
+      const id = new URL(window.location.href).searchParams.get('workspaceId');
+      if (id && id !== app.workspaceId) await selectRequest(id, true);
+      else if (!id) showJobs(false);
+      return;
+    }
+    if (app.role !== 'customer') return;
+    const url = new URL(window.location.href);
+    const id = requestedWorkspace(url);
+    if (id && (id !== app.workspaceId || app.customerPage !== 'detail')) await selectRequest(id, true);
+    else if (!id) setCustomerPage(url.pathname === '/requests' ? 'requests' : 'home', false);
+  }
   async function initialize() {
     await Promise.all([
       loadConfig(),
-      api.session().then((session) => { app.session = session; app.loading = session.authenticated; }).catch(() => {
+      api.session().then((session) => { app.session = session; app.loading = session.authenticated; if (session.account?.locale) setLocale(session.account.locale,false); }).catch(() => {
         app.error = 'We couldn’t check your sign-in. You can try signing in again.';
       })
     ]);
     if (!app.session?.authenticated || !app.session.activeRole) {
       app.loading = false;
+      return;
+    }
+    if (window.location.pathname.replace(/\/$/, '') === '/operator' && app.session.activeRole !== 'operator') {
+      if (app.session.memberships?.some((item) => item.role === 'operator' && item.status === 'active')) {
+        try {
+          const result = await api.switchWorkspace('operator');
+          window.location.replace(result.path);
+          return;
+        } catch {
+          app.error = 'Could not open the operator dashboard. Please try again.';
+        }
+      }
+      app.role = app.session.activeRole;
+      app.loading = false;
+      return;
+    }
+    if (app.session.activeRole === 'operator' && window.location.pathname.replace(/\/$/, '') !== '/operator') {
+      window.location.replace('/operator');
       return;
     }
     app.role = app.session.activeRole;
@@ -33,24 +111,28 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       try {
         await refreshWorkspaces();
         const url = new URL(window.location.href);
-        const requestedID = url.searchParams.get('workspaceId');
+        const requestedID = app.role === 'customer' ? requestedWorkspace(url) : url.searchParams.get('workspaceId');
         for (let page = 0; requestedID && !app.workspaces.some((item) => item.id === requestedID) && app.workspaceCursor && page < 100; page++) {
           const cursor = app.workspaceCursor;
           await loadMoreWorkspaces();
           if (app.workspaceCursor === cursor) break;
         }
-        const selected = app.workspaces.find((item) => item.id === requestedID)
-          ?? app.workspaces.find((item) => item.status !== 'paid' && item.status !== 'cancelled')
-          ?? app.workspaces[0];
-        if (selected) await selectRequest(selected.id);
-        else if (app.role === 'customer') await createRequest();
+        if (app.role === 'customer') {
+          if (requestedID) await selectRequest(requestedID, true);
+          else {
+            app.customerPage = url.pathname === '/requests' ? 'requests' : 'home';
+            app.workspaceId = null;
+            app.serverState = null;
+            restoreDraft();
+          }
+        } else if (requestedID) await selectRequest(requestedID, true);
       } catch (error) {
         app.error = error instanceof Error ? error.message.trim() : 'Could not load your requests.';
       } finally {
         app.loading = false;
       }
     } else app.loading = false;
-    if (app.providerConfig?.paymentProvider === 'paypal_sandbox') {
+    if (app.providerConfig?.paymentsAvailable) {
       await loadPayPalStatus();
       await handlePayPalReturn();
     }
@@ -75,7 +157,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       if (generation !== stateGeneration || app.workspaceId !== workspace) return;
       app.serverState = state;
       try { await refreshWorkspaces(); } catch { app.error = 'Request loaded, but the request list could not be refreshed.'; }
-      if (app.providerConfig?.paymentProvider === 'paypal_sandbox') void loadPayPalStatus();
+      if (app.providerConfig?.paymentsAvailable) void loadPayPalStatus();
     } catch (error) {
       if (generation === stateGeneration) app.error = error instanceof Error ? error.message : 'Something went wrong.';
     } finally {
@@ -86,17 +168,19 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     }
   }
 
-  async function act(action: string, value = '', location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number) {
+  async function act(action: string, value = '', location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number, paymentAuthorizationTiming?: 'after_completion' | 'at_booking') {
     if (app.pending || app.loading || !app.workspaceId) return;
     stateGeneration++;
     app.pending = true;
     app.error = '';
     try {
-      const updated = await api.action(app.workspaceId, action, value, location, changeAmountMinor, negotiation, rating);
+      const updated = await api.action(app.workspaceId, action, value, location, changeAmountMinor, negotiation, rating, paymentAuthorizationTiming);
       app.serverState = updated;
       app.newConversation = false;
       try { await refreshWorkspaces(); } catch { app.error = 'Your change was saved, but the request list could not be refreshed.'; }
-      if (app.providerConfig?.paymentProvider === 'paypal_sandbox') void loadPayPalStatus();
+      if (app.providerConfig?.paymentsAvailable) void loadPayPalStatus();
+      // The assistant answers a moment later, on the server; look again soon instead of waiting for the next poll.
+      if (action === 'agent-reply') for (const delay of [1200, 3000, 6000, 10000]) window.setTimeout(() => void refresh(), delay);
       try { await scrollToCurrent(true, action === 'select-match' ? 'current-plan' : app.serverState?.intake?.step === 'matches' ? 'recommended-service' : undefined); }
       catch { /* The server action has already succeeded. */ }
       return true;
@@ -176,16 +260,18 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
   async function handlePayPalReturn() {
     const url = new URL(window.location.href);
     const orderId = url.searchParams.get('token');
-    const returnedWorkspaceID = url.searchParams.get('workspaceId');
-    if (returnedWorkspaceID) {
+    const returnedWorkspaceID = requestedWorkspace(url);
+    if (returnedWorkspaceID && app.workspaceId !== returnedWorkspaceID) {
       await selectRequest(returnedWorkspaceID);
       if (app.workspaceId !== returnedWorkspaceID) return;
     }
     if (!orderId || !url.searchParams.has('paypal_return')) {
       if (url.searchParams.has('paypal_cancelled')) {
-        url.searchParams.delete('paypal_cancelled');
-        url.searchParams.delete('token');
-        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+        const currentURL = new URL(window.location.href);
+        currentURL.searchParams.delete('paypal_cancelled');
+        currentURL.searchParams.delete('token');
+        currentURL.searchParams.delete('workspaceId');
+        window.history.replaceState({}, '', currentURL.pathname + currentURL.search + currentURL.hash);
       }
       return;
     }
@@ -201,10 +287,12 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       app.error = error instanceof Error ? error.message.trim() : 'Could not confirm PayPal authorization.';
       await loadPayPalStatus();
     } finally {
-      url.searchParams.delete('paypal_return');
-      url.searchParams.delete('token');
-      url.searchParams.delete('PayerID');
-      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+      const currentURL = new URL(window.location.href);
+      currentURL.searchParams.delete('paypal_return');
+      currentURL.searchParams.delete('token');
+      currentURL.searchParams.delete('PayerID');
+      currentURL.searchParams.delete('workspaceId');
+      window.history.replaceState({}, '', currentURL.pathname + currentURL.search + currentURL.hash);
       app.pending = false;
     }
   }
@@ -249,18 +337,34 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     app.evidenceFile = input.files?.[0] ?? null;
   }
 
-  async function uploadEvidence() {
+  async function uploadEvidence(workItemIds: string[] = []) {
     if (app.pending || app.role !== 'professional' || !app.evidenceFile) return;
     stateGeneration++;
     app.pending = true;
     app.error = '';
     try {
-      app.serverState = await api.uploadEvidence(app.evidenceFile, app.workspaceId);
+      app.serverState = await api.uploadEvidence(app.evidenceFile, app.workspaceId, workItemIds);
       app.evidenceFile = null;
       const input = document.getElementById('evidence-file') as HTMLInputElement | null;
       if (input) input.value = '';
     } catch (error) {
       app.error = error instanceof Error ? error.message.trim() : 'Evidence upload failed.';
+    } finally {
+      app.pending = false;
+    }
+  }
+
+  async function uploadRequestPhoto(file: File) {
+    if (app.pending || app.role !== 'customer' || !app.workspaceId) return false;
+    stateGeneration++;
+    app.pending = true;
+    app.error = '';
+    try {
+      app.serverState = await api.uploadRequestPhoto(file, app.workspaceId);
+      return true;
+    } catch (error) {
+      app.error = error instanceof Error ? error.message.trim() : 'The photo could not be added.';
+      return false;
     } finally {
       app.pending = false;
     }
@@ -274,7 +378,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     try {
       app.serverState = await api.reviewEvidence(app.workspaceId, assetIds);
     } catch (error) {
-      app.error = error instanceof Error ? error.message.trim() : 'AI evidence review failed.';
+      app.error = error instanceof Error ? error.message.trim() : 'SamenKlaar could not check these files right now.';
     } finally {
       app.pending = false;
     }
@@ -285,7 +389,10 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     if (app.pending) return;
     const assigned = !!app.serverState?.job.id;
     const matching = app.serverState?.intake?.step === 'matches';
-    const action = assigned ? 'send-message' : matching ? 'revise-intake' : app.newConversation || !app.serverState?.intake ? 'start-intake' : 'answer-intake';
+    const replying = !!(app.role === 'professional' ? app.serverState?.proDialog : app.serverState?.agentDialog)?.awaiting;
+    // With no question open, a customer can still ask their assistant to move or cancel a booked visit.
+    const asking = app.role === 'customer' && app.messageTo === 'assistant' && !!app.serverState?.job.appointment && !app.serverState?.cancelled;
+    const action = replying || asking ? 'agent-reply' : assigned ? 'send-message' : matching ? 'revise-intake' : app.newConversation || !app.serverState?.intake ? 'start-intake' : 'answer-intake';
     const sentDraft = app.draft;
     if (await act(action, text)) {
       if (text === sentDraft) { app.draft = ''; app.draftRestored = false; persistDraft(); }
@@ -315,7 +422,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     } finally { loadingMore = false; }
   }
 
-  async function selectRequest(id: string) {
+  async function selectRequest(id: string, replace = false) {
     if (app.pending || !id) return;
     const generation = ++stateGeneration;
     app.loading = true;
@@ -325,7 +432,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       const state = await api.state(id);
       if (generation !== stateGeneration) return;
       let paymentStatus: AppState['paypalStatus'] = 'not_started';
-      if (app.providerConfig?.paymentProvider === 'paypal_sandbox') {
+      if (app.providerConfig?.paymentsAvailable) {
         try { paymentStatus = (await api.paypalStatus(id)).status; }
         catch { paymentStatus = 'unavailable'; }
       }
@@ -337,8 +444,9 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       app.composeMode = 'message';
       restoreDraft();
       app.evidenceFile = null;
-      rememberRequest();
+      rememberRequest(replace);
       await scrollToCurrent();
+      if (app.role === 'customer') window.scrollTo?.(0, 0);
     } catch (error) {
       if (generation === stateGeneration) app.error = error instanceof Error ? error.message.trim() : 'Could not open this request.';
     } finally {
@@ -366,6 +474,21 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       app.error = error instanceof Error ? error.message.trim() : 'Could not start a new request.';
     } finally {
       app.pending = false;
+    }
+  }
+
+  async function startRequest(description: string) {
+    const text = description.trim();
+    if (app.role !== 'customer' || app.pending || text.length < 5 || text.length > 500) return;
+    await createRequest();
+    if (!app.workspaceId || !app.newConversation) return;
+    if (await act('start-intake', text)) {
+      saveDraft(draftKey(app.session?.account?.id, 'customer', null), '');
+      app.draft = '';
+      persistDraft();
+    } else {
+      app.draft = text;
+      persistDraft();
     }
   }
 
@@ -413,6 +536,11 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
 
   return {
     initialize,
+    showHome,
+    showRequests,
+    showJobs: () => showJobs(),
+    restoreLocation,
+    startRequest,
     loadState,
     refresh,
     loadMoreWorkspaces,
@@ -430,6 +558,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     persistDraft,
     selectEvidenceFile,
     uploadEvidence,
+    uploadRequestPhoto,
     reviewEvidence,
     beginPayPalCheckout,
     capturePayPal,

@@ -26,6 +26,10 @@ func areaCoverageSQL(parameter string) string {
 		   OR left(regexp_replace(regexp_replace(upper(trim(service_area.value)), '^AMSTERDAM[[:space:]/-]*', ''), '[^A-Z0-9]', '', 'g'), 4) =
 		      left(regexp_replace(upper(trim($AREA)), '[^A-Z0-9]', '', 'g'), 4)
 			  AND left(regexp_replace(upper(trim($AREA)), '[^A-Z0-9]', '', 'g'), 4) ~ '^[0-9]{4}$'
+		   OR left(regexp_replace(upper(trim($AREA)), '[^A-Z0-9]', '', 'g'), 4) ~ '^10[0-9]{2}$'
+			  AND upper(trim(service_area.value)) ~ ('(^|[^A-Z0-9])' ||
+				left(regexp_replace(upper(trim($AREA)), '[^A-Z0-9]', '', 'g'), 4) ||
+				'([[:space:]-]*[A-Z]{2})?($|[^A-Z0-9])')
 	 ))`, "$AREA", parameter)
 }
 
@@ -77,10 +81,7 @@ func (s *Store) ServiceMatches(ctx context.Context, category, exclude string, se
  FROM professional_profiles p JOIN account_memberships m ON m.account_id=p.account_id AND m.role='professional'
  LEFT JOIN LATERAL (
  SELECT a.id,a.starts_at,a.ends_at,a.timezone FROM professional_availability_slots a
- WHERE a.professional_account_id=p.account_id AND a.status='available' AND a.starts_at>now()
- AND a.ends_at-a.starts_at >= make_interval(mins=>p.duration_minutes)
- AND NOT EXISTS (SELECT 1 FROM booking_reservations b WHERE b.professional_id=p.account_id AND b.status='booked'
- AND b.starts_at<a.ends_at AND b.ends_at>a.starts_at)
+ WHERE a.professional_account_id=p.account_id AND `+bookableAvailabilitySQL("a", "p", "")+`
  ORDER BY a.starts_at,a.id LIMIT 1) earliest ON true
  WHERE p.status='active' AND m.status='active' AND p.category=$1 AND p.account_id<>$2
  AND p.service_name=$3 AND p.service_description=$4 AND p.materials_policy=$5 AND p.exclusions_json=$6::jsonb
@@ -125,7 +126,7 @@ func serviceAreaCovers(providerAreas, requestedArea string) bool {
 	if !workflow.IsAmsterdamServiceArea(requestedArea) {
 		return false
 	}
-	requestedPostcode := postcodePrefix(requestedArea)
+	requestedPostcode := workflow.PostcodePrefix(requestedArea)
 	requestedAmsterdam := strings.HasPrefix(requested, "amsterdam ") || strings.HasPrefix(requested, "amsterdam-") || strings.HasPrefix(requested, "amsterdam/")
 	requestedNeighborhood := stripAmsterdam(requested)
 	for _, raw := range strings.FieldsFunc(providerAreas, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == '|' }) {
@@ -133,7 +134,7 @@ func serviceAreaCovers(providerAreas, requestedArea string) bool {
 		if provider == "" {
 			continue
 		}
-		providerPostcode := postcodePrefix(raw)
+		providerPostcode := workflow.PostcodePrefix(raw)
 		if requestedPostcode != "" {
 			if providerPostcode != "" && providerPostcode == requestedPostcode {
 				return true
@@ -174,40 +175,4 @@ func stripAmsterdam(value string) string {
 	value = strings.TrimPrefix(value, "amsterdam-")
 	value = strings.TrimPrefix(value, "amsterdam/")
 	return strings.TrimSpace(value)
-}
-
-func postcodePrefix(value string) string {
-	value = strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(value)), "AMSTERDAM ")
-	var compact strings.Builder
-	for _, r := range strings.ToUpper(strings.TrimSpace(value)) {
-		if r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' {
-			compact.WriteRune(r)
-		}
-	}
-	code := compact.String()
-	if len(code) == 4 && isDigits(code) {
-		return code
-	}
-	if len(code) == 6 && isDigits(code[:4]) && isLetters(code[4:]) {
-		return code[:4]
-	}
-	return ""
-}
-
-func isDigits(value string) bool {
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return value != ""
-}
-
-func isLetters(value string) bool {
-	for _, r := range value {
-		if r < 'A' || r > 'Z' {
-			return false
-		}
-	}
-	return value != ""
 }

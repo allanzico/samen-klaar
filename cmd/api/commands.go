@@ -35,7 +35,7 @@ func command(args []string) error {
 		}
 		return run()
 	}
-	if len(args) == 1 && (args[0] == "seed-local" || args[0] == "benchmark-local" || args[0] == "import-seed-auth0") {
+	if len(args) == 1 && (args[0] == "seed-pros" || args[0] == "import-seed-pros-auth0") {
 		return localDataCommand(args[0])
 	}
 	if len(args) != 1 {

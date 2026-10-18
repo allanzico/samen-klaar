@@ -36,6 +36,20 @@ func intakeAnswer(t *testing.T, state *State, action, value string) {
 	}
 }
 
+func TestFinishedIntakeKeepsExactPostcodeProfessionalFirst(t *testing.T) {
+	intake := &Intake{Category: "Plumbing", Urgency: "As soon as possible", Location: &Location{Label: "1020EN"}}
+	finishIntake(intake, []Match{
+		{ID: "postcode", Area: "AMSTERDAM CENTRUM 1020EN"},
+		{ID: "city", Name: "City professional", Area: "Amsterdam", EarliestAppointment: &Appointment{StartUTC: "2026-10-18T09:00:00Z", StartsAt: "Sunday 09:00", Timezone: "Europe/Amsterdam"}},
+	})
+	if intake.Step != "matches" || intake.Matches[0].ID != "postcode" {
+		t.Fatalf("exact-postcode professional lost its ranking: %+v", intake.Matches)
+	}
+	if !strings.Contains(intake.Messages[len(intake.Messages)-1].Text, "City professional") {
+		t.Fatal("urgent guidance overlooked the earliest published appointment")
+	}
+}
+
 func testMatches(ids ...string) []Match {
 	profiles := map[string]Match{
 		"jonas": {ID: "jonas", Name: "Jonas Vermeer", Category: "Plumbing", Area: "Amsterdam West", DistanceKM: 3.1},

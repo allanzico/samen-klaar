@@ -2,6 +2,7 @@ import type { AppState } from '../lib/types';
 
 export function createAppState(): AppState {
   const state = $state<AppState>({
+    customerPage: 'home',
     serverState: null,
     workspaces: [],
     workspaceCursor: null,
@@ -15,6 +16,7 @@ export function createAppState(): AppState {
     pending: false,
     error: '',
     composeMode: 'message',
+    messageTo: 'professional',
     draft: '',
     draftRestored: false,
     draftSaved: true,
