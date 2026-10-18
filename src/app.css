@@ -331,5 +331,6 @@ input:not([type=checkbox]):not([type=radio]):not([type=file]):focus-visible, tex
 @media (max-width: 639px) {
   .btn { min-height: 44px; } .btn-sm { min-height: 40px; } .btn-quiet, .btn-danger-link { min-height: 44px; } .chip { min-height: 40px; }
   .input, .textarea, .select, .money-input > input { font-size: 16px; min-height: 44px; }
+  .segmented > button, .segmented > label { min-height: 40px; }
 }
 @media (max-width: 639px) { :root { --sk-topbar-h: 56px; } }

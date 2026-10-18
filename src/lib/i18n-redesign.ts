@@ -852,4 +852,5 @@ export const redesignNl: Record<string, string> = {
   "Cancelled the visit, as you asked": "Annuleerde het bezoek, zoals je vroeg",
   "Could we move the visit to {start}? My customer asked for it.": "Kunnen we het bezoek verplaatsen naar {start}? Mijn klant vroeg erom.",
   "Assistant preferences": "Voorkeuren van je assistent",
+  "{amount} negotiated": "{amount} onderhandeld",
 };
