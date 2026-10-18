@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -31,6 +32,9 @@ func (s *Store) runJobLifecycleNotifications(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
+		if err := s.materializeRecurringAvailability(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("recurring availability materialization failed", "error", err)
+		}
 		if err := s.scheduleLifecycleNotifications(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("job lifecycle notification pass failed", "error", err)
 		}
@@ -47,123 +51,165 @@ func (s *Store) runJobLifecycleNotifications(ctx context.Context) {
 // is tied to the relevant appointment or workflow timestamp, so retries and
 // multiple API instances cannot fan out duplicate email intents.
 func (s *Store) scheduleLifecycleNotifications(ctx context.Context) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	rows, err := tx.Query(ctx, `SELECT w.id,w.state_json FROM account_workspaces w
-		WHERE COALESCE((w.state_json ->> 'cancelled')::boolean,false)=false
-		AND NULLIF(w.state_json #>> '{job,id}','') IS NOT NULL
-		AND EXISTS (
-		  SELECT 1 FROM (VALUES
-		    (CASE WHEN w.state_json #>> '{job,appointmentConfirmation,status}'='confirmed'
-		       AND NULLIF(w.state_json #>> '{job,appointment,startUtc}','')::timestamptz > now()
-		       AND NULLIF(w.state_json #>> '{job,appointment,startUtc}','')::timestamptz <= now()+interval '24 hours'
-		      THEN concat(w.state_json #>> '{job,id}',':appointment-reminder:',
-		        COALESCE(NULLIF(w.state_json #>> '{job,appointment,slotId}',''),w.state_json #>> '{job,appointment,startUtc}'),':customer') END),
-		    (CASE WHEN w.state_json #>> '{job,appointmentConfirmation,status}'='confirmed'
-		       AND NULLIF(w.state_json #>> '{job,appointment,startUtc}','')::timestamptz > now()
-		       AND NULLIF(w.state_json #>> '{job,appointment,startUtc}','')::timestamptz <= now()+interval '24 hours'
-		      THEN concat(w.state_json #>> '{job,id}',':appointment-reminder:',
-		        COALESCE(NULLIF(w.state_json #>> '{job,appointment,slotId}',''),w.state_json #>> '{job,appointment,startUtc}'),':professional') END),
-		    (CASE WHEN COALESCE((w.state_json #>> '{job,workStarted}')::boolean,false)
-		       AND NOT COALESCE((w.state_json #>> '{job,evidenceSubmitted}')::boolean,false)
-		       AND NULLIF(w.state_json #>> '{job,appointment,endUtc}','')::timestamptz <= now()-interval '24 hours'
-		      THEN concat(w.state_json #>> '{job,id}',':evidence-overdue:',
-		        w.state_json #>> '{job,workStartedAt}',w.state_json #>> '{job,appointment,endUtc}',':professional') END),
-		    (CASE WHEN COALESCE((w.state_json #>> '{job,evidenceSubmitted}')::boolean,false)
-		       AND NOT COALESCE((w.state_json #>> '{job,completionApproved}')::boolean,false)
-		       AND NULLIF(w.state_json #>> '{job,evidenceSubmittedAt}','')::timestamptz <= now()-interval '24 hours'
-		      THEN concat(w.state_json #>> '{job,id}',':',
-		        CASE WHEN COALESCE((w.state_json #>> '{job,detailAdded}')::boolean,false)
-		          THEN 'completion-review-reminder' ELSE 'completion-note-overdue' END,':',
-		        w.state_json #>> '{job,evidenceSubmittedAt}',':',
-		        CASE WHEN COALESCE((w.state_json #>> '{job,detailAdded}')::boolean,false)
-		          THEN 'customer' ELSE 'professional' END) END),
-		    (CASE WHEN COALESCE((w.state_json #>> '{job,completionApproved}')::boolean,false)
-		       AND COALESCE((w.state_json #>> '{job,paymentApprovedVersion}')::integer,0) < COALESCE((w.state_json #>> '{job,scopeVersion}')::integer,0)
-		       AND COALESCE(w.state_json #>> '{job,dispute,status}','') IN ('','resolved','rework')
-		       AND NULLIF(w.state_json #>> '{job,completionApprovedAt}','')::timestamptz <= now()-interval '24 hours'
-		      THEN concat(w.state_json #>> '{job,id}',':payment-approval-reminder:',
-		        w.state_json #>> '{job,completionApprovedAt}',':customer') END)
-		  ) AS due(event_key)
-		  WHERE due.event_key IS NOT NULL AND NOT EXISTS (
-		    SELECT 1 FROM notification_outbox n
-		    WHERE n.job_id=w.state_json #>> '{job,id}' AND n.event_key=due.event_key)
-		) ORDER BY w.updated_at LIMIT 100 FOR UPDATE OF w SKIP LOCKED`)
-	if err != nil {
-		return err
-	}
-	type scheduledWorkspace struct {
-		id        string
-		stateJSON []byte
-	}
-	items := make([]scheduledWorkspace, 0)
-	for rows.Next() {
-		var item scheduledWorkspace
-		if err := rows.Scan(&item.id, &item.stateJSON); err != nil {
-			rows.Close()
+	cursor := ""
+	for {
+		next, count, err := s.scheduleLifecycleBatch(ctx, cursor)
+		if err != nil {
 			return err
 		}
-		items = append(items, item)
+		if count < 100 {
+			return nil
+		}
+		cursor = next
+	}
+}
+
+func (s *Store) scheduleLifecycleBatch(ctx context.Context, cursor string) (string, int, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return cursor, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT id,state_json FROM account_workspaces
+  WHERE id>$1 AND COALESCE((state_json->>'cancelled')::boolean,false)=false
+  AND COALESCE((state_json #>> '{job,paid}')::boolean,false)=false
+  AND NULLIF(state_json #>> '{job,id}','') IS NOT NULL
+  ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED`, cursor)
+	if err != nil {
+		return cursor, 0, err
+	}
+	type item struct {
+		id  string
+		raw []byte
+	}
+	items := make([]item, 0, 100)
+	for rows.Next() {
+		var value item
+		if err := rows.Scan(&value.id, &value.raw); err != nil {
+			rows.Close()
+			return cursor, 0, err
+		}
+		items = append(items, value)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return err
+		return cursor, 0, err
 	}
 	rows.Close()
 	now := time.Now().UTC()
-	for _, item := range items {
+	for _, value := range items {
+		cursor = value.id
 		var state workflow.State
-		if err := json.Unmarshal(item.stateJSON, &state); err != nil {
-			return err
+		if err := json.Unmarshal(value.raw, &state); err != nil {
+			return cursor, 0, err
+		}
+		state.WorkspaceID = value.id
+		if err := hydrateWaitingTimes(ctx, tx, &state); err != nil {
+			return cursor, 0, err
 		}
 		job := state.Job
-		if job.ID == "" || state.Cancelled {
-			continue
-		}
-		if job.Appointment != nil && job.AppointmentConfirmation != nil && job.AppointmentConfirmation.Status == "confirmed" {
-			start, parseErr := time.Parse(time.RFC3339, job.Appointment.StartUTC)
-			if parseErr == nil && start.After(now) && !start.After(now.Add(24*time.Hour)) {
-				anchor := job.Appointment.SlotID
-				if anchor == "" {
-					anchor = job.Appointment.StartUTC
-				}
+		if job.Appointment != nil && job.AppointmentConfirmation != nil && job.AppointmentConfirmation.Status == "confirmed" && !state.Cancelled && !job.Paid {
+			start, err := time.Parse(time.RFC3339, job.Appointment.StartUTC)
+			if err == nil && start.After(now) && !start.After(now.Add(24*time.Hour)) {
+				anchor := job.Appointment.StartUTC + ":" + job.Appointment.EndUTC
 				for _, role := range []string{"customer", "professional"} {
-					if err := enqueueLifecycleNotice(ctx, tx, s.river, job.ID, "appointment-reminder", anchor, role); err != nil {
-						return err
+					if err := enqueueLifecycleNotice(ctx, tx, s.river, job.ID, "appointment-reminder", fmt.Sprintf("scope:%d:%s", job.ScopeVersion, anchor), role); err != nil {
+						return cursor, 0, err
 					}
 				}
 			}
 		}
-		if job.WorkStarted && !job.EvidenceSubmitted && job.Appointment != nil && dueAt(job.Appointment.EndUTC, now.Add(-24*time.Hour)) {
-			if err := enqueueLifecycleNotice(ctx, tx, s.river, job.ID, "evidence-overdue", job.WorkStartedAt+job.Appointment.EndUTC, "professional"); err != nil {
-				return err
+		for _, wait := range workflow.WaitingStates(state) {
+			if !wait.Due(now) {
+				continue
 			}
-		}
-		if job.EvidenceSubmitted && !job.CompletionApproved && dueAt(job.EvidenceSubmittedAt, now.Add(-24*time.Hour)) {
-			eventType, role := "completion-review-reminder", "customer"
-			if !job.DetailAdded {
-				eventType, role = "completion-note-overdue", "professional"
+			if paused, err := coordinationPausesReminder(ctx, tx, job, wait.EventType); err != nil {
+				return cursor, 0, err
+			} else if paused {
+				continue
 			}
-			if err := enqueueLifecycleNotice(ctx, tx, s.river, job.ID, eventType, job.EvidenceSubmittedAt, role); err != nil {
-				return err
+			if wait.EventType == "checkout-reminder" {
+				status, err := paymentStatusTx(ctx, tx, job)
+				if err != nil {
+					return cursor, 0, err
+				}
+				if !checkoutReminderActionable(status) {
+					continue
+				}
 			}
-		}
-		if job.CompletionApproved && job.PaymentApprovedVersion != job.ScopeVersion &&
-			(job.Dispute == nil || job.Dispute.Status == "resolved" || job.Dispute.Status == "rework") && dueAt(job.CompletionApprovedAt, now.Add(-24*time.Hour)) {
-			if err := enqueueLifecycleNotice(ctx, tx, s.river, job.ID, "payment-approval-reminder", job.CompletionApprovedAt, "customer"); err != nil {
-				return err
+			if err := enqueueNotificationTx(ctx, tx, s.river, NotificationArgs{JobID: job.ID, EventKey: wait.EventKey(job), EventType: wait.EventType, RecipientRole: wait.ResponsibleRole}); err != nil {
+				return cursor, 0, err
 			}
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return cursor, 0, err
+	}
+	return cursor, len(items), nil
 }
 
-func dueAt(value string, deadline time.Time) bool {
-	parsed, err := time.Parse(time.RFC3339, value)
-	return err == nil && !parsed.After(deadline)
+// Existing workspaces use durable audit timestamps until their next explicit
+// proposal or approval writes the timestamp into the journey snapshot.
+type waitingQuerier interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func hydrateWaitingTimes(ctx context.Context, tx waitingQuerier, state *workflow.State) error {
+	job := &state.Job
+	rows, err := tx.Query(ctx, `SELECT action,max(created_at) FROM audit_events WHERE workspace_id=$1 AND scope_version=$2 AND action=ANY($3::text[]) GROUP BY action`, state.WorkspaceID, job.ScopeVersion, []string{"propose-price", "propose-date", "propose-change", "approve-payment", "add-evidence"})
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var action string
+		var at time.Time
+		if err := rows.Scan(&action, &at); err != nil {
+			return err
+		}
+		stamp := at.UTC().Format(time.RFC3339)
+		switch action {
+		case "propose-price":
+			if job.PriceProposal != nil && job.PriceProposal.CreatedAt == "" {
+				job.PriceProposal.CreatedAt = stamp
+			}
+		case "propose-date":
+			if job.DateProposal != nil && job.DateProposal.CreatedAt == "" {
+				job.DateProposal.CreatedAt = stamp
+			}
+		case "propose-change":
+			if job.Change != nil && job.Change.CreatedAt == "" {
+				job.Change.CreatedAt = stamp
+			}
+		case "approve-payment":
+			if job.PaymentApprovedAt == "" {
+				job.PaymentApprovedAt = stamp
+			}
+		case "add-evidence":
+			if job.DetailAddedAt == "" {
+				job.DetailAddedAt = stamp
+			}
+		}
+	}
+	return rows.Err()
+}
+
+func paymentStatusTx(ctx context.Context, tx waitingQuerier, job workflow.Job) (string, error) {
+	var status string
+	err := tx.QueryRow(ctx, `SELECT status FROM paypal_payment_operations WHERE job_id=$1 AND scope_version=$2`, job.ID, job.ScopeVersion).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "not_started", nil
+	}
+	return status, err
+}
+
+func checkoutReminderActionable(status string) bool {
+	switch status {
+	case "capturing", "capture_uncertain", "captured", "refunding", "refund_uncertain", "refunded", "reversed", "release_pending", "voiding", "void_uncertain":
+		return false
+	}
+	return true
 }
 
 func enqueueLifecycleNotice(ctx context.Context, tx pgx.Tx, riverClient *river.Client[pgx.Tx], jobID, eventType, anchor, role string) error {
@@ -230,6 +276,10 @@ func (s *Store) expirePendingAppointmentConfirmations(ctx context.Context) error
 		if err := releaseCancelledBooking(ctx, tx, state.Job); err != nil {
 			return err
 		}
+		if err := s.enqueueAuthorizationReleaseTx(ctx, tx, item.id, state.Job); err != nil {
+			return err
+		}
+		state.Job.PaymentAuthorizedVersion = 0
 		confirmation.Status = "expired"
 		confirmation.RespondedAt = time.Now().UTC().Format(time.RFC3339)
 		state.Job.Appointment = nil

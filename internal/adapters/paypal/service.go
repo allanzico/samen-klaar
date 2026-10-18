@@ -20,43 +20,45 @@ import (
 )
 
 type paypalIntent struct {
-	WorkspaceID      string
-	JobID            string
-	ScopeVersion     int
-	AmountMinor      int64
-	Currency         string
-	SellerMerchantID string
-	OrderID          string
-	AuthorizationID  string
-	CaptureID        string
-	ApprovalURL      string
-	Status           string
-	OrderRequestID   string
-	AuthRequestID    string
-	CaptureRequestID string
-	VoidRequestID    string
-	RefundRequestID  string
-	RefundID         string
+	WorkspaceID            string
+	JobID                  string
+	ScopeVersion           int
+	AmountMinor            int64
+	Currency               string
+	SellerMerchantID       string
+	OrderID                string
+	AuthorizationID        string
+	AuthorizationExpiresAt string
+	CaptureID              string
+	ApprovalURL            string
+	Status                 string
+	OrderRequestID         string
+	AuthRequestID          string
+	CaptureRequestID       string
+	VoidRequestID          string
+	RefundRequestID        string
+	RefundID               string
 }
 
 type IntentRecord struct {
-	WorkspaceID      string
-	JobID            string
-	ScopeVersion     int
-	AmountMinor      int64
-	Currency         string
-	SellerMerchantID string
-	OrderID          string
-	AuthorizationID  string
-	CaptureID        string
-	ApprovalURL      string
-	Status           string
-	OrderRequestID   string
-	AuthRequestID    string
-	CaptureRequestID string
-	VoidRequestID    string
-	RefundRequestID  string
-	RefundID         string
+	WorkspaceID            string
+	JobID                  string
+	ScopeVersion           int
+	AmountMinor            int64
+	Currency               string
+	SellerMerchantID       string
+	OrderID                string
+	AuthorizationID        string
+	AuthorizationExpiresAt string
+	CaptureID              string
+	ApprovalURL            string
+	Status                 string
+	OrderRequestID         string
+	AuthRequestID          string
+	CaptureRequestID       string
+	VoidRequestID          string
+	RefundRequestID        string
+	RefundID               string
 }
 
 type WebhookEvent struct {
@@ -183,7 +185,11 @@ func (p *Service) apiMarketplace(ctx context.Context, method, path string, paylo
 	if sellerMerchantID == "" || !p.marketplaceReady() {
 		return nil, errors.New("PayPal marketplace payment context is unavailable")
 	}
-	return p.apiWithHeaders(ctx, method, path, payload, requestID, p.marketplaceHeaders(sellerMerchantID))
+	headers := p.marketplaceHeaders(sellerMerchantID)
+	if method == http.MethodPost && strings.HasSuffix(path, "/authorize") {
+		headers["Prefer"] = "return=representation"
+	}
+	return p.apiWithHeaders(ctx, method, path, payload, requestID, headers)
 }
 
 func (p *Service) apiWithHeaders(ctx context.Context, method, path string, payload any, requestID string, extraHeaders map[string]string) ([]byte, error) {
@@ -233,11 +239,109 @@ func (p *Service) apiWithHeaders(ctx context.Context, method, path string, paylo
 
 func moneyDecimal(minor int64) string { return fmt.Sprintf("%d.%02d", minor/100, minor%100) }
 
+type paymentAmount struct {
+	Value    string `json:"value"`
+	Currency string `json:"currency_code"`
+}
+
+type orderDetails struct {
+	ID            string                       `json:"id"`
+	Intent        string                       `json:"intent"`
+	Status        string                       `json:"status"`
+	Links         []struct{ Href, Rel string } `json:"links"`
+	PurchaseUnits []struct {
+		ReferenceID string        `json:"reference_id"`
+		Amount      paymentAmount `json:"amount"`
+		Payee       struct {
+			MerchantID string `json:"merchant_id"`
+		} `json:"payee"`
+		Payments struct {
+			Authorizations []struct {
+				ID, Status string
+				Amount     paymentAmount `json:"amount"`
+				ExpiresAt  string        `json:"expiration_time"`
+			} `json:"authorizations"`
+		} `json:"payments"`
+	} `json:"purchase_units"`
+}
+
+func amountMatches(amount paymentAmount, intent *paypalIntent) bool {
+	minor, err := parseMinorUnits(amount.Value)
+	return err == nil && minor == intent.AmountMinor && amount.Currency == intent.Currency
+}
+
+func validateOrderDetails(order orderDetails, intent *paypalIntent) error {
+	if order.ID == "" || order.ID != intent.OrderID || order.Intent != "" && order.Intent != "AUTHORIZE" || len(order.PurchaseUnits) != 1 {
+		return errors.New("PayPal order does not match the recorded authorization attempt")
+	}
+	unit := order.PurchaseUnits[0]
+	if unit.ReferenceID != fmt.Sprintf("%s-v%d", intent.JobID, intent.ScopeVersion) ||
+		!amountMatches(unit.Amount, intent) || unit.Payee.MerchantID == "" || unit.Payee.MerchantID != intent.SellerMerchantID {
+		return errors.New("PayPal order does not match the agreed scope, amount, currency, or seller")
+	}
+	for _, authorization := range unit.Payments.Authorizations {
+		if authorization.ID == "" || !amountMatches(authorization.Amount, intent) || intent.AuthorizationID != "" && intent.AuthorizationID != authorization.ID {
+			return errors.New("PayPal authorization does not match the recorded amount or transaction")
+		}
+	}
+	if len(unit.Payments.Authorizations) > 1 {
+		return errors.New("PayPal returned multiple authorizations for this payment attempt")
+	}
+	return nil
+}
+
+func intentMatchesState(intent *paypalIntent, state workflow.State) bool {
+	return intent.WorkspaceID == state.WorkspaceID && intent.JobID == state.Job.ID && intent.ScopeVersion == state.Job.ScopeVersion &&
+		intent.AmountMinor == state.Job.Quote.TotalMinor && intent.Currency == state.Job.Quote.Currency
+}
+
+// Authorize responses can use a minimal representation. Retrieve the complete
+// order when required fields are omitted, then verify its full payment binding.
+func (p *Service) authorizedOrderDetails(ctx context.Context, data []byte, intent *paypalIntent) (orderDetails, error) {
+	var order orderDetails
+	if json.Unmarshal(data, &order) != nil || order.ID != intent.OrderID {
+		return order, errors.New("PayPal authorization response did not identify the original order")
+	}
+	if validateOrderDetails(order, intent) == nil {
+		return order, nil
+	}
+	data, err := p.apiMarketplace(ctx, http.MethodGet, "/v2/checkout/orders/"+url.PathEscape(intent.OrderID), nil, "", intent.SellerMerchantID)
+	if err != nil {
+		return order, err
+	}
+	order = orderDetails{}
+	if json.Unmarshal(data, &order) != nil {
+		return order, errors.New("PayPal authorization order response was invalid")
+	}
+	return order, validateOrderDetails(order, intent)
+}
+
+// VerifiedAuthorization returns the durable provider identity that may be
+// projected into the current booking. The workspace transaction must check this
+// exact attempt again when recording it, since the agreement may change meanwhile.
+func (p *Service) VerifiedAuthorization(ctx context.Context, state workflow.State) (IntentRecord, error) {
+	intent, err := p.loadIntent(ctx, state)
+	if err != nil || intent == nil || !intentMatchesState(intent, state) || intent.SellerMerchantID == "" || intent.Status != "authorized" || intent.AuthorizationID == "" || intent.AuthRequestID == "" {
+		return IntentRecord{}, errors.New("a verified PayPal authorization for the current scope is required")
+	}
+	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID)
+	if err != nil || seller.MerchantID != intent.SellerMerchantID {
+		return IntentRecord{}, errors.New("the selected professional's PayPal payout account is no longer eligible")
+	}
+	if err := p.refreshAuthorization(ctx, intent); err != nil {
+		return IntentRecord{}, err
+	}
+	if intent.Status != "authorized" {
+		return IntentRecord{}, errors.New("PayPal authorization is no longer usable; approve a fresh payment before continuing")
+	}
+	return recordFromIntent(intent), nil
+}
+
 func intentFromRecord(record IntentRecord) *paypalIntent {
 	return &paypalIntent{
 		WorkspaceID: record.WorkspaceID, JobID: record.JobID, ScopeVersion: record.ScopeVersion,
 		AmountMinor: record.AmountMinor, Currency: record.Currency, SellerMerchantID: record.SellerMerchantID, OrderID: record.OrderID,
-		AuthorizationID: record.AuthorizationID, CaptureID: record.CaptureID, ApprovalURL: record.ApprovalURL,
+		AuthorizationID: record.AuthorizationID, AuthorizationExpiresAt: record.AuthorizationExpiresAt, CaptureID: record.CaptureID, ApprovalURL: record.ApprovalURL,
 		Status: record.Status, OrderRequestID: record.OrderRequestID, AuthRequestID: record.AuthRequestID,
 		CaptureRequestID: record.CaptureRequestID, VoidRequestID: record.VoidRequestID,
 		RefundRequestID: record.RefundRequestID, RefundID: record.RefundID,
@@ -248,7 +352,7 @@ func recordFromIntent(intent *paypalIntent) IntentRecord {
 	return IntentRecord{
 		WorkspaceID: intent.WorkspaceID, JobID: intent.JobID, ScopeVersion: intent.ScopeVersion,
 		AmountMinor: intent.AmountMinor, Currency: intent.Currency, SellerMerchantID: intent.SellerMerchantID, OrderID: intent.OrderID,
-		AuthorizationID: intent.AuthorizationID, CaptureID: intent.CaptureID, ApprovalURL: intent.ApprovalURL,
+		AuthorizationID: intent.AuthorizationID, AuthorizationExpiresAt: intent.AuthorizationExpiresAt, CaptureID: intent.CaptureID, ApprovalURL: intent.ApprovalURL,
 		Status: intent.Status, OrderRequestID: intent.OrderRequestID, AuthRequestID: intent.AuthRequestID,
 		CaptureRequestID: intent.CaptureRequestID, VoidRequestID: intent.VoidRequestID,
 		RefundRequestID: intent.RefundRequestID, RefundID: intent.RefundID,
@@ -305,7 +409,7 @@ func (p *Service) updateIntent(ctx context.Context, intent *paypalIntent, expect
 	if p.intentStore == nil && len(expected) > 0 {
 		current := p.intents[key]
 		matched := false
-		if current != nil {
+		if current != nil && samePaymentAttempt(current, recordFromIntent(intent)) {
 			for _, status := range expected {
 				if current.Status == status {
 					matched = true
@@ -324,16 +428,21 @@ func (p *Service) updateIntent(ctx context.Context, intent *paypalIntent, expect
 	return nil
 }
 
-func (p *Service) claimIntent(ctx context.Context, state workflow.State, from, to string) (bool, error) {
+func (p *Service) claimIntent(ctx context.Context, state workflow.State, expected *paypalIntent, from, to string) (bool, error) {
 	key := scopePaymentKey(state)
 	if p.intentStore != nil {
-		claimed, err := p.intentStore.ClaimPaymentIntent(ctx, state.WorkspaceID, state.Job.ID, state.Job.ScopeVersion, from, to)
-		return claimed, err
+		store, ok := p.intentStore.(interface {
+			ClaimPaymentIntentAttempt(context.Context, IntentRecord, string, string) (bool, error)
+		})
+		if !ok {
+			return false, errors.New("PayPal store cannot lock the exact payment attempt")
+		}
+		return store.ClaimPaymentIntentAttempt(ctx, recordFromIntent(expected), from, to)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	intent := p.intents[key]
-	if intent == nil || intent.Status != from {
+	if intent == nil || intent.Status != from || !samePaymentAttempt(intent, recordFromIntent(expected)) {
 		return false, nil
 	}
 	intent.Status = to
@@ -356,9 +465,26 @@ func (p *Service) retryIntent(ctx context.Context, intent *paypalIntent) (bool, 
 	return true, nil
 }
 
+func (p *Service) orderPayload(intent *paypalIntent) map[string]any {
+	returnQuery := url.Values{"paypal_return": []string{"1"}, "workspaceId": []string{intent.WorkspaceID}}
+	cancelQuery := url.Values{"paypal_cancelled": []string{"1"}, "workspaceId": []string{intent.WorkspaceID}}
+	returnURL := p.returnURL + "/?" + returnQuery.Encode()
+	cancelURL := p.returnURL + "/?" + cancelQuery.Encode()
+	return map[string]any{
+		"intent": "AUTHORIZE",
+		"purchase_units": []any{map[string]any{
+			"reference_id": fmt.Sprintf("%s-v%d", intent.JobID, intent.ScopeVersion),
+			"description":  "Approved service scope",
+			"amount":       map[string]string{"currency_code": intent.Currency, "value": moneyDecimal(intent.AmountMinor)},
+			"payee":        map[string]string{"merchant_id": intent.SellerMerchantID},
+		}},
+		"application_context": map[string]string{"brand_name": p.appName, "user_action": "CONTINUE", "return_url": returnURL, "cancel_url": cancelURL},
+	}
+}
+
 func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string, string, error) {
 	job := state.Job
-	if err := workflow.ValidatePaymentApproval(job); err != nil {
+	if err := workflow.ValidatePayPalAuthorization(state); err != nil {
 		return "", "", err
 	}
 	key := scopePaymentKey(state)
@@ -366,10 +492,10 @@ func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string
 	if err != nil {
 		return "", "", errors.New("PayPal operation record could not be loaded")
 	}
-	if intent != nil && intent.Status == "created" && intent.ApprovalURL != "" {
-		return intent.OrderID, intent.ApprovalURL, nil
+	if intent != nil && !intentMatchesState(intent, state) {
+		return "", "", errors.New("PayPal operation does not match the current agreed scope")
 	}
-	if intent != nil && intent.SellerMerchantID == "" && intent.Status != "voided" && intent.Status != "denied" && intent.Status != "expired" {
+	if intent != nil && intent.SellerMerchantID == "" && intent.Status != "voided" && intent.Status != "denied" && intent.Status != "expired" && intent.Status != "deferred" {
 		return "", "", errors.New("this older PayPal order is not linked to a professional payout account; reconcile it before retrying")
 	}
 	seller, err := p.sellerForPayment(ctx, job.ProfessionalAccountID)
@@ -380,11 +506,14 @@ func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string
 	if intent != nil && intent.SellerMerchantID != "" && intent.SellerMerchantID != sellerMerchantID {
 		return "", "", errors.New("this PayPal payment is bound to a different professional payout account")
 	}
+	if intent != nil && intent.Status == "created" && intent.ApprovalURL != "" {
+		return intent.OrderID, intent.ApprovalURL, nil
+	}
 	expectedOrderStatus := "creating"
 	if intent != nil {
-		if intent.Status == "voided" || intent.Status == "denied" || intent.Status == "expired" {
+		if intent.Status == "voided" || intent.Status == "denied" || intent.Status == "expired" || intent.Status == "deferred" {
 			attempt := time.Now().UTC().Format(time.RFC3339Nano)
-			intent.OrderID, intent.AuthorizationID, intent.CaptureID, intent.ApprovalURL = "", "", "", ""
+			intent.OrderID, intent.AuthorizationID, intent.CaptureID, intent.ApprovalURL, intent.AuthorizationExpiresAt = "", "", "", "", ""
 			intent.Status, intent.SellerMerchantID = "creating", sellerMerchantID
 			intent.OrderRequestID = stableRequestID("order:" + key + ":" + attempt)
 			intent.AuthRequestID = stableRequestID("authorize:" + key + ":" + attempt)
@@ -432,21 +561,7 @@ func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string
 		}
 	}
 
-	returnQuery := url.Values{"paypal_return": []string{"1"}, "workspaceId": []string{state.WorkspaceID}}
-	cancelQuery := url.Values{"paypal_cancelled": []string{"1"}, "workspaceId": []string{state.WorkspaceID}}
-	returnURL := p.returnURL + "/?" + returnQuery.Encode()
-	cancelURL := p.returnURL + "/?" + cancelQuery.Encode()
-	payload := map[string]any{
-		"intent": "AUTHORIZE",
-		"purchase_units": []any{map[string]any{
-			"reference_id": fmt.Sprintf("%s-v%d", job.ID, job.ScopeVersion),
-			"description":  "Approved service scope",
-			"amount":       map[string]string{"currency_code": job.Quote.Currency, "value": moneyDecimal(job.Quote.TotalMinor)},
-			"payee":        map[string]string{"merchant_id": intent.SellerMerchantID},
-		}},
-		"application_context": map[string]string{"brand_name": p.appName, "user_action": "CONTINUE", "return_url": returnURL, "cancel_url": cancelURL},
-	}
-	data, err := p.apiMarketplace(ctx, http.MethodPost, "/v2/checkout/orders", payload, intent.OrderRequestID, intent.SellerMerchantID)
+	data, err := p.apiMarketplace(ctx, http.MethodPost, "/v2/checkout/orders", p.orderPayload(intent), intent.OrderRequestID, intent.SellerMerchantID)
 	if err != nil {
 		intent.Status = "order_uncertain"
 		_ = p.updateIntent(ctx, intent, expectedOrderStatus)
@@ -485,7 +600,7 @@ func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string
 }
 
 func (p *Service) Authorize(ctx context.Context, state workflow.State, orderID string) error {
-	if err := workflow.ValidatePaymentApproval(state.Job); err != nil {
+	if err := workflow.ValidatePayPalAuthorization(state); err != nil {
 		return err
 	}
 	intent, err := p.loadIntent(ctx, state)
@@ -500,12 +615,18 @@ func (p *Service) Authorize(ctx context.Context, state workflow.State, orderID s
 		return errors.New("the selected professional's PayPal payout account is no longer eligible")
 	}
 	if intent.Status == "authorized" {
+		if err := p.refreshAuthorization(ctx, intent); err != nil {
+			return err
+		}
+		if intent.Status != "authorized" {
+			return errors.New("this PayPal authorization is no longer usable; approve a fresh order")
+		}
 		return nil
 	}
 	if intent.Status != "created" {
 		return fmt.Errorf("PayPal order status is %s; reconcile it before continuing", intent.Status)
 	}
-	claimed, err := p.claimIntent(ctx, state, "created", "authorizing")
+	claimed, err := p.claimIntent(ctx, state, intent, "created", "authorizing")
 	if err != nil {
 		return errors.New("PayPal authorization state could not be reserved")
 	}
@@ -524,17 +645,8 @@ func (p *Service) Authorize(ctx context.Context, state workflow.State, orderID s
 		_ = p.updateIntent(ctx, intent, "authorizing")
 		return err
 	}
-	var result struct {
-		PurchaseUnits []struct {
-			Payments struct {
-				Authorizations []struct {
-					ID     string `json:"id"`
-					Status string `json:"status"`
-				} `json:"authorizations"`
-			} `json:"payments"`
-		} `json:"purchase_units"`
-	}
-	if json.Unmarshal(data, &result) != nil || len(result.PurchaseUnits) == 0 || len(result.PurchaseUnits[0].Payments.Authorizations) == 0 {
+	result, err := p.authorizedOrderDetails(ctx, data, intent)
+	if err != nil || len(result.PurchaseUnits[0].Payments.Authorizations) != 1 {
 		intent.Status = "authorization_uncertain"
 		_ = p.updateIntent(ctx, intent, "authorizing")
 		return errors.New("PayPal order was approved but authorization details were not returned")
@@ -545,8 +657,18 @@ func (p *Service) Authorize(ctx context.Context, state workflow.State, orderID s
 		_ = p.updateIntent(ctx, intent, "authorizing")
 		return errors.New("PayPal authorization is not in the expected state")
 	}
-	intent.AuthorizationID, intent.Status = authorization.ID, "authorized"
-	return p.updateIntent(ctx, intent, "authorizing")
+	intent.AuthorizationID, intent.AuthorizationExpiresAt = authorization.ID, authorization.ExpiresAt
+	intent.Status, err = authorizationStatus(authorization.Status, authorization.ExpiresAt)
+	if err != nil {
+		return err
+	}
+	if err := p.updateIntent(ctx, intent, "authorizing"); err != nil {
+		return err
+	}
+	if intent.Status != "authorized" {
+		return errors.New("PayPal authorization expired; approve a fresh order")
+	}
+	return nil
 }
 
 func (p *Service) Capture(ctx context.Context, state workflow.State) error {
@@ -567,7 +689,16 @@ func (p *Service) Capture(ctx context.Context, state workflow.State) error {
 	if err != nil || seller.MerchantID != intent.SellerMerchantID {
 		return errors.New("the selected professional's PayPal payout account is no longer eligible")
 	}
-	claimed, err := p.claimIntent(ctx, state, "authorized", "capturing")
+	if err := p.refreshAuthorization(ctx, intent); err != nil {
+		return err
+	}
+	if intent.Status == "captured" && intent.CaptureID != "" {
+		return nil
+	}
+	if intent.Status != "authorized" {
+		return errors.New("PayPal authorization is no longer usable; approve a fresh order before capture")
+	}
+	claimed, err := p.claimIntent(ctx, state, intent, "authorized", "capturing")
 	if err != nil {
 		return errors.New("PayPal capture state could not be reserved")
 	}
@@ -612,7 +743,19 @@ func (p *Service) Reconcile(ctx context.Context, state workflow.State) (string, 
 	if intent == nil {
 		return "not_started", nil
 	}
+	if !intentMatchesState(intent, state) {
+		return intent.Status, errors.New("PayPal operation does not match the current agreed scope")
+	}
+	if intent.SellerMerchantID == "" {
+		return intent.Status, errors.New("PayPal operation is not linked to a professional payout account")
+	}
 	status, authID, orderID := intent.Status, intent.AuthorizationID, intent.OrderID
+	if status == "voiding" || status == "void_uncertain" {
+		if err := p.ReleaseAuthorization(ctx, recordFromIntent(intent)); err != nil {
+			return status, err
+		}
+		return p.Status(ctx, state)
+	}
 	if (status == "refunding" || status == "refund_uncertain" && intent.RefundID == "") &&
 		state.Job.Dispute != nil && state.Job.Dispute.Status == "refund_pending" {
 		if _, err := p.Refund(ctx, state); err != nil {
@@ -621,7 +764,7 @@ func (p *Service) Reconcile(ctx context.Context, state workflow.State) (string, 
 		return "refunded", nil
 	}
 	if status == "refund_uncertain" && intent.RefundID != "" {
-		claimed, err := p.claimIntent(ctx, state, status, "refunding")
+		claimed, err := p.claimIntent(ctx, state, intent, status, "refunding")
 		if err != nil {
 			return status, err
 		}
@@ -642,70 +785,19 @@ func (p *Service) Reconcile(ctx context.Context, state workflow.State) (string, 
 		}
 		return "created", nil
 	}
-	if (status == "capture_uncertain" || status == "capturing" || status == "void_uncertain" || status == "voiding") && authID != "" {
-		data, err := p.apiMarketplace(ctx, http.MethodGet, "/v2/payments/authorizations/"+url.PathEscape(authID), nil, "", intent.SellerMerchantID)
-		if err != nil {
-			return status, errors.New("PayPal authorization status could not be reconciled")
+	if (status == "authorized" || status == "capture_uncertain" || status == "capturing" || status == "authorization_pending" || status == "partial_capture_review" || status == "authorization_review") && authID != "" {
+		if err := p.refreshAuthorization(ctx, intent); err != nil {
+			return status, err
 		}
-		var result struct {
-			Status            string `json:"status"`
-			SupplementaryData struct {
-				RelatedIDs struct {
-					CaptureID string `json:"capture_id"`
-				} `json:"related_ids"`
-			} `json:"supplementary_data"`
-		}
-		if json.Unmarshal(data, &result) != nil {
-			return status, errors.New("PayPal authorization status response was invalid")
-		}
-		switch result.Status {
-		case "CAPTURED":
-			if result.SupplementaryData.RelatedIDs.CaptureID == "" {
-				return "capture_uncertain", errors.New("PayPal reports a capture but did not return its transaction ID")
-			}
-			intent.CaptureID, intent.Status = result.SupplementaryData.RelatedIDs.CaptureID, "captured"
-			if err := p.updateIntent(ctx, intent, status); err != nil {
-				return "capture_uncertain", errors.New("PayPal capture was found but could not be saved")
-			}
-			return "captured", nil
-		case "CREATED":
-			intent.Status = "authorized"
-			if err := p.updateIntent(ctx, intent, status); err != nil {
-				return status, errors.New("PayPal authorization status could not be saved")
-			}
-			return "authorized", nil
-		case "VOIDED":
-			intent.Status = "voided"
-			if err := p.updateIntent(ctx, intent, status); err != nil {
-				return status, errors.New("PayPal void status could not be saved")
-			}
-			return "voided", nil
-		default:
-			intent.Status = strings.ToLower(result.Status)
-			if err := p.updateIntent(ctx, intent, status); err != nil {
-				return status, errors.New("PayPal authorization status could not be saved")
-			}
-			return intent.Status, nil
-		}
+		return intent.Status, nil
 	}
 	if (status == "order_uncertain" || status == "creating" || status == "authorization_uncertain" || status == "authorizing") && orderID != "" {
 		data, err := p.apiMarketplace(ctx, http.MethodGet, "/v2/checkout/orders/"+url.PathEscape(orderID), nil, "", intent.SellerMerchantID)
 		if err != nil {
 			return status, errors.New("PayPal order status could not be reconciled")
 		}
-		var result struct {
-			Status string `json:"status"`
-			Links  []struct {
-				Href string `json:"href"`
-				Rel  string `json:"rel"`
-			} `json:"links"`
-			PurchaseUnits []struct {
-				Payments struct {
-					Authorizations []struct{ ID, Status string } `json:"authorizations"`
-				} `json:"payments"`
-			} `json:"purchase_units"`
-		}
-		if json.Unmarshal(data, &result) != nil {
+		var result orderDetails
+		if json.Unmarshal(data, &result) != nil || validateOrderDetails(result, intent) != nil {
 			return status, errors.New("PayPal order status response was invalid")
 		}
 		for _, link := range result.Links {
@@ -716,11 +808,10 @@ func (p *Service) Reconcile(ctx context.Context, state workflow.State) (string, 
 		}
 		if len(result.PurchaseUnits) > 0 && len(result.PurchaseUnits[0].Payments.Authorizations) > 0 {
 			auth := result.PurchaseUnits[0].Payments.Authorizations[0]
-			intent.AuthorizationID = auth.ID
-			if auth.ID != "" && auth.Status == "CREATED" {
-				intent.Status = "authorized"
-			} else {
-				intent.Status = "authorization_uncertain"
+			intent.AuthorizationID, intent.AuthorizationExpiresAt = auth.ID, auth.ExpiresAt
+			intent.Status, err = authorizationStatus(auth.Status, auth.ExpiresAt)
+			if err != nil {
+				return status, err
 			}
 			if err := p.updateIntent(ctx, intent, status); err != nil {
 				return status, errors.New("PayPal authorization status could not be saved")
@@ -728,6 +819,9 @@ func (p *Service) Reconcile(ctx context.Context, state workflow.State) (string, 
 			return intent.Status, nil
 		}
 		if result.Status == "APPROVED" || result.Status == "CREATED" {
+			if status == "authorizing" || status == "authorization_uncertain" {
+				return status, errors.New("PayPal authorization result remains uncertain; retry reconciliation or release the original attempt")
+			}
 			intent.Status = "created"
 			if intent.ApprovalURL == "" {
 				return status, errors.New("PayPal order exists but its approval link is not available")
@@ -771,36 +865,187 @@ func (p *Service) VoidCurrent(ctx context.Context, state workflow.State) error {
 	if intent == nil {
 		return nil
 	}
-	switch intent.Status {
-	case "voided", "denied", "expired":
-		return nil
-	case "authorized":
-		if intent.AuthorizationID == "" {
-			return errors.New("PayPal authorization ID is missing; reconcile before changing scope")
-		}
-	default:
-		return fmt.Errorf("PayPal payment is %s; reconcile it before changing scope", intent.Status)
+	if intent.Status == "release_pending" {
+		return errors.New("PayPal authorization release is queued; retry after it finishes")
 	}
-	claimed, err := p.claimIntent(ctx, state, "authorized", "voiding")
+	return p.ReleaseAuthorization(ctx, recordFromIntent(intent))
+}
+
+func samePaymentAttempt(current *paypalIntent, expected IntentRecord) bool {
+	return current.WorkspaceID == expected.WorkspaceID && current.JobID == expected.JobID && current.ScopeVersion == expected.ScopeVersion &&
+		current.AmountMinor == expected.AmountMinor && current.Currency == expected.Currency && current.SellerMerchantID == expected.SellerMerchantID &&
+		current.OrderRequestID == expected.OrderRequestID && current.AuthRequestID == expected.AuthRequestID && current.VoidRequestID == expected.VoidRequestID
+}
+
+// ReleaseAuthorization finishes only the persisted attempt supplied by the
+// release queue. A replacement attempt is never contacted or overwritten.
+func (p *Service) ReleaseAuthorization(ctx context.Context, expected IntentRecord) error {
+	state := workflow.State{WorkspaceID: expected.WorkspaceID, Job: workflow.Job{ID: expected.JobID, ScopeVersion: expected.ScopeVersion}}
+	intent, err := p.loadIntent(ctx, state)
 	if err != nil {
-		return errors.New("PayPal authorization could not be locked for voiding")
+		return err
+	}
+	if intent == nil || !samePaymentAttempt(intent, expected) {
+		return nil
+	}
+	if expected.Status == "release_pending" {
+		return errors.New("PayPal authorization release requires its original queued attempt status")
+	}
+	switch intent.Status {
+	case "voided", "denied", "expired", "deferred":
+		return nil
+	case "created", "creating", "order_uncertain", "authorizing", "authorization_uncertain", "authorized", "voiding", "void_uncertain", "release_pending":
+	default:
+		return fmt.Errorf("PayPal payment is %s; authorization release requires operator review", intent.Status)
+	}
+	if intent.WorkspaceID == "" || intent.JobID == "" || intent.ScopeVersion < 1 || intent.AmountMinor <= 0 || intent.Currency == "" || intent.SellerMerchantID == "" ||
+		intent.OrderRequestID == "" || intent.AuthRequestID == "" || intent.VoidRequestID == "" {
+		return errors.New("PayPal authorization release is missing its recorded attempt identity")
+	}
+	originalStatus := intent.Status
+	if originalStatus == "release_pending" || originalStatus == "voiding" || originalStatus == "void_uncertain" {
+		originalStatus = expected.Status
+	}
+	if (originalStatus == "voiding" || originalStatus == "void_uncertain") && intent.AuthorizationID == "" {
+		return errors.New("PayPal release cannot establish whether an authorization was originally issued; retry its durable queued attempt")
+	}
+	releaseStatus := "voiding"
+	if intent.Status == "release_pending" {
+		// The queue snapshot is the source of truth for whether an authorize
+		// request was issued. Keep its ownership across crashes and retries so
+		// synchronous reconciliation cannot infer a different provenance.
+		releaseStatus = "release_pending"
+	}
+	claimed, err := p.claimIntent(ctx, state, intent, intent.Status, releaseStatus)
+	if err != nil {
+		return err
 	}
 	if !claimed {
-		latest, loadErr := p.loadIntent(ctx, state)
-		if loadErr == nil && latest != nil && latest.Status == "voided" {
+		return errors.New("PayPal authorization release changed; retry its saved attempt")
+	}
+	intent.Status = releaseStatus
+	if err := p.releaseIntent(ctx, intent, originalStatus, releaseStatus); err != nil {
+		intent.Status = "void_uncertain"
+		if releaseStatus == "release_pending" {
+			intent.Status = "release_pending"
+		} else if intent.AuthorizationID == "" {
+			switch originalStatus {
+			case "created", "creating", "order_uncertain":
+				intent.Status = originalStatus
+			case "authorizing", "authorization_uncertain":
+				intent.Status = "authorization_uncertain"
+			}
+		}
+		_ = p.updateIntent(ctx, intent, releaseStatus)
+		return err
+	}
+	return p.updateIntent(ctx, intent, releaseStatus)
+}
+
+func (p *Service) releaseIntent(ctx context.Context, intent *paypalIntent, originalStatus, releaseStatus string) error {
+	if intent.OrderID == "" {
+		if originalStatus != "creating" && originalStatus != "order_uncertain" {
+			return errors.New("PayPal release cannot identify the original order")
+		}
+		// Replaying order creation cannot authorize funds, and retrieves the
+		// order when its original response was lost.
+		data, err := p.apiMarketplace(ctx, http.MethodPost, "/v2/checkout/orders", p.orderPayload(intent), intent.OrderRequestID, intent.SellerMerchantID)
+		if err != nil {
+			return err
+		}
+		var order orderDetails
+		if json.Unmarshal(data, &order) != nil || order.ID == "" {
+			return errors.New("PayPal release could not recover the original order")
+		}
+		intent.OrderID = order.ID
+		if err := p.updateIntent(ctx, intent, releaseStatus); err != nil {
+			return err
+		}
+	}
+	if intent.AuthorizationID == "" {
+		data, err := p.apiMarketplace(ctx, http.MethodGet, "/v2/checkout/orders/"+url.PathEscape(intent.OrderID), nil, "", intent.SellerMerchantID)
+		if err != nil {
+			return err
+		}
+		var order orderDetails
+		if json.Unmarshal(data, &order) != nil || validateOrderDetails(order, intent) != nil {
+			return errors.New("PayPal release order details do not match the saved attempt")
+		}
+		if len(order.PurchaseUnits[0].Payments.Authorizations) == 0 && (originalStatus == "authorizing" || originalStatus == "authorization_uncertain") {
+			// Settle the already-issued ambiguous request using its original
+			// identity, then release the resulting authorization immediately.
+			data, err = p.apiMarketplace(ctx, http.MethodPost, "/v2/checkout/orders/"+url.PathEscape(intent.OrderID)+"/authorize", map[string]any{}, intent.AuthRequestID, intent.SellerMerchantID)
+			if err != nil {
+				return err
+			}
+			order, err = p.authorizedOrderDetails(ctx, data, intent)
+			if err != nil {
+				return errors.New("PayPal release could not recover the original authorization")
+			}
+		}
+		if len(order.PurchaseUnits[0].Payments.Authorizations) == 0 {
+			if order.Status != "CREATED" && order.Status != "APPROVED" && order.Status != "PAYER_ACTION_REQUIRED" && order.Status != "VOIDED" {
+				return errors.New("PayPal order has no confirmed authorization release outcome")
+			}
+			if originalStatus == "authorizing" || originalStatus == "authorization_uncertain" {
+				return errors.New("PayPal authorization result remains uncertain")
+			}
+			intent.Status = "deferred"
 			return nil
 		}
-		return errors.New("PayPal authorization is changing; reconcile it before changing scope")
+		authorization := order.PurchaseUnits[0].Payments.Authorizations[0]
+		intent.AuthorizationID = authorization.ID
+		if err := p.updateIntent(ctx, intent, releaseStatus); err != nil {
+			return err
+		}
 	}
-	intent.Status = "voiding"
+	data, err := p.apiMarketplace(ctx, http.MethodGet, "/v2/payments/authorizations/"+url.PathEscape(intent.AuthorizationID), nil, "", intent.SellerMerchantID)
+	if err != nil {
+		return err
+	}
+	var authorization struct {
+		ID, Status string
+		Amount     paymentAmount `json:"amount"`
+		Payee      struct {
+			MerchantID string `json:"merchant_id"`
+		} `json:"payee"`
+		SupplementaryData struct {
+			RelatedIDs struct {
+				OrderID string `json:"order_id"`
+			} `json:"related_ids"`
+		} `json:"supplementary_data"`
+	}
+	if json.Unmarshal(data, &authorization) != nil || authorization.ID != intent.AuthorizationID || !amountMatches(authorization.Amount, intent) ||
+		authorization.Payee.MerchantID != "" && authorization.Payee.MerchantID != intent.SellerMerchantID ||
+		authorization.SupplementaryData.RelatedIDs.OrderID != "" && authorization.SupplementaryData.RelatedIDs.OrderID != intent.OrderID {
+		return errors.New("PayPal release authorization does not match the saved attempt")
+	}
+	if authorization.SupplementaryData.RelatedIDs.OrderID == "" {
+		// Older authorization representations omit related_ids. Verify the
+		// transaction through its complete original order before releasing it.
+		data, err := p.apiMarketplace(ctx, http.MethodGet, "/v2/checkout/orders/"+url.PathEscape(intent.OrderID), nil, "", intent.SellerMerchantID)
+		if err != nil {
+			return err
+		}
+		var order orderDetails
+		if json.Unmarshal(data, &order) != nil || validateOrderDetails(order, intent) != nil || len(order.PurchaseUnits[0].Payments.Authorizations) != 1 {
+			return errors.New("PayPal release could not verify the original order relationship")
+		}
+	}
+	switch authorization.Status {
+	case "VOIDED", "EXPIRED", "DENIED":
+		intent.Status = strings.ToLower(authorization.Status)
+		return nil
+	case "CREATED":
+	default:
+		return fmt.Errorf("PayPal authorization is %s; release requires operator review", authorization.Status)
+	}
 	_, err = p.apiMarketplace(ctx, http.MethodPost, "/v2/payments/authorizations/"+url.PathEscape(intent.AuthorizationID)+"/void", map[string]any{}, intent.VoidRequestID, intent.SellerMerchantID)
 	if err != nil {
-		intent.Status = "void_uncertain"
-		_ = p.updateIntent(ctx, intent, "voiding")
-		return errors.New("existing PayPal authorization could not be released; scope change was stopped")
+		return err
 	}
 	intent.Status = "voided"
-	return p.updateIntent(ctx, intent, "voiding")
+	return nil
 }
 
 // Refund issues a single full refund for an operator-approved paid case. The
@@ -827,7 +1072,7 @@ func (p *Service) Refund(ctx context.Context, state workflow.State) (string, err
 	if from == "refunding" && p.intentStore == nil {
 		return "", errors.New("PayPal refund is already being processed")
 	}
-	claimed, err := p.claimIntent(ctx, state, from, "refunding")
+	claimed, err := p.claimIntent(ctx, state, intent, from, "refunding")
 	if err != nil {
 		return "", errors.New("PayPal refund state could not be reserved")
 	}

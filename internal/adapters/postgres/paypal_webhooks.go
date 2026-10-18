@@ -129,11 +129,24 @@ type webhookPayment struct {
 }
 
 func findWebhookPayment(ctx context.Context, tx pgx.Tx, event paypal.WebhookEvent) (webhookPayment, error) {
+	// Resolve the owner without taking the operation lock first. All payment
+	// mutations lock workspace then operation, including webhook reconciliation,
+	// so a capture notification cannot deadlock a concurrent checkout claim.
+	var workspaceID string
+	if err := tx.QueryRow(ctx, `SELECT workspace_id FROM paypal_payment_operations
+		WHERE ($1 <> '' AND order_id=$1) OR ($2 <> '' AND capture_id=$2)
+		ORDER BY updated_at DESC LIMIT 1`, event.OrderID, event.CaptureID).Scan(&workspaceID); err != nil {
+		return webhookPayment{}, err
+	}
+	var lockedID string
+	if err := tx.QueryRow(ctx, `SELECT id FROM account_workspaces WHERE id=$1 FOR UPDATE`, workspaceID).Scan(&lockedID); err != nil {
+		return webhookPayment{}, err
+	}
 	var payment webhookPayment
 	err := tx.QueryRow(ctx, `SELECT workspace_id,job_id,scope_version,amount_minor,currency,COALESCE(capture_id,''),status
 		FROM paypal_payment_operations
-		WHERE ($1 <> '' AND order_id=$1) OR ($2 <> '' AND capture_id=$2)
-		ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`, event.OrderID, event.CaptureID).Scan(
+		WHERE workspace_id=$3 AND (($1 <> '' AND order_id=$1) OR ($2 <> '' AND capture_id=$2))
+		ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`, event.OrderID, event.CaptureID, workspaceID).Scan(
 		&payment.workspaceID, &payment.jobID, &payment.scopeVersion, &payment.amountMinor, &payment.currency, &payment.captureID, &payment.status,
 	)
 	return payment, err

@@ -43,5 +43,11 @@ export function initials(name: string): string {
 // "Sanne van der Berg" becomes "Sanne B." — a first name and initial is all a professional needs.
 export function shortName(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
-  return words.length > 1 ? `${words[0]} ${words[words.length - 1].charAt(0).toUpperCase()}.` : words[0] ?? name;
+  const one = (words[0] ?? name).split('@')[0];
+  return words.length > 1 ? `${words[0]} ${words[words.length - 1].charAt(0).toUpperCase()}.` : one;
+}
+
+// The trade's icon on request cards and tiles.
+export function tradeIcon(trade: Trade): 'droplet' | 'hammer' | 'zap' | 'wrench' {
+  return trade === 'plumber' ? 'droplet' : trade === 'carpenter' ? 'hammer' : trade === 'electrician' ? 'zap' : 'wrench';
 }

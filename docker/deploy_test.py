@@ -129,5 +129,33 @@ esac
         self.assertEqual((self.state / "previous-image").read_text().strip(), NEW)
 
 
+class PublicationGateTests(unittest.TestCase):
+    def test_flow_gate_runs_before_any_registry_operation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "docker").mkdir()
+            shutil.copy(ROOT / "docker/publish.sh", root / "docker/publish.sh")
+            (root / "docker/verify-flow.sh").write_text(
+                '#!/bin/sh\necho gate >> "$COMMAND_LOG"\nexit "$GATE_STATUS"\n'
+            )
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "git").write_text('#!/bin/sh\n[ "$1" = status ] || echo fixture-revision\n')
+            (bin_dir / "docker").write_text('#!/bin/sh\necho registry >> "$COMMAND_LOG"\nexit 23\n')
+            for executable in bin_dir.iterdir():
+                executable.chmod(0o755)
+            log = root / "commands.log"
+            for status in ("1", "0"):
+                with self.subTest(gate_status=status):
+                    log.write_text("")
+                    result = subprocess.run(
+                        ["sh", "docker/publish.sh"], cwd=root, capture_output=True, text=True,
+                        env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                             "IMAGE_REPO": "registry.test/samen-klaar", "COMMAND_LOG": str(log), "GATE_STATUS": status},
+                    )
+                    self.assertEqual(log.read_text().splitlines(), ["gate"] if status == "1" else ["gate", "registry"])
+                    self.assertEqual(result.returncode, 1 if status == "1" else 23, result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

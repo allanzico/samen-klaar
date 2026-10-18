@@ -77,3 +77,20 @@ func TestProfessionalDeclineReleasesAppointmentInWorkflow(t *testing.T) {
 		t.Fatal("declined visit remains actionable")
 	}
 }
+
+func TestConfirmationDeadlineUsesAmsterdamClockRegardlessOfDisplayTimezone(t *testing.T) {
+	for _, instant := range []struct{ from, want string }{
+		{"2026-10-16T14:00:00Z", "2026-10-19T08:00:00Z"},
+		{"2026-10-23T14:00:00Z", "2026-10-26T09:00:00Z"},
+		{"2026-03-27T15:00:00Z", "2026-03-30T08:00:00Z"},
+	} {
+		from, _ := time.Parse(time.RFC3339, instant.from)
+		want, _ := time.Parse(time.RFC3339, instant.want)
+		for _, display := range []string{"UTC", "Europe/Amsterdam", "America/New_York", "Asia/Tokyo"} {
+			deadline, err := AppointmentConfirmationDeadline(from, display)
+			if err != nil || !deadline.Equal(want) {
+				t.Fatalf("%s display %s: got %v, %v; want %v", instant.from, display, deadline, err, want)
+			}
+		}
+	}
+}

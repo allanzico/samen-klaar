@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	aiadapter "github.com/allanzico/samen-klaar/internal/adapters/ai"
-	"github.com/allanzico/samen-klaar/internal/adapters/postgres"
 	"github.com/allanzico/samen-klaar/internal/seed"
 )
 
@@ -26,12 +24,12 @@ func localDataCommand(action string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	output := envOr("SEED_OUTPUT_DIR", ".secrets/local/seed-data")
+	output := envOr("SEED_OUTPUT_DIR", ".secrets/local/seed-pros")
 	issuer := os.Getenv("AUTH0_ISSUER_URL")
 	switch action {
-	case "seed-local":
-		return seed.Run(ctx, os.Getenv("DATABASE_URL"), issuer, os.Getenv("SEED_PASSWORD"), output)
-	case "import-seed-auth0":
+	case "seed-pros":
+		return seed.RunPros(ctx, os.Getenv("DATABASE_URL"), issuer, os.Getenv("SEED_PASSWORD"), output)
+	case "import-seed-pros-auth0":
 		// A session lock survives long-running polling and is released by
 		// PostgreSQL when the tool exits or its container is interrupted.
 		// Strip pool tuning parameters before opening a dedicated connection;
@@ -57,17 +55,6 @@ func localDataCommand(action string) error {
 			return errors.New("another Auth0 seed import is already running")
 		}
 		return seed.Import(ctx, issuer, os.Getenv("AUTH0_CLIENT_ID"), os.Getenv("AUTH0_MANAGEMENT_TOKEN"), os.Getenv("AUTH0_CONNECTION_ID"), output)
-	case "benchmark-local":
-		store, err := postgres.OpenDirectory(ctx, os.Getenv("DATABASE_URL"))
-		if err != nil {
-			return err
-		}
-		defer store.Close()
-		coordinator, err := aiadapter.New(ctx, envOr("AI_PROVIDER", "gemini"), os.Getenv("AI_PROVIDER_KEY"), os.Getenv("AI_MODEL"))
-		if err != nil {
-			return err
-		}
-		return seed.Benchmark(ctx, store, coordinator, os.Getenv("DATABASE_URL"), output)
 	}
 	return errors.New("unknown local data action")
 }

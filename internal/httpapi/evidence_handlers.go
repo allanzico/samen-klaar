@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/allanzico/samen-klaar/internal/workflow"
 )
 
 func (s *Server) evidenceUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +75,7 @@ func (s *Server) evidenceUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	input := Action{Action: "record-evidence", Actor: string(principal.ActiveRole), Evidence: Evidence{
 		AssetID: assetID, Label: label, Description: "Uploaded to private Cloudflare R2 storage for this job.",
-		Kind: kind, ContentType: contentType,
+		Kind: kind, ContentType: contentType, ScopeVersion: state.Job.ScopeVersion, CompletionRound: workflow.EvidenceRound(state.Job), WorkItemIDs: r.MultipartForm.Value["workItemId"],
 	}}
 	jobID := state.Job.ID
 	state, err = s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), input, r.URL.Query().Get("workspaceId"))
@@ -133,7 +135,7 @@ func (s *Server) evidenceReviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.ai == nil || s.r2 == nil {
-		http.Error(w, "AI evidence review requires an AI provider and evidence storage", http.StatusServiceUnavailable)
+		http.Error(w, "File checks are temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	principal := principalForRequest(r)
@@ -186,10 +188,10 @@ func (s *Server) evidenceReviewHandler(w http.ResponseWriter, r *http.Request) {
 	jobForReview.ServiceAddress = ""
 	review, err := s.ai.ReviewEvidence(ctx, jobForReview, files)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "SamenKlaar could not check these files right now. Please try again.", http.StatusBadGateway)
 		return
 	}
-	state, err = s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), Action{Action: "record-evidence-review", Actor: string(principal.ActiveRole), EvidenceReview: review, ExpectedScope: state.Job.ScopeVersion}, r.URL.Query().Get("workspaceId"))
+	state, err = s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), Action{Action: "record-evidence-review", Actor: string(principal.ActiveRole), EvidenceReview: review, ExpectedScope: state.Job.ScopeVersion, ExpectedEvidenceRound: workflow.EvidenceRound(state.Job)}, r.URL.Query().Get("workspaceId"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -208,7 +210,7 @@ func loadEvidenceReviewFiles(ctx context.Context, storage EvidenceStorage, job J
 	files := make([]EvidenceBlob, 0, 5)
 	for i := len(job.Evidence) - 1; i >= 0; i-- {
 		evidence := job.Evidence[i]
-		if evidence.AssetID == "" || len(selected) > 0 && !selected[evidence.AssetID] {
+		if !workflow.CurrentEvidence(job, evidence) || evidence.AssetID == "" || len(selected) > 0 && !selected[evidence.AssetID] {
 			continue
 		}
 		if len(files) == 5 {
@@ -236,7 +238,7 @@ func loadEvidenceReviewFiles(ctx context.Context, storage EvidenceStorage, job J
 		total += len(content)
 	}
 	if len(files) == 0 {
-		return nil, &reviewFileError{http.StatusConflict, "upload at least one real evidence file before requesting an AI review"}
+		return nil, &reviewFileError{http.StatusConflict, "upload at least one file before checking the completion record"}
 	}
 	return files, nil
 }

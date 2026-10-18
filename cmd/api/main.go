@@ -113,12 +113,14 @@ func run() error {
 			return fmt.Errorf("initialize PostgreSQL store: %w", err)
 		}
 		persistent = opened
+		persistent.SetCoordinator(coordinator)
 		defer persistent.Close()
 		store = persistent
 		if paypalService != nil {
 			paypalService.SetIntentStore(persistent)
 			paypalService.SetWebhookSink(persistent)
 			paypalService.SetMarketplaceStore(persistent)
+			persistent.SetAuthorizationReleaser(paypalService)
 		}
 		slog.Info("persistence initialized", "database", "PostgreSQL")
 	} else {
@@ -169,7 +171,11 @@ func run() error {
 			webhookReceiver = paypalService
 		}
 	}
-	app := httpapi.New(httpapi.Dependencies{AppName: appName, WebDirectory: webDirectory, Store: store, Auth: auth, AppBaseURL: appBaseURL, Providers: providers, AI: ai, Evidence: evidence, Payments: payments, Refunds: refunds, Marketplace: paypalService, Webhook: webhookReceiver, Professionals: professionals, Directory: directory, Operators: operators, Readiness: readiness})
+	var agents httpapi.AgentStore
+	if persistent != nil {
+		agents = persistent
+	}
+	app := httpapi.New(httpapi.Dependencies{AppName: appName, WebDirectory: webDirectory, Store: store, Auth: auth, AppBaseURL: appBaseURL, Providers: providers, AI: ai, Evidence: evidence, Payments: payments, Refunds: refunds, Marketplace: paypalService, Webhook: webhookReceiver, Professionals: professionals, Directory: directory, Operators: operators, Agents: agents, Readiness: readiness})
 	server := &http.Server{
 		Addr: address, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 20 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second,
@@ -181,6 +187,7 @@ func run() error {
 
 	stopSignal, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	app.StartAgents(stopSignal)
 	select {
 	case err := <-serverErrors:
 		if errors.Is(err, http.ErrServerClosed) {

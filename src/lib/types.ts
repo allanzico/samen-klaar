@@ -3,7 +3,7 @@ export type AccountMembership = { role: WorkspaceRole; status: 'pending' | 'acti
 export type AuthSession = {
   configured: boolean;
   authenticated: boolean;
-  account?: { id: string; email?: string; displayName?: string };
+  account?: { id: string; email?: string; displayName?: string; locale?: 'en' | 'nl' };
   activeRole?: WorkspaceRole;
   memberships?: AccountMembership[];
   expiresAt?: string;
@@ -42,14 +42,19 @@ export type PayPalPayoutSetupStatus = {
   primaryEmailConfirmed: boolean;
 };
 export type ProfessionalApplication = { profile: ProfessionalProfile; email?: string; checks: ProfessionalReviewChecks };
-export type OperatorCase = { id: string; accountId: string; workspaceId: string; kind: string; description: string; reportedAt?: string; status?: string; category?: string; detail?: string; urgency?: string; location?: Location; jobId?: string; jobTitle?: string; paid?: boolean };
+export type OperatorCase = { id: string; accountId: string; workspaceId: string; kind: string; description: string; reportedAt?: string; status?: string; category?: string; detail?: string; urgency?: string; location?: Location; jobId?: string; jobTitle?: string; paid?: boolean; reasonCode?: string; responsible?: string };
 export type NotificationDeliveryHealth = { failed: number; unconfigured: number; stalled: number };
-export type CancellationReview = { status: string; requestedBy: string; reason?: string; requestedAt: string; resolution?: string; resolvedAt?: string };
+export type CancellationReview = { kind?: string; status: string; requestedBy: string; reason?: string; requestedAt: string; resolution?: string; resolvedAt?: string };
 export type DisputeCase = { status: string; reportedBy: string; reason: string; reportedAt: string; resolution?: string; resolvedAt?: string };
 export type AppointmentConfirmation = { status: string; dueAt?: string; respondedAt?: string; appointment: Appointment };
 
 export type QuoteLine = { label: string; amountMinor: number; basis: string };
+export type EvidenceRequirement = {id:string;label:string;kind:'photo'|'document'|'note'|'file'};
+export type WorkItem = {id:string;description:string;kind:'photo'|'document'|'note'|'file';addedInScope:number};
 export type Evidence = {
+  scopeVersion?: number;
+  completionRound?: number;
+  workItemIds?: string[];
   assetId?: string;
   contentType?: string;
   label: string;
@@ -59,16 +64,24 @@ export type Evidence = {
 export type ScopeChange = { status: string; description: string; amountMinor: number; proposedFrom: number };
 export type ScopeSnapshot = { version: number; totalMinor: number; lines: QuoteLine[] };
 export type EvidenceFinding = { scopeItem: string; evidenceIds: string[]; coverage: string; observation: string };
-export type EvidenceReview = { summary: string; coverage: EvidenceFinding[]; limitations: string; model: string; reviewedAt: string };
+export type EvidenceReview = { summary: string; coverage: EvidenceFinding[]; limitations: string; reviewedAt: string };
 export type JobReview = { rating: number; comment?: string; createdAt: string; professionalResponse?: string; respondedAt?: string };
 export type EventItem = { text: string; kind: string; when: string };
 export type UserNotification = { id: number; eventType: string; workspaceId: string; createdAt: string; readAt?: string };
 
 export type Appointment = { slotId: string; startsAt: string; timezone: string; startUtc: string; endUtc: string };
-export type NegotiationInput = { priceAmountMinor?: number; proposedAppointment?: Partial<Appointment>; proposalId?: string };
+export type NegotiationInput = { policyKind?: string; policyVersion?: string; workItemIds?: string[]; priceAmountMinor?: number; proposedAppointment?: Partial<Appointment>; proposalId?: string; choiceId?: string };
 export type PriceProposal = { id: string; status: string; actor: string; amountMinor: number; note: string; scopeVersion: number };
 export type DateProposal = { id: string; status: string; actor: string; note: string; appointment: Appointment };
 export type Job = {
+  workItems?: WorkItem[];
+  policyRequirements?: PolicyRequirement[];
+  policyAcknowledgments?: { kind: string; version: string; scopeVersion: number; acknowledgedAt: string }[];
+  completionApprovedAt?: string;
+  paymentApprovedAt?: string;
+  detailAddedAt?: string;
+  completionRound?:number;
+  evidenceResolutions?:{workItemId:string;scopeVersion:number;completionRound:number;rationale:string;resolvedAt:string}[];
   priceProposal?: PriceProposal;
   dateProposal?: DateProposal;
   dispute?: DisputeCase | null;
@@ -106,6 +119,8 @@ export type Job = {
   detailAdded: boolean;
   completionApproved: boolean;
   paymentApprovedVersion: number;
+  paymentAuthorizedVersion?: number;
+  paymentAuthorizationTiming?: 'after_completion' | 'at_booking';
   paid: boolean;
   paymentRefunded?: boolean;
   paymentTransactionId?: string;
@@ -119,13 +134,14 @@ export type Job = {
 
 export type Location = { label: string; latitude: number; longitude: number; source: string };
 export type Intake = {
+  locale?:string; optionIds?:string[];
   step: string;
   description: string;
   category: string;
   route: string;
   question: string;
   options: string[] | null;
-  messages: { role: string; text: string; senderName?: string; threadProfileId?: string }[];
+  messages: { role: string; text: string; senderName?: string; threadProfileId?: string; audience?: string; choice?: string; agent?: string; code?: string; params?: Record<string, string> }[];
   detail: string;
   urgency: string;
   budget: string;
@@ -135,7 +151,14 @@ export type Intake = {
   waitlisted?: boolean;
 };
 
+export type RequestPhoto = { assetId: string; contentType: string; label: string; addedAt?: string };
+
+export type AgentChoice = { id: string; label: string };
+export type AgentDialog = { stage?: string; awaiting: boolean; choices?: AgentChoice[] };
 export type WorkspaceState = {
+  agentDialog?: AgentDialog;
+  proDialog?: AgentDialog;
+  requestPhotos?: RequestPhoto[];
   cancelled?: boolean;
   cancelledBy?: string;
 	cancellationReview?: CancellationReview | null;
@@ -153,17 +176,26 @@ export type WorkspaceSummary = {
   statusLabel?: string;
 	role: WorkspaceRole;
 	updatedAt: string;
+  counterpart?: string;
+  category?: string;
+  totalMinor?: number;
+  currency?: string;
+  visitStartUtc?: string;
+  visitEndUtc?: string;
+  visitTimezone?: string;
+  confirmDueAt?: string;
 };
 
 export type ProviderConfig = {
   appName: string;
-  aiProvider: string;
-  aiModel: string;
-  evidenceProvider: string;
-  paymentProvider: string;
+  guidedReviewAvailable: boolean;
+  evidenceUploadsAvailable: boolean;
+  paymentsAvailable: boolean;
+  testPayments: boolean;
 };
 
 export type AppState = {
+  customerPage: 'home' | 'requests' | 'detail';
   serverState: WorkspaceState | null;
   workspaces: WorkspaceSummary[];
   workspaceCursor: string | null;
@@ -177,6 +209,8 @@ export type AppState = {
   pending: boolean;
   error: string;
   composeMode: 'message' | 'price' | 'date';
+  // Who a customer's free text goes to once a visit is booked: the professional, or their own assistant.
+  messageTo: 'professional' | 'assistant';
   draft: string;
   draftRestored: boolean;
   draftSaved: boolean;
@@ -188,12 +222,17 @@ export type AppState = {
 
 export type AppActions = {
   initialize: () => Promise<void>;
+  showHome: () => void;
+  showRequests: () => void;
+  showJobs: () => void;
+  restoreLocation: () => Promise<void>;
+  startRequest: (description: string) => Promise<void>;
   loadState: () => Promise<void>;
   refresh: () => Promise<void>;
   loadMoreWorkspaces: () => Promise<void>;
   selectRequest: (id: string) => Promise<void>;
   createRequest: () => Promise<void>;
-  act: (action: string, value?: string, location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number) => Promise<boolean | void>;
+  act: (action: string, value?: string, location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number, paymentAuthorizationTiming?: 'after_completion' | 'at_booking') => Promise<boolean | void>;
   switchWorkspace: (role: WorkspaceRole) => Promise<void>;
   beginProfessional: () => Promise<void>;
   logout: () => Promise<void>;
@@ -204,10 +243,35 @@ export type AppActions = {
   closeProposal: () => void;
   persistDraft: () => void;
   selectEvidenceFile: (event: Event) => void;
-  uploadEvidence: () => Promise<void>;
+  uploadEvidence: (workItemIds?: string[]) => Promise<void>;
+  uploadRequestPhoto: (file: File) => Promise<boolean>;
   reviewEvidence: (assetIds?: string[]) => Promise<void>;
   beginPayPalCheckout: () => Promise<void>;
   capturePayPal: () => Promise<void>;
   reconcilePayPal: () => Promise<void>;
   dismissError: () => void;
 };
+
+export type PolicyRequirement = { kind: string; version: string; requiresAcknowledgment: boolean };
+export type ConsumerPolicy = { kind: 'terms' | 'cancellation' | 'withdrawal' | 'early_start'; version: string; locale: 'en' | 'nl'; title: string; body: string; requiresAcknowledgment: boolean; reviewReference?: string; publishedAt?: string };
+export type CoordinationTask = {
+  id: string; workspaceId: string; jobId: string; scopeVersion: number; round: number; trigger: 'completion-note' | 'post-booking-scope'; recipientRole: string;
+  status: 'queued' | 'awaiting_reply' | 'queued_summary' | 'summary_ready' | 'operator_review' | 'completed' | 'obsolete';
+  question: string; reply: string; summary: string; proposedAction: string; outcome: string; revision: number; createdAt: string; updatedAt: string;
+};
+export type CaseNote = { id: number; recipientRole?: string; note: string; createdAt: string };
+export type CaseDecision = { actor: string; action: string; scopeVersion: number; at: string };
+export type OperatorCaseDetail = {
+  case: OperatorCase; state: WorkspaceState; assignedTo?: string; status: string; outcome?: string;
+  notes: CaseNote[]; decisions: CaseDecision[]; paymentStatus: string;
+};
+export type ServiceEvidencePolicy = { profileId: string; requirements: EvidenceRequirement[]; proposed?: EvidenceRequirement[]; status: string; reviewedAt?: string };
+
+// Agents act for a person only inside the mandate they set; everything else comes back as a question.
+export type AgentMandate = {
+  enabled: boolean; version?: number; weekdays: number[]; startHour: number; endHour: number; preferredHour?: number; timezone?: string;
+  maxTotalMinor?: number; maxDaysAhead?: number; serviceAddress?: string; autoApproveExtraMinor?: number; counterPercent?: number;
+  floorPercent?: number; autoConfirmVisits?: boolean; autoAcceptDates?: boolean; autoApproveWork?: boolean; bookWithoutAsking?: boolean;
+};
+export type AgentActivity = { id: number; role: string; code: string; action?: string; params?: Record<string, string>; outcome: 'applied' | 'rejected'; error?: string; createdAt: string };
+export type AgentEscalation = { id: number; workspaceId: string; role: string; code: string; params?: Record<string, string>; createdAt: string };

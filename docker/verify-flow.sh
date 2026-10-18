@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+python3 docker/deploy_test.py
 run="samen-klaar-flow-$$"
 cleanup() {
   docker rm -f "$run-app" "$run-db" >/dev/null 2>&1 || true

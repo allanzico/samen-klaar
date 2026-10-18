@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -16,6 +17,17 @@ type Message struct {
 	ThreadProfileID string `json:"threadProfileId,omitempty"`
 	Role            string `json:"role"`
 	Text            string `json:"text"`
+	// Audience limits who sees a message: "" (everyone in the thread), "customer", "professional" or
+	// "both". Agent messages and a customer's replies to their agent are never shown to the other side.
+	Audience string `json:"audience,omitempty"`
+	// Seq orders assistant chat messages. It does not change when a viewer's copy hides other messages.
+	Seq int `json:"seq,omitempty"`
+	// Agent is the bot name of the assistant that wrote an agent message.
+	Agent string `json:"agent,omitempty"`
+	// Choice is the quick reply a customer picked; Code and Params let a viewer localize an agent note.
+	Choice string            `json:"choice,omitempty"`
+	Code   string            `json:"code,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
 }
 type Location struct {
 	Label     string  `json:"label"`
@@ -40,7 +52,55 @@ type Match struct {
 	DistanceKM          float64      `json:"distanceKm"`
 	Area                string       `json:"area"`
 }
+
+var serviceAreaPostcode = regexp.MustCompile(`(^|[^A-Z0-9])([0-9]{4})(?:[[:space:]-]*[A-Z]{2})?($|[^A-Z0-9])`)
+
+func PostcodePrefix(value string) string {
+	match := serviceAreaPostcode.FindStringSubmatch(strings.ToUpper(value))
+	if len(match) > 2 {
+		return match[2]
+	}
+	return ""
+}
+
+func OrderMatches(matches []Match, location *Location) {
+	requestedPostcode := ""
+	if location != nil {
+		requestedPostcode = PostcodePrefix(location.Label)
+	}
+	areaScore := func(area string) int {
+		if requestedPostcode == "" {
+			return 0
+		}
+		for _, entry := range strings.FieldsFunc(area, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == '|' }) {
+			if PostcodePrefix(entry) == requestedPostcode {
+				return 1
+			}
+		}
+		return 0
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		left, right := areaScore(matches[i].Area), areaScore(matches[j].Area)
+		if left != right {
+			return left > right
+		}
+		a, b := matches[i].EarliestAppointment, matches[j].EarliestAppointment
+		if a == nil {
+			return false
+		}
+		if b == nil {
+			return true
+		}
+		if a.StartUTC == b.StartUTC {
+			return matches[i].ID < matches[j].ID
+		}
+		return a.StartUTC < b.StartUTC
+	})
+}
+
 type Intake struct {
+	Locale      string    `json:"locale,omitempty"`
+	OptionIDs   []string  `json:"optionIds,omitempty"`
 	Step        string    `json:"step"`
 	Description string    `json:"description"`
 	Category    string    `json:"category"`
@@ -70,9 +130,9 @@ func containsAny(s string, words ...string) bool {
 func InferIntake(description string) IntakeSuggestion {
 	s := strings.ToLower(description)
 	result := IntakeSuggestion{Category: "Unclear", Route: "assessment", Question: "Where is the problem, and what happens when you notice it?", Options: []string{"I'll describe more", "I'm not sure"}}
-	plumbing := containsAny(s, "sink", "tap", "pipe", "drain", "toilet", "water leak", "plumb")
-	electrical := containsAny(s, "outlet", "socket", "electric", "wiring", "breaker", "sparks", "power cut")
-	carpentry := containsAny(s, "cupboard", "cabinet", "hinge", "wooden door")
+	plumbing := containsAny(s, "sink", "tap", "pipe", "drain", "toilet", "water leak", "plumb", "gootsteen", "kraan", "leiding", "afvoer", "waterlek", "loodgieter")
+	electrical := containsAny(s, "outlet", "socket", "electric", "wiring", "breaker", "sparks", "power cut", "stopcontact", "elektr", "bedrading", "zekering", "vonken", "stroomuitval")
+	carpentry := containsAny(s, "cupboard", "cabinet", "hinge", "wooden door", "kastdeur", "scharnier", "houten deur", "kozijn")
 	count := 0
 	for _, match := range []bool{plumbing, electrical, carpentry} {
 		if match {
@@ -84,7 +144,7 @@ func InferIntake(description string) IntakeSuggestion {
 	}
 	if plumbing {
 		result = IntakeSuggestion{Category: "Plumbing", Route: "assessment", Question: "Does water still come out of the tap, and where is it leaking?", Options: []string{"Water runs · pipe drips underneath", "No water comes out", "The drain is backing up", "I'm not sure"}}
-		if containsAny(s, "sink", "tap", "pipe") && containsAny(s, "leak", "drip") {
+		if containsAny(s, "sink", "tap", "pipe", "gootsteen", "kraan", "leiding") && containsAny(s, "leak", "drip", "lek", "drupp", "drupt") {
 			result.Route = "catalog"
 		}
 	}
@@ -93,22 +153,41 @@ func InferIntake(description string) IntakeSuggestion {
 	}
 	if carpentry {
 		result = IntakeSuggestion{Category: "Carpentry", Route: "assessment", Question: "Is the door catching, or is the wood or frame damaged?", Options: []string{"The door catches", "The wood or frame is damaged", "I'm not sure"}}
-		if containsAny(s, "cupboard", "cabinet") && containsAny(s, "door", "hinge") {
+		if containsAny(s, "cupboard", "cabinet", "kast") && containsAny(s, "door", "hinge", "deur", "scharnier") {
 			result.Route = "catalog"
 		}
 	}
-	if containsAny(s, "industrial", "commercial", "factory", "flood", "sewage", "machine") {
+	if containsAny(s, "industrial", "commercial", "factory", "flood", "sewage", "machine", "industr", "bedrijf", "fabriek", "overstrom", "riool") {
 		result.Route = "assessment"
 	}
 	return result
 }
 
 func ask(i *Intake, step, question string, options ...string) {
-	i.Step, i.Question, i.Options = step, question, options
+	question = intakeText(i.Locale, question)
+	i.Step, i.Question = step, question
+	intakeOptions(i, options)
 	i.Messages = append(i.Messages, Message{Role: "assistant", Text: question})
 }
 
 func applyIntake(state *State, input Action) error {
+	updated := *state
+	if state.Intake != nil {
+		intake := *state.Intake
+		intake.Options = append([]string(nil), state.Intake.Options...)
+		intake.OptionIDs = append([]string(nil), state.Intake.OptionIDs...)
+		intake.Messages = append([]Message(nil), state.Intake.Messages...)
+		intake.Matches = append([]Match(nil), state.Intake.Matches...)
+		updated.Intake = &intake
+	}
+	if err := applyIntakeInput(&updated, input); err != nil {
+		return err
+	}
+	*state = updated
+	return nil
+}
+
+func applyIntakeInput(state *State, input Action) error {
 	if input.Actor != "customer" {
 		return errors.New("only the customer can update this conversation")
 	}
@@ -131,7 +210,7 @@ func applyIntake(state *State, input Action) error {
 		if !ValidSuggestion(suggestion) {
 			return errors.New("the intake suggestion is not supported")
 		}
-		i := &Intake{Description: value, Category: suggestion.Category, Route: suggestion.Route, Matches: []Match{}, Messages: []Message{{Role: "customer", Text: value}}}
+		i := &Intake{Locale: intakeLocale(input.Locale, ""), Description: value, Category: suggestion.Category, Route: suggestion.Route, Matches: []Match{}, Messages: []Message{{Role: "customer", Text: value}}}
 		ask(i, "detail", suggestion.Question, suggestion.Options...)
 		state.Intake = i
 		return nil
@@ -140,6 +219,14 @@ func applyIntake(state *State, input Action) error {
 	if i == nil {
 		return errors.New("describe the job first")
 	}
+	if input.Action == "answer-intake" && strings.HasPrefix(value, "intake:") {
+		if _, _, ok := intakeAnswerValue(i, value); !ok {
+			return errors.New("this answer option no longer applies; use the current question")
+		}
+	}
+	i.Locale = intakeLocale(input.Locale, i.Locale)
+	i.Question = intakeText(i.Locale, i.Question)
+	intakeOptions(i, i.Options)
 
 	if input.Action == "return-to-matches" || input.Action == "revise-intake" {
 		if input.Action == "return-to-matches" && state.Cancelled && state.CancelledBy == "professional" {
@@ -200,7 +287,7 @@ func applyIntake(state *State, input Action) error {
 			return errors.New("this request is already on the area waitlist")
 		}
 		i.Waitlisted = true
-		i.Messages = append(i.Messages, Message{Role: "assistant", Text: "Your request is saved on the area waitlist for our operations team. No booking or provider match has been made yet."})
+		i.Messages = append(i.Messages, Message{Role: "assistant", Text: intakeText(i.Locale, "Your request is on the area waitlist. Our team can review it, and no visit has been booked yet.")})
 		return nil
 	}
 	if input.Action == "select-match" {
@@ -244,13 +331,21 @@ func applyIntake(state *State, input Action) error {
 			},
 			Evidence: []Evidence{}, Timeline: []Event{},
 		}
+		job.CompletionRound = 1
+		for _, requirement := range offer.EvidenceRequirements {
+			job.WorkItems = append(job.WorkItems, WorkItem{ID: requirement.ID, Description: requirement.Label, Kind: requirement.Kind, AddedInScope: job.ScopeVersion})
+		}
 		job.ScopeHistory = []ScopeSnapshot{scopeSnapshot(job)}
 		if i.Route == "assessment" {
 			job.Quote.Lines[0].Basis = "Published starting price; agree the scope and price together"
 			job.ScopeHistory = []ScopeSnapshot{scopeSnapshot(job)}
 		}
 		next := State{Job: job, AvailableSlots: append([]Appointment{}, input.AvailableSlots...)}
-		ask(i, "selected", match.Name+" is your selected professional. Review or negotiate the price below, then agree a time. Nothing is booked yet.")
+		selected := match.Name + " is your selected professional. Review or negotiate the price below, then agree a time. Nothing is booked yet."
+		if i.Locale == "nl" {
+			selected = match.Name + " is je gekozen vakpersoon. Bekijk of bespreek de prijs en spreek daarna een tijd af. Er is nog niets geboekt."
+		}
+		ask(i, "selected", selected)
 		next.Intake = i
 		*state = next
 		return nil
@@ -264,10 +359,11 @@ func applyIntake(state *State, input Action) error {
 	if i.Step != "detail" && i.Step != "urgency" && i.Step != "budget" {
 		return errors.New("use the options for the current step")
 	}
-	i.Messages = append(i.Messages, Message{Role: "customer", Text: value})
+	value, display, _ := intakeAnswerValue(i, value)
+	i.Messages = append(i.Messages, Message{Role: "customer", Text: display})
 	switch i.Step {
 	case "detail":
-		i.Detail = strings.TrimSpace(i.Detail + "\n" + value)
+		i.Detail = strings.TrimSpace(i.Detail + "\n" + display)
 		i.Category = ClarifiedCategory(*i, value, input.Suggestion)
 		if input.Suggestion != nil && ValidSuggestion(*input.Suggestion) {
 			i.Route = input.Suggestion.Route
@@ -280,7 +376,7 @@ func applyIntake(state *State, input Action) error {
 	case "urgency":
 		i.Urgency = value
 		// Timing is a preference. A visit still requires agreement on a date.
-		if containsAny(strings.ToLower(value), "urgent", "today", "now", "asap", "immediate", "emergency") {
+		if containsAny(strings.ToLower(value), "urgent", "today", "now", "asap", "immediate", "emergency", "vandaag", "dringend", "met spoed", "zo snel mogelijk", "onmiddellijk") {
 			i.Urgency = "As soon as possible"
 		}
 		ask(i, "budget", "Do you have a budget in mind? It's okay if you're not sure yet.", "I’ll describe my budget", "I’m flexible", "Help me understand the cost")
@@ -313,33 +409,36 @@ func finishIntake(i *Intake, matches []Match, questions ...string) {
 		if len(questions) > 0 && questions[0] != "" && !strings.Contains(strings.ToLower(questions[0]), "area waitlist") {
 			i.Step = "detail"
 			i.Question = questions[0]
-			i.Options = []string{"I’ll describe more"}
+			intakeOptions(i, []string{"I’ll describe more"})
 			i.Messages = append(i.Messages, Message{Role: "assistant", Text: questions[0]})
 			return
 		}
 		i.Step = "waitlist"
-		question := "There isn’t an approved professional with a published service covering this area yet. You can save this request to the area waitlist; no provider or booking will be invented."
+		question := intakeText(i.Locale, "There isn’t an approved professional serving this area yet. You can save your request to the area waitlist. No visit has been booked.")
 		i.Question = question
+		intakeOptions(i, nil)
 		if len(i.Messages) == 0 || i.Messages[len(i.Messages)-1].Text != question {
 			i.Messages = append(i.Messages, Message{Role: "assistant", Text: question})
 		}
 	} else {
-		sort.SliceStable(i.Matches, func(a, b int) bool {
-			x, y := i.Matches[a].EarliestAppointment, i.Matches[b].EarliestAppointment
-			if x == nil {
-				return false
-			}
-			if y == nil {
-				return true
-			}
-			return x.StartUTC < y.StartUTC
-		})
+		OrderMatches(i.Matches, i.Location)
 		ask(i, "matches", "Choose a professional to discuss your job and agree the plan, price and visit. Nothing is booked until you approve it.")
 		if i.Urgency == "As soon as possible" {
-			if first := i.Matches[0]; first.EarliestAppointment != nil {
-				i.Messages = append(i.Messages, Message{Role: "assistant", Text: "The earliest available visit is " + first.EarliestAppointment.StartsAt + " (" + first.EarliestAppointment.Timezone + ") with " + first.Name + ". Review the plan and approve this time if it works for you."})
+			var earliest *Match
+			for index := range i.Matches {
+				candidate := &i.Matches[index]
+				if candidate.EarliestAppointment != nil && (earliest == nil || candidate.EarliestAppointment.StartUTC < earliest.EarliestAppointment.StartUTC) {
+					earliest = candidate
+				}
+			}
+			if earliest != nil {
+				text := "The earliest available visit is " + earliest.EarliestAppointment.StartsAt + " (" + earliest.EarliestAppointment.Timezone + ") with " + earliest.Name + ". Review the plan and approve this time if it works for you."
+				if i.Locale == "nl" {
+					text = "Het vroegste beschikbare bezoek is " + earliest.EarliestAppointment.StartsAt + " (" + earliest.EarliestAppointment.Timezone + ") met " + earliest.Name + ". Bekijk het plan en ga akkoord met deze tijd als die je uitkomt."
+				}
+				i.Messages = append(i.Messages, Message{Role: "assistant", Text: text})
 			} else {
-				i.Messages = append(i.Messages, Message{Role: "assistant", Text: "These professionals have no published visit times yet. Choose one and propose a time; the visit is booked when you both agree."})
+				i.Messages = append(i.Messages, Message{Role: "assistant", Text: intakeText(i.Locale, "These professionals have no published visit times yet. Choose one and propose a time; the visit is booked when you both agree.")})
 			}
 		}
 	}

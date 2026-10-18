@@ -40,7 +40,10 @@ func accountFixture(t *testing.T, ctx context.Context, s *Store) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.pool.Exec(context.Background(), `DELETE FROM accounts WHERE id=$1`, user.ID) })
+	t.Cleanup(func() {
+		s.stopBackgroundLoops()
+		_, _ = s.pool.Exec(context.Background(), `DELETE FROM accounts WHERE id=$1`, user.ID)
+	})
 	if _, err = s.EnsureMembership(ctx, user.ID, identity.Customer); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +88,46 @@ func TestServiceMatchesIncludesCityWideProviderForNeighborhood(t *testing.T) {
 	}
 }
 
+func TestPublishedPostcodeInsideAreaLabelMatchesCustomerPostcode(t *testing.T) {
+	ctx, s := accountTestStore(t)
+	accountID := accountFixture(t, ctx, s)
+	category := "postcode-area-test-" + rand.Text()
+	if _, err := s.EnsureMembership(ctx, accountID, identity.Professional); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.SaveProfessionalProfile(ctx, accountID, workflow.ProfessionalProfile{
+		DisplayName: "Postcode coverage test", Category: category, ServiceName: "Sink leak repair",
+		ServiceDescription: "Inspect and repair a leaking sink trap.", ServiceArea: "AMSTERDAM CENTRUM 1020EN",
+		Currency: "EUR", PriceMinor: 9000, CalloutMinor: 2000, DurationMinutes: 60,
+		MaterialsPolicy: "Materials quoted separately.", Exclusions: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE professional_profiles SET status='active' WHERE account_id=$1`, accountID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE account_memberships SET status='active' WHERE account_id=$1 AND role='professional'`, accountID); err != nil {
+		t.Fatal(err)
+	}
+
+	location := workflow.Location{Label: "1020EN"}
+	services, err := s.ServiceCatalog(ctx, category, "leaking sink", "", location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services) != 1 || services[0].Name != profile.ServiceName {
+		t.Fatalf("ServiceCatalog(1020EN) = %+v, want the published service", services)
+	}
+	matches, err := s.ServiceMatches(ctx, category, "", services[0], location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].AccountID != accountID {
+		t.Fatalf("ServiceMatches(1020EN) = %+v, want the professional", matches)
+	}
+}
+
 func TestServiceCatalogFiltersAreaBeforeVariantLimit(t *testing.T) {
 	ctx, s := accountTestStore(t)
 	prefix := "catalog-area-" + rand.Text()
@@ -119,6 +162,7 @@ func TestSqlAreaCandidateFilterCoversGoEligibility(t *testing.T) {
 	cases := []struct{ provider, requested string }{
 		{"Amsterdam", "Amsterdam West"}, {"Amsterdam-Centrum", "Amsterdam/Centrum"},
 		{"Amsterdam West", "Amsterdam West"}, {"1015", "1015 Amsterdam"},
+		{"AMSTERDAM CENTRUM 1020EN", "1020EN"},
 		{"Amsterdam Noord", "Amsterdam West"},
 	}
 	for _, item := range cases {

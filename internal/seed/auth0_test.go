@@ -15,7 +15,7 @@ import (
 func TestImportContractResumesAndDoesNotResetUsersOrSendEmails(t *testing.T) {
 	output := t.TempDir()
 	m := manifest{Version: version, Issuer: "https://tenant.example/", Files: []string{"batch.json"}}
-	users := []authUser{{ID: "relay-seed-customer1", Email: "customer1@relay.com", PasswordHash: "test-hash", EmailVerified: true}}
+	users := []authUser{{ID: "relay-pro-test", Email: "test@samenklaar.test", PasswordHash: "test-hash", EmailVerified: true}}
 	if err := writeJSON(filepath.Join(output, "batch.json"), users); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestImportContractResumesAndDoesNotResetUsersOrSendEmails(t *testing.T) {
 			var imported []authUser
 			if err = json.NewDecoder(file).Decode(&imported); err != nil || len(imported) != 1 {
 				t.Error("invalid payload")
-			} else if imported[0].Username != "customer1" || imported[0].ID != "relay-seed-customer1" || imported[0].PasswordHash != "test-hash" {
+			} else if imported[0].Username != "test" || imported[0].ID != "relay-pro-test" || imported[0].PasswordHash != "test-hash" {
 				t.Error("identity/hash changed")
 			}
 			w.WriteHeader(http.StatusAccepted)
@@ -91,7 +91,7 @@ func TestImportContractResumesAndDoesNotResetUsersOrSendEmails(t *testing.T) {
 func TestImportUnknownPostOutcomeIsNotAutomaticallyResubmitted(t *testing.T) {
 	output := t.TempDir()
 	m := manifest{Version: version, Issuer: "https://tenant.example/", Files: []string{"batch.json"}}
-	if err := writeJSON(filepath.Join(output, "batch.json"), []authUser{{ID: "relay-seed-customer1", Email: "customer1@relay.com"}}); err != nil {
+	if err := writeJSON(filepath.Join(output, "batch.json"), []authUser{{ID: "relay-pro-test", Email: "test@samenklaar.test"}}); err != nil {
 		t.Fatal(err)
 	}
 	posts := 0

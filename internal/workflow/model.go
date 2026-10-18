@@ -125,6 +125,9 @@ type OperatorCase struct {
 	JobID       string    `json:"jobId,omitempty"`
 	JobTitle    string    `json:"jobTitle,omitempty"`
 	Paid        bool      `json:"paid,omitempty"`
+	// ReasonCode and Responsible let a client show a stalled-job reason in the viewer's language.
+	ReasonCode  string `json:"reasonCode,omitempty"`
+	Responsible string `json:"responsible,omitempty"`
 }
 
 // NotificationDeliveryHealth contains aggregate operational counts only; it
@@ -136,27 +139,31 @@ type NotificationDeliveryHealth struct {
 }
 
 type CatalogOffer struct {
-	ProfileID          string
-	AccountID          string
-	DisplayName        string
-	Category           string
-	ServiceName        string
-	ServiceDescription string
-	ServiceArea        string
-	Currency           string
-	PriceMinor         int64
-	CalloutMinor       int64
-	DurationMinutes    int
-	MaterialsPolicy    string
-	Exclusions         []string
+	EvidenceRequirements []EvidenceRequirement
+	ProfileID            string
+	AccountID            string
+	DisplayName          string
+	Category             string
+	ServiceName          string
+	ServiceDescription   string
+	ServiceArea          string
+	Currency             string
+	PriceMinor           int64
+	CalloutMinor         int64
+	DurationMinutes      int
+	MaterialsPolicy      string
+	Exclusions           []string
 }
 
 type Evidence struct {
-	AssetID     string `json:"assetId,omitempty"`
-	Label       string `json:"label"`
-	Description string `json:"description"`
-	Kind        string `json:"kind"`
-	ContentType string `json:"contentType,omitempty"`
+	ScopeVersion    int      `json:"scopeVersion,omitempty"`
+	CompletionRound int      `json:"completionRound,omitempty"`
+	WorkItemIDs     []string `json:"workItemIds,omitempty"`
+	AssetID         string   `json:"assetId,omitempty"`
+	Label           string   `json:"label"`
+	Description     string   `json:"description"`
+	Kind            string   `json:"kind"`
+	ContentType     string   `json:"contentType,omitempty"`
 }
 
 type EvidenceFinding struct {
@@ -170,7 +177,7 @@ type EvidenceReview struct {
 	Summary     string            `json:"summary"`
 	Coverage    []EvidenceFinding `json:"coverage"`
 	Limitations string            `json:"limitations"`
-	Model       string            `json:"model"`
+	Model       string            `json:"-"`
 	ReviewedAt  string            `json:"reviewedAt"`
 }
 
@@ -185,6 +192,7 @@ type JobReview struct {
 }
 
 type ScopeChange struct {
+	CreatedAt    string `json:"createdAt,omitempty"`
 	Status       string `json:"status"`
 	Description  string `json:"description"`
 	AmountMinor  int64  `json:"amountMinor"`
@@ -192,18 +200,22 @@ type ScopeChange struct {
 }
 
 type ScopeSnapshot struct {
+	WorkItems  []WorkItem  `json:"workItems,omitempty"`
 	Version    int         `json:"version"`
 	TotalMinor int64       `json:"totalMinor"`
 	Lines      []QuoteLine `json:"lines"`
 }
 
 type CancellationRequest struct {
-	Status      string `json:"status"`
-	RequestedBy string `json:"requestedBy"`
-	Reason      string `json:"reason,omitempty"`
-	RequestedAt string `json:"requestedAt"`
-	Resolution  string `json:"resolution,omitempty"`
-	ResolvedAt  string `json:"resolvedAt,omitempty"`
+	Kind                string       `json:"kind,omitempty"`
+	ProposalID          string       `json:"proposalId,omitempty"`
+	ProposedAppointment *Appointment `json:"proposedAppointment,omitempty"`
+	Status              string       `json:"status"`
+	RequestedBy         string       `json:"requestedBy"`
+	Reason              string       `json:"reason,omitempty"`
+	RequestedAt         string       `json:"requestedAt"`
+	Resolution          string       `json:"resolution,omitempty"`
+	ResolvedAt          string       `json:"resolvedAt,omitempty"`
 }
 
 type DisputeCase struct {
@@ -226,12 +238,14 @@ type AppointmentConfirmation struct {
 }
 
 type Event struct {
+	At   string `json:"at,omitempty"`
 	Text string `json:"text"`
 	Kind string `json:"kind"`
 	When string `json:"when"`
 }
 
 type PriceProposal struct {
+	CreatedAt    string `json:"createdAt,omitempty"`
 	ID           string `json:"id"`
 	Status       string `json:"status"`
 	Actor        string `json:"actor"`
@@ -241,6 +255,7 @@ type PriceProposal struct {
 }
 
 type DateProposal struct {
+	CreatedAt   string      `json:"createdAt,omitempty"`
 	ID          string      `json:"id"`
 	Status      string      `json:"status"`
 	Actor       string      `json:"actor"`
@@ -249,84 +264,118 @@ type DateProposal struct {
 }
 
 type Job struct {
-	ServiceDescription      string                   `json:"serviceDescription,omitempty"`
-	ServiceAddress          string                   `json:"serviceAddress,omitempty"`
-	AppointmentConfirmation *AppointmentConfirmation `json:"appointmentConfirmation,omitempty"`
-	PriceProposal           *PriceProposal           `json:"priceProposal,omitempty"`
-	DateProposal            *DateProposal            `json:"dateProposal,omitempty"`
-	Dispute                 *DisputeCase             `json:"dispute,omitempty"`
-	Location                *Location                `json:"location,omitempty"`
-	ID                      string                   `json:"id"`
-	ProfessionalProfileID   string                   `json:"professionalProfileId,omitempty"`
-	ProfessionalAccountID   string                   `json:"professionalAccountId,omitempty"`
-	Title                   string                   `json:"title"`
-	Customer                string                   `json:"customer"`
-	Professional            string                   `json:"professional"`
-	Description             string                   `json:"description"`
-	Category                string                   `json:"category"`
-	ScopeVersion            int                      `json:"scopeVersion"`
-	ScopeHistory            []ScopeSnapshot          `json:"scopeHistory"`
-	Quote                   Quote                    `json:"quote"`
-	QuoteApproved           bool                     `json:"quoteApproved"`
-	NeedsClarification      bool                     `json:"needsClarification"`
-	ClarificationQuestion   string                   `json:"clarificationQuestion"`
-	ClarificationAnswer     string                   `json:"clarificationAnswer"`
-	IntakeRoute             string                   `json:"intakeRoute,omitempty"`
-	Appointment             *Appointment             `json:"appointment"`
-	WorkStarted             bool                     `json:"workStarted"`
-	WorkStartedAt           string                   `json:"workStartedAt,omitempty"`
-	EvidenceSubmitted       bool                     `json:"evidenceSubmitted"`
-	EvidenceSubmittedAt     string                   `json:"evidenceSubmittedAt,omitempty"`
-	DetailsRequested        bool                     `json:"detailsRequested"`
-	DetailAdded             bool                     `json:"detailAdded"`
-	CompletionApproved      bool                     `json:"completionApproved"`
-	CompletionApprovedAt    string                   `json:"completionApprovedAt,omitempty"`
-	PaymentApprovedVersion  int                      `json:"paymentApprovedVersion"`
-	Paid                    bool                     `json:"paid"`
-	PaymentRefunded         bool                     `json:"paymentRefunded,omitempty"`
-	PaymentTransactionID    string                   `json:"paymentTransactionId,omitempty"`
-	RefundTransactionID     string                   `json:"refundTransactionId,omitempty"`
-	Evidence                []Evidence               `json:"evidence"`
-	EvidenceReview          *EvidenceReview          `json:"evidenceReview,omitempty"`
-	Review                  *JobReview               `json:"review,omitempty"`
-	Change                  *ScopeChange             `json:"change"`
-	Timeline                []Event                  `json:"timeline"`
+	PolicyRequirements         []PolicyRequirement      `json:"policyRequirements,omitempty"`
+	PolicyAcknowledgments      []PolicyAcknowledgment   `json:"policyAcknowledgments,omitempty"`
+	WorkItems                  []WorkItem               `json:"workItems,omitempty"`
+	CompletionRound            int                      `json:"completionRound,omitempty"`
+	EvidenceResolutions        []EvidenceResolution     `json:"evidenceResolutions,omitempty"`
+	ServiceDescription         string                   `json:"serviceDescription,omitempty"`
+	ServiceAddress             string                   `json:"serviceAddress,omitempty"`
+	AppointmentConfirmation    *AppointmentConfirmation `json:"appointmentConfirmation,omitempty"`
+	PriceProposal              *PriceProposal           `json:"priceProposal,omitempty"`
+	DateProposal               *DateProposal            `json:"dateProposal,omitempty"`
+	Dispute                    *DisputeCase             `json:"dispute,omitempty"`
+	Location                   *Location                `json:"location,omitempty"`
+	ID                         string                   `json:"id"`
+	ProfessionalProfileID      string                   `json:"professionalProfileId,omitempty"`
+	ProfessionalAccountID      string                   `json:"professionalAccountId,omitempty"`
+	Title                      string                   `json:"title"`
+	Customer                   string                   `json:"customer"`
+	Professional               string                   `json:"professional"`
+	Description                string                   `json:"description"`
+	Category                   string                   `json:"category"`
+	ScopeVersion               int                      `json:"scopeVersion"`
+	ScopeHistory               []ScopeSnapshot          `json:"scopeHistory"`
+	Quote                      Quote                    `json:"quote"`
+	QuoteApproved              bool                     `json:"quoteApproved"`
+	NeedsClarification         bool                     `json:"needsClarification"`
+	ClarificationQuestion      string                   `json:"clarificationQuestion"`
+	ClarificationAnswer        string                   `json:"clarificationAnswer"`
+	IntakeRoute                string                   `json:"intakeRoute,omitempty"`
+	Appointment                *Appointment             `json:"appointment"`
+	WorkStarted                bool                     `json:"workStarted"`
+	WorkStartedAt              string                   `json:"workStartedAt,omitempty"`
+	EvidenceSubmitted          bool                     `json:"evidenceSubmitted"`
+	EvidenceSubmittedAt        string                   `json:"evidenceSubmittedAt,omitempty"`
+	DetailsRequested           bool                     `json:"detailsRequested"`
+	DetailAdded                bool                     `json:"detailAdded"`
+	CompletionApproved         bool                     `json:"completionApproved"`
+	CompletionApprovedAt       string                   `json:"completionApprovedAt,omitempty"`
+	PaymentApprovedVersion     int                      `json:"paymentApprovedVersion"`
+	PaymentApprovedAt          string                   `json:"paymentApprovedAt,omitempty"`
+	DetailAddedAt              string                   `json:"detailAddedAt,omitempty"`
+	PaymentAuthorizedVersion   int                      `json:"paymentAuthorizedVersion"`
+	PaymentAuthorizationTiming string                   `json:"paymentAuthorizationTiming,omitempty"`
+	Paid                       bool                     `json:"paid"`
+	PaymentRefunded            bool                     `json:"paymentRefunded,omitempty"`
+	PaymentTransactionID       string                   `json:"paymentTransactionId,omitempty"`
+	RefundTransactionID        string                   `json:"refundTransactionId,omitempty"`
+	Evidence                   []Evidence               `json:"evidence"`
+	EvidenceReview             *EvidenceReview          `json:"evidenceReview,omitempty"`
+	Review                     *JobReview               `json:"review,omitempty"`
+	Change                     *ScopeChange             `json:"change"`
+	Timeline                   []Event                  `json:"timeline"`
 }
 
 type State struct {
+	ParentRequestID    string               `json:"parentRequestId,omitempty"`
 	Cancelled          bool                 `json:"cancelled"`
 	CancelledBy        string               `json:"cancelledBy,omitempty"`
 	CancellationReview *CancellationRequest `json:"cancellationReview,omitempty"`
 	WorkspaceID        string               `json:"workspaceId"`
 	Intake             *Intake              `json:"intake,omitempty"`
+	RequestPhotos      []RequestPhoto       `json:"requestPhotos,omitempty"`
 	Job                Job                  `json:"job"`
 	AvailableSlots     []Appointment        `json:"availableSlots"`
+	// AgentDialog is the customer's conversation with their assistant about scheduling. It holds the
+	// customer's stated availability, so the professional's view omits it.
+	AgentDialog *AgentDialog `json:"agentDialog,omitempty"`
+	// ProDialog is the professional's private conversation with their assistant.
+	ProDialog *AgentDialog `json:"proDialog,omitempty"`
 }
 
 type Action struct {
-	Rating              int               `json:"rating,omitempty"`
-	PriceAmountMinor    int64             `json:"priceAmountMinor,omitempty"`
-	ProposedAppointment *Appointment      `json:"proposedAppointment,omitempty"`
-	ProposalID          string            `json:"proposalId,omitempty"`
-	WorkspaceID         string            `json:"workspaceId,omitempty"`
-	ChangeAmountMinor   int64             `json:"changeAmountMinor,omitempty"`
-	ExpectedScope       int               `json:"-"`
-	Location            *Location         `json:"location,omitempty"`
-	Matches             []Match           `json:"-"`
-	SelectedOffer       *CatalogOffer     `json:"-"`
-	AvailableSlots      []Appointment     `json:"-"`
-	CustomerName        string            `json:"-"`
-	CustomerAccountID   string            `json:"-"`
-	Suggestion          *IntakeSuggestion `json:"-"`
-	Action              string            `json:"action"`
-	Actor               string            `json:"actor"`
-	Value               string            `json:"value"`
-	Category            string            `json:"category"`
-	Evidence            Evidence          `json:"evidence,omitempty"`
-	EvidenceReview      *EvidenceReview   `json:"evidenceReview,omitempty"`
-	SuggestedQuestion   string            `json:"-"`
-	PayPalCaptured      bool              `json:"-"`
-	PaymentCaptureID    string            `json:"-"`
+	ChoiceID                         string            `json:"choiceId,omitempty"`
+	ByAgent                          bool              `json:"-"`
+	Audience                         string            `json:"-"`
+	Dialog                           *AgentDialog      `json:"-"`
+	NoteCode                         string            `json:"-"`
+	NoteParams                       map[string]string `json:"-"`
+	PhotoAddedAt                     string            `json:"-"`
+	PolicyKind                       string            `json:"policyKind,omitempty"`
+	PolicyVersion                    string            `json:"policyVersion,omitempty"`
+	PublishedPolicy                  *ConsumerPolicy   `json:"-"`
+	Locale                           string            `json:"-"`
+	WorkItemIDs                      []string          `json:"workItemIds,omitempty"`
+	ExpectedEvidenceRound            int               `json:"-"`
+	Rating                           int               `json:"rating,omitempty"`
+	PriceAmountMinor                 int64             `json:"priceAmountMinor,omitempty"`
+	ProposedAppointment              *Appointment      `json:"proposedAppointment,omitempty"`
+	ProposalID                       string            `json:"proposalId,omitempty"`
+	WorkspaceID                      string            `json:"workspaceId,omitempty"`
+	ChangeAmountMinor                int64             `json:"changeAmountMinor,omitempty"`
+	ExpectedScope                    int               `json:"-"`
+	Location                         *Location         `json:"location,omitempty"`
+	Matches                          []Match           `json:"-"`
+	SelectedOffer                    *CatalogOffer     `json:"-"`
+	AvailableSlots                   []Appointment     `json:"-"`
+	CustomerName                     string            `json:"-"`
+	CustomerAccountID                string            `json:"-"`
+	Suggestion                       *IntakeSuggestion `json:"-"`
+	Action                           string            `json:"action"`
+	Actor                            string            `json:"actor"`
+	Value                            string            `json:"value"`
+	Category                         string            `json:"category"`
+	Evidence                         Evidence          `json:"evidence,omitempty"`
+	EvidenceReview                   *EvidenceReview   `json:"evidenceReview,omitempty"`
+	SuggestedQuestion                string            `json:"-"`
+	PayPalCaptured                   bool              `json:"-"`
+	PaymentCaptureID                 string            `json:"-"`
+	PaymentAuthorizationTiming       string            `json:"paymentAuthorizationTiming,omitempty"`
+	PayPalAuthorized                 bool              `json:"-"`
+	PaymentAuthorizationID           string            `json:"-"`
+	PaymentAuthorizationRequestID    string            `json:"-"`
+	PaymentAuthorizationScopeVersion int               `json:"-"`
 }
 
 func NewState() State {
@@ -337,12 +386,12 @@ func NewState() State {
 }
 
 func addEvent(job *Job, text, kind string) {
-	job.Timeline = append(job.Timeline, Event{Text: text, Kind: kind, When: time.Now().Format("15:04")})
+	job.Timeline = append(job.Timeline, Event{Text: text, Kind: kind, When: time.Now().Format("15:04"), At: time.Now().UTC().Format(time.RFC3339Nano)})
 }
 
 func scopeSnapshot(job Job) ScopeSnapshot {
 	lines := append([]QuoteLine(nil), job.Quote.Lines...)
-	return ScopeSnapshot{Version: job.ScopeVersion, TotalMinor: job.Quote.TotalMinor, Lines: lines}
+	return ScopeSnapshot{Version: job.ScopeVersion, TotalMinor: job.Quote.TotalMinor, Lines: lines, WorkItems: append([]WorkItem(nil), job.WorkItems...)}
 }
 
 // EvidenceBlob is the in-memory input passed to the optional evidence reviewer.

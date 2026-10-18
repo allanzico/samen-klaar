@@ -1,0 +1,10 @@
+jane-price@samenklaar.test
+mike-dawson@samenklaar.test
+sanne-de-vries@samenklaar.test
+omar-haddad@samenklaar.test
+lotte-jansen@samenklaar.test
+tom-whitaker@samenklaar.test
+priya-nair@samenklaar.test
+daan-visser@samenklaar.test
+chloe-martin@samenklaar.test
+kwame-boateng@samenklaar.test

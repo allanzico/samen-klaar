@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -25,6 +26,16 @@ type NotificationArgs struct {
 	EventKey      string `json:"eventKey"`
 	EventType     string `json:"eventType"`
 	RecipientRole string `json:"recipientRole"`
+}
+
+// agentQuestionEvent is the notification sent when an agent stops and asks its person. Its event key is
+// "agent-question:<escalation id>", so one email is sent per question and a stale one is dropped.
+const agentQuestionEvent = "agent-question"
+
+// notificationRequestID is the identity a notification uses for its request: the job once there is one,
+// otherwise the workspace itself (an agent can ask a question before any professional is chosen).
+func notificationRequestID(alias string) string {
+	return "COALESCE(NULLIF(" + alias + ".state_json #>> '{job,id}',''), " + alias + ".id)"
 }
 
 func (s *Store) NotificationDeliveryHealth(ctx context.Context) (workflow.NotificationDeliveryHealth, error) {
@@ -49,75 +60,162 @@ type NotificationWorker struct {
 func (w *NotificationWorker) Work(ctx context.Context, job *river.Job[NotificationArgs]) error {
 	args := job.Args
 	if args.JobID == "" || args.EventKey == "" || args.EventType == "" {
-		return fmt.Errorf("notification job is missing its event identity")
+		return errors.New("notification job is missing its event identity")
 	}
 	if args.RecipientRole != "customer" && args.RecipientRole != "professional" {
-		return fmt.Errorf("notification recipient role is invalid")
+		return errors.New("notification recipient role is invalid")
 	}
-	if w.sender == nil {
-		_, err := w.pool.Exec(ctx, `UPDATE notification_outbox SET status='adapter_unconfigured', updated_at=now()
-			WHERE job_id=$1 AND event_key=$2 AND status <> 'sent'`, args.JobID, args.EventKey)
+	tx, err := w.pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-
-	var emailAddress, displayName, workspaceID string
-	lookup := w.pool.QueryRow(ctx, `
-		SELECT account.email, account.display_name, workspace.id
-		FROM account_workspaces workspace
-	JOIN accounts account ON account.id = CASE WHEN $2 = 'customer'
-			THEN workspace.account_id
-			ELSE workspace.state_json #>> '{job,professionalAccountId}' END
-		WHERE workspace.state_json #>> '{job,id}' = $1`, args.JobID, args.RecipientRole)
-	if err := lookup.Scan(&emailAddress, &displayName, &workspaceID); err != nil {
-		if !errors.Is(err, pgx.ErrNoRows) {
+	defer func() { _ = tx.Rollback(ctx) }()
+	var emailAddress, displayName, workspaceID, locale string
+	var raw []byte
+	err = tx.QueryRow(ctx, `SELECT COALESCE(account.email,''),COALESCE(account.display_name,''),workspace.id,COALESCE(account.locale,'en'),workspace.state_json
+  FROM account_workspaces workspace
+  LEFT JOIN accounts account ON account.id=CASE WHEN $2='customer' THEN workspace.account_id ELSE workspace.state_json #>> '{job,professionalAccountId}' END
+  WHERE `+notificationRequestID("workspace")+`=$1 FOR SHARE OF workspace`, args.JobID, args.RecipientRole).Scan(&emailAddress, &displayName, &workspaceID, &locale, &raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='obsolete',last_error='workspace_unavailable',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status NOT IN ('sent','obsolete')`, args.JobID, args.EventKey); err != nil {
 			return err
 		}
-		if _, updateErr := w.pool.Exec(ctx, `UPDATE notification_outbox SET status='failed', last_error='recipient_unavailable', updated_at=now()
-			WHERE job_id=$1 AND event_key=$2 AND status <> 'sent'`, args.JobID, args.EventKey); updateErr != nil {
-			return updateErr
-		}
-		return nil
+		return tx.Commit(ctx)
 	}
-	if strings.TrimSpace(emailAddress) == "" {
-		_, err := w.pool.Exec(ctx, `UPDATE notification_outbox SET status='failed', last_error='recipient_email_missing', updated_at=now()
-			WHERE job_id=$1 AND event_key=$2 AND status <> 'sent'`, args.JobID, args.EventKey)
+	if err != nil {
 		return err
 	}
-
+	var state workflow.State
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return err
+	}
+	state.WorkspaceID = workspaceID
+	if args.EventType == agentQuestionEvent {
+		var stillOpen bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_escalations WHERE id=$1 AND workspace_id=$2 AND resolved_at IS NULL)`, agentQuestionID(args.EventKey), workspaceID).Scan(&stillOpen); err != nil {
+			return err
+		}
+		if !stillOpen {
+			if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='obsolete',last_error='action_no_longer_required',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status NOT IN ('sent','obsolete')`, args.JobID, args.EventKey); err != nil {
+				return err
+			}
+			return tx.Commit(ctx)
+		}
+	}
+	if isActionableReminder(args.EventType) {
+		if err := hydrateWaitingTimes(ctx, tx, &state); err != nil {
+			return err
+		}
+		active := reminderMatchesState(args, state, time.Now().UTC())
+		if active {
+			paused, err := coordinationPausesReminder(ctx, tx, state.Job, args.EventType)
+			if err != nil {
+				return err
+			}
+			active = !paused
+		}
+		if active && args.EventType == "checkout-reminder" {
+			status, err := paymentStatusTx(ctx, tx, state.Job)
+			if err != nil {
+				return err
+			}
+			active = checkoutReminderActionable(status)
+		}
+		if !active {
+			if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='obsolete',last_error='action_no_longer_required',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status NOT IN ('sent','obsolete')`, args.JobID, args.EventKey); err != nil {
+				return err
+			}
+			return tx.Commit(ctx)
+		}
+	}
+	if w.sender == nil {
+		if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='adapter_unconfigured',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status NOT IN ('sent','obsolete')`, args.JobID, args.EventKey); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	if strings.TrimSpace(emailAddress) == "" {
+		if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='failed',last_error='recipient_email_missing',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status NOT IN ('sent','obsolete')`, args.JobID, args.EventKey); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
 	var claimed bool
-	if err := w.pool.QueryRow(ctx, `UPDATE notification_outbox
-		SET status='sending', attempts=attempts+1, last_error='', updated_at=now()
-		WHERE job_id=$1 AND event_key=$2 AND status IN ('queued','failed','adapter_unconfigured')
-		RETURNING true`, args.JobID, args.EventKey).Scan(&claimed); err != nil {
-		// A completed or concurrently claimed event must not be sent twice.
+	if err := tx.QueryRow(ctx, `UPDATE notification_outbox SET status='sending',attempts=attempts+1,last_error='',updated_at=now()
+  WHERE job_id=$1 AND event_key=$2 AND status IN ('queued','failed','adapter_unconfigured') RETURNING true`, args.JobID, args.EventKey).Scan(&claimed); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
 		return err
 	}
-
 	link := strings.TrimRight(w.appBaseURL, "/") + "/?workspaceId=" + url.QueryEscape(workspaceID)
 	if w.appBaseURL == "" {
 		link = "http://localhost:8090/?workspaceId=" + url.QueryEscape(workspaceID)
 	}
-	messageID := notificationMessageID(args.EventKey)
-	message := mailadapter.Message{
-		To: emailAddress, ToName: displayName, Subject: notificationSubject(args.EventType),
-		Body:      notificationBody(args.EventType, link),
-		MessageID: messageID,
-	}
+	message := mailadapter.Message{To: emailAddress, ToName: displayName, Subject: notificationSubject(args.EventType, locale), Body: notificationBody(args.EventType, link, locale), MessageID: notificationMessageID(args.EventKey)}
+	// The workspace SHARE lock is retained through delivery, ordering it against
+	// cancellation and decisions. SMTP remains at-least-once across a crash after
+	// acceptance but before this transaction commits.
 	if err := w.sender.Send(ctx, message); err != nil {
-		_, _ = w.pool.Exec(ctx, `UPDATE notification_outbox SET status='failed', last_error='delivery_failed', updated_at=now()
-			WHERE job_id=$1 AND event_key=$2 AND status='sending'`, args.JobID, args.EventKey)
+		if _, updateErr := tx.Exec(ctx, `UPDATE notification_outbox SET status='failed',last_error='delivery_failed',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status='sending'`, args.JobID, args.EventKey); updateErr != nil {
+			return updateErr
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return commitErr
+		}
 		return err
 	}
-	_, err := w.pool.Exec(ctx, `UPDATE notification_outbox SET status='sent', last_error='', updated_at=now()
-		WHERE job_id=$1 AND event_key=$2 AND status='sending'`, args.JobID, args.EventKey)
-	return err
+	if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='sent',last_error='',updated_at=now() WHERE job_id=$1 AND event_key=$2 AND status='sending'`, args.JobID, args.EventKey); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
-func notificationSubject(eventType string) string {
+func agentQuestionID(eventKey string) int64 {
+	var id int64
+	_, _ = fmt.Sscanf(strings.TrimPrefix(eventKey, agentQuestionEvent+":"), "%d", &id)
+	return id
+}
+
+func isActionableReminder(event string) bool {
+	switch event {
+	case "appointment-reminder", "missed-visit-reminder", "price-proposal-reminder", "date-proposal-reminder", "scope-change-reminder", "evidence-overdue", "completion-note-overdue", "completion-review-reminder", "payment-approval-reminder", "checkout-reminder":
+		return true
+	}
+	return false
+}
+
+func reminderMatchesState(args NotificationArgs, state workflow.State, now time.Time) bool {
+	job := state.Job
+	if state.Cancelled || job.Paid || job.Dispute != nil && job.Dispute.Status != "resolved" && job.Dispute.Status != "rework" || state.CancellationReview != nil && state.CancellationReview.Status == "pending" {
+		return false
+	}
+	if args.EventType == "appointment-reminder" {
+		if job.Appointment == nil || job.AppointmentConfirmation == nil || job.AppointmentConfirmation.Status != "confirmed" {
+			return false
+		}
+		start, err := time.Parse(time.RFC3339, job.Appointment.StartUTC)
+		if err != nil || !start.After(now) || start.After(now.Add(24*time.Hour)) {
+			return false
+		}
+		anchor := fmt.Sprintf("scope:%d:%s:%s", job.ScopeVersion, job.Appointment.StartUTC, job.Appointment.EndUTC)
+		return args.EventKey == fmt.Sprintf("%s:%s:%s:%s", job.ID, args.EventType, anchor, args.RecipientRole)
+	}
+	for _, wait := range workflow.WaitingStates(state) {
+		if wait.EventType == args.EventType && wait.ResponsibleRole == args.RecipientRole && wait.Due(now) && wait.EventKey(job) == args.EventKey {
+			return true
+		}
+	}
+	return false
+}
+
+func notificationSubject(eventType string, locales ...string) string {
+	if len(locales) > 0 && locales[0] == "nl" {
+		return dutchNotificationSubject(eventType)
+	}
 	subjects := map[string]string{
+		"coordination-question":      "A follow-up about your agreed service",
+		"coordination-summary":       "A service explanation is ready for review",
 		"cancel-request":             "Service request cancellation update",
 		"send-message":               "New message about your service request",
 		"propose-price":              "New service price proposal",
@@ -125,6 +223,8 @@ func notificationSubject(eventType string) string {
 		"decline-price":              "Service price proposal declined",
 		"propose-date":               "New visit time proposal",
 		"accept-date":                "Visit time proposal accepted",
+		"late-reschedule-requested":  "Late visit change is awaiting review",
+		"withdrawal-requested":       "Withdrawal request is awaiting review",
 		"decline-date":               "Visit time proposal declined",
 		"approve-and-book":           "Service visit request update",
 		"book-appointment":           "Service visit request update",
@@ -138,11 +238,17 @@ func notificationSubject(eventType string) string {
 		"confirm-payment":            "Service payment complete",
 		"refund-completed":           "Your service payment has been refunded",
 		"payment-review":             "Your service payment needs review",
-		"appointment-reminder":       "Your confirmed service visit is tomorrow",
+		"appointment-reminder":       "Your confirmed service visit is within 24 hours",
+		"missed-visit-reminder":      "Please check the status of your service visit",
+		"price-proposal-reminder":    "A service price proposal is waiting for your decision",
+		"date-proposal-reminder":     "A visit time proposal is waiting for your decision",
+		"scope-change-reminder":      "A service scope change is waiting for your decision",
+		"checkout-reminder":          "Check the payment status for your completed service",
 		"evidence-overdue":           "Completion evidence is due for your service request",
 		"completion-note-overdue":    "Add the work note needed for completion review",
 		"completion-review-reminder": "Review your service completion",
 		"payment-approval-reminder":  "Review the payment for your completed service",
+		agentQuestionEvent:           "Your agent needs your decision",
 		"submit-review":              "A customer reviewed your completed service",
 		"respond-to-review":          "Your professional responded to your review",
 	}
@@ -152,9 +258,24 @@ func notificationSubject(eventType string) string {
 	return "Service request update"
 }
 
-func notificationBody(eventType, link string) string {
+func notificationBody(eventType, link string, locales ...string) string {
+	if len(locales) > 0 && locales[0] == "nl" {
+		return dutchNotificationBody(eventType, link)
+	}
 	opening := "There is an update to a service request in your SamenKlaar account."
 	switch eventType {
+	case agentQuestionEvent:
+		opening = "Your agent stopped on a service request because the next step needs your decision or falls outside the limits you set. Open the request to see its question."
+	case "missed-visit-reminder":
+		opening = "The confirmed visit has passed without a recorded start. Tell us what happened so the visit can be reviewed; no fault has been assigned."
+	case "price-proposal-reminder":
+		opening = "A price proposal has been waiting for your decision for 24 hours. Review the proposed amount and accept or decline it."
+	case "date-proposal-reminder":
+		opening = "A proposed visit time has been waiting for your decision for 24 hours. Review the proposal and accept or decline it."
+	case "scope-change-reminder":
+		opening = "A proposed service change has been waiting for your decision for 24 hours. The existing scope remains in force until you accept a change."
+	case "checkout-reminder":
+		opening = "You approved the payment amount, but payment has not completed. Check the saved PayPal status before continuing; reconcile any uncertain result before retrying."
 	case "appointment-reminder":
 		opening = "Your confirmed service visit is scheduled within the next 24 hours. Review the visit details in your account."
 	case "evidence-overdue":
@@ -260,7 +381,20 @@ func notificationForAction(input workflow.Action, job workflow.Job) (eventType, 
 		return "", "", false
 	}
 	switch input.Action {
-	case "cancel-request", "withdraw-price", "withdraw-date", "send-message", "propose-price", "accept-price", "decline-price", "propose-date", "accept-date", "decline-date":
+	case "accept-date":
+		if job.DateProposal != nil && job.DateProposal.Status == "review_pending" {
+			if input.Actor == "customer" {
+				return "late-reschedule-requested", "professional", true
+			}
+			return "late-reschedule-requested", "customer", true
+		}
+		if input.Actor == "customer" {
+			return input.Action, "professional", true
+		}
+		return input.Action, "customer", true
+	case "request-withdrawal":
+		return "withdrawal-requested", "professional", true
+	case "cancel-request", "withdraw-price", "withdraw-date", "send-message", "propose-price", "accept-price", "decline-price", "propose-date", "decline-date":
 		if input.Actor == "customer" {
 			return input.Action, "professional", true
 		}

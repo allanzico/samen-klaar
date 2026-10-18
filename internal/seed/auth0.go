@@ -80,7 +80,7 @@ func Import(ctx context.Context, issuer, clientID, token, connection, output str
 	var manifest manifest
 	data, err := os.ReadFile(filepath.Join(output, "manifest.json"))
 	if err != nil || json.Unmarshal(data, &manifest) != nil {
-		return errors.New("run make seed-local first")
+		return errors.New("run make seed-pros first")
 	}
 	issuer = strings.TrimRight(issuer, "/") + "/"
 	if manifest.Issuer != issuer || manifest.Version != version {
@@ -145,7 +145,7 @@ func importPrepared(ctx context.Context, m management, manifest manifest, client
 		}
 		if conn.Options.RequiresUsername {
 			for i := range users {
-				users[i].Username = strings.TrimSuffix(users[i].Email, "@relay.com")
+				users[i].Username = strings.SplitN(users[i].Email, "@", 2)[0]
 			}
 			data, err = json.Marshal(users)
 			if err != nil {
