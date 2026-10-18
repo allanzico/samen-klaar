@@ -1,0 +1,40 @@
+# Render Blueprint: one web service (the Dockerfile image: Go API + built frontend) and one PostgreSQL database.
+# Secrets and provider settings live in the dashboard environment group "samenklaar-env" (see README, "Deploy on Render").
+databases:
+  - name: samenklaar-db
+    databaseName: relay
+    user: relay
+    region: frankfurt
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+    ipAllowList: [] # reachable only from Render services in the same region
+
+services:
+  - type: web
+    name: samenklaar
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    region: frankfurt
+    plan: starter
+    numInstances: 1 # in-memory locks and limiters need exactly one replica
+    healthCheckPath: /api/health/ready
+    preDeployCommand: /api migrate
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - fromGroup: samenklaar-env
+      - key: DATABASE_URL
+        fromDatabase:
+          name: samenklaar-db
+          property: connectionString
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: APP_ADDR
+        value: 0.0.0.0:10000
+      - key: WEB_DIR
+        value: /app/dist
+      # Render's edge overwrites this header with the connection peer; the app uses it for sign-in throttles.
+      - key: CLIENT_IP_HEADER
+        value: True-Client-IP

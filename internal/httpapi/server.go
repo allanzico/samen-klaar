@@ -77,6 +77,9 @@ type Dependencies struct {
 	Operators     OperatorService
 	Agents        AgentStore
 	Readiness     func(context.Context) error
+	// ClientIPHeader names the header the edge proxy overwrites with the
+	// connection peer (default X-Real-IP, as set by the bundled Caddy gateway).
+	ClientIPHeader string
 }
 
 type Server struct {
@@ -86,6 +89,7 @@ type Server struct {
 	auth            *identity.Auth
 	sessions        SessionResolver
 	appOrigin       string
+	clientIPHeader  string
 	providers       ProviderConfig
 	ai              IntakeAI
 	r2              EvidenceStorage
@@ -118,7 +122,7 @@ func New(deps Dependencies) *Server {
 	if sessions == nil && deps.Auth != nil {
 		sessions = deps.Auth
 	}
-	return &Server{appName: appName, webDirectory: deps.WebDirectory, store: deps.Store, auth: deps.Auth, sessions: sessions, appOrigin: origin, providers: deps.Providers, ai: deps.AI, r2: deps.Evidence, paypal: deps.Payments, refunds: deps.Refunds, marketplace: deps.Marketplace, webhook: deps.Webhook, professionals: deps.Professionals, directory: deps.Directory, operators: deps.Operators, agents: deps.Agents, readiness: deps.Readiness, limiter: newRateLimiter()}
+	return &Server{appName: appName, webDirectory: deps.WebDirectory, store: deps.Store, auth: deps.Auth, sessions: sessions, appOrigin: origin, providers: deps.Providers, ai: deps.AI, r2: deps.Evidence, paypal: deps.Payments, refunds: deps.Refunds, marketplace: deps.Marketplace, webhook: deps.Webhook, professionals: deps.Professionals, directory: deps.Directory, operators: deps.Operators, agents: deps.Agents, readiness: deps.Readiness, limiter: newRateLimiter(), clientIPHeader: clientIPHeaderName(deps.ClientIPHeader)}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -177,7 +181,23 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/operator/queue", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorQueueHandler)))
 	mux.Handle("/api/operator/professionals/{id}/review", s.protect(true, identity.Operator)(http.HandlerFunc(s.professionalReviewHandler)))
 	mux.Handle("/api/operator/cases/{workspaceId}/resolve", s.protect(true, identity.Operator)(http.HandlerFunc(s.resolveWorkCaseHandler)))
-	return frontend(mux, s.webDirectory)
+	return s.securityHeaders(frontend(mux, s.webDirectory))
+}
+
+// securityHeaders keeps the browser protections in the application so they hold
+// behind any proxy (the bundled Caddy gateway or a platform router).
+func (s *Server) securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'")
+		if strings.HasPrefix(s.appOrigin, "https://") {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) paypalWebhookHandler(w http.ResponseWriter, r *http.Request) {
@@ -315,7 +335,7 @@ func (s *Server) authHandler(handler func(http.ResponseWriter, *http.Request, *i
 // client-supplied forwarding headers cannot choose the bucket.
 func (s *Server) limitByClientIP(bucket string, perSecond float64, burst int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r)
+		ip := clientIP(r, s.clientIPHeader)
 		if !s.limiter.allow("client-ip:"+bucket+":"+ip, perSecond, burst, time.Now()) {
 			w.Header().Set("Retry-After", "2")
 			http.Error(w, "too many requests; try again shortly", http.StatusTooManyRequests)
@@ -325,8 +345,15 @@ func (s *Server) limitByClientIP(bucket string, perSecond float64, burst int, ne
 	})
 }
 
-func clientIP(r *http.Request) string {
-	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ip != nil {
+func clientIPHeaderName(configured string) string {
+	if configured = strings.TrimSpace(configured); configured != "" {
+		return configured
+	}
+	return "X-Real-IP"
+}
+
+func clientIP(r *http.Request, header string) string {
+	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get(header))); ip != nil {
 		return ip.String()
 	}
 	peer := r.RemoteAddr

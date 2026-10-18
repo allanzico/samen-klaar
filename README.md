@@ -46,6 +46,25 @@ Production runs the same three containers on one Linux server, behind Caddy with
 4. **Server.** Copy `.env.production` to the server's project root, run `make init-prod` (it reads `DOMAIN`, `ACME_EMAIL`, `APP_IMAGE` and the app settings from that file, generates the database password and writes `.secrets/prod/app.env` and `.deploy/prod.env`), put the `APP_IMAGE` value in `.deploy/prod.env`, then `make validate-prod` and `make deploy-prod`.
 5. **Operations.** `make backup-prod` takes a database dump (deploys also take one first); `make rollback-prod` restores the previous app image; `make status-prod` and `make logs-prod` show what is running. Run a single app replica until the in-memory locks and limiters move to shared storage. Operator access is provisioned by the owner in PostgreSQL; it cannot be granted from the app.
 
+## Deploy on Render
+
+[render.yaml](render.yaml) describes one Docker web service (Starter, one instance, Frankfurt) and one PostgreSQL 16 database. Migrations run as the pre-deploy command (`/api migrate`) before each release goes live, and `/api/health/ready` gates the cutover. Everything else comes from an environment group.
+
+1. **Environment group.** Dashboard → Env Groups → New → name it `samenklaar-env` → *Add from .env* → paste the contents of `.env.render` (generated from `.env.production`, untracked). Then add `SMTP_ADDR` (`host:587`), `SMTP_USERNAME` and `SMTP_PASSWORD` from your mail provider; the app will not start in production without SMTP. `DATABASE_URL`, `APP_ENV`, `PORT`, `APP_ADDR`, `WEB_DIR` and `CLIENT_IP_HEADER` are set by the Blueprint.
+2. **Blueprint.** Push the branch, then Dashboard → New → Blueprint → pick this repository and branch → Apply. Render builds the image (the build runs the frontend and Go tests), migrates, and starts the service.
+3. **Domain.** Service → Settings → Custom Domains → add `samenklaar.com` and create the DNS records Render shows. `APP_BASE_URL` must equal the address people use, so if you first test on the `onrender.com` address, change `APP_BASE_URL` and `AUTH0_REDIRECT_URI` in the group to that address (and back later).
+4. **Auth0.** Add `https://<domain>/api/auth/callback` to Allowed Callback URLs and `https://<domain>` to Allowed Logout URLs and Allowed Web Origins.
+5. **PayPal.** Register a sandbox webhook at `https://<domain>/api/paypal/webhook` and put its ID in `PAYPAL_WEBHOOK_ID`.
+6. **Operator.** Sign in once, then in the database's shell (Render → samenklaar-db → Connect):
+
+```sql
+INSERT INTO account_memberships (account_id, role, status)
+SELECT id, 'operator', 'active' FROM accounts WHERE email = 'you@example.com'
+ON CONFLICT (account_id, role) DO UPDATE SET status = 'active', updated_at = now();
+```
+
+Keep a single instance: locks and rate limits are in memory. Render's Starter instance never sleeps, which the 30-second agent sweep and background jobs need.
+
 ## Product capabilities
 
 - **Separate accounts and requests:** Auth0 identity plus PostgreSQL memberships; each customer can maintain multiple requests, and a professional can have multiple assigned jobs. Workspace IDs are checked against the signed-in customer owner or assigned professional on state, evidence and payment actions.
