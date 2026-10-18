@@ -87,6 +87,8 @@ Branch `redesign-v2` (one squashed commit on top of `main`, no PR yet). The loca
 
 ## Configuration and mode behavior
 
+Production settings live in an untracked `.env.production` (template: `.env.example`); `make init-prod` imports them into `.secrets/prod/app.env`. See the README, "Production".
+
 There is no `APP_MODE=demo`. `APP_ENV` is `development` or `production`. AI provider selection supports Gemini, OpenAI, and Claude (Anthropic); unsupported providers fail startup. The runtime requires a configured AI provider, private R2 and PayPal credentials. Auth0/PostgreSQL may be absent only in local development, in which case sign-in and account workspaces are unavailable. Production startup fails fast when database, OIDC or built frontend settings are missing.
 
 The root `.env` is ignored by Git. Choose a model ID supported by the selected provider and set it in `AI_MODEL`; `AI_PROVIDER_KEY` contains the selected provider's server-side key and is never sent to the browser or logged by the app. Production configuration also requires `PAYPAL_WEBHOOK_ID`, `SMTP_ADDR`, and `SMTP_FROM`; configure a webhook on the PayPal app used by the sandbox credentials and subscribe it to the event types in [PAYMENTS.md](PAYMENTS.md).

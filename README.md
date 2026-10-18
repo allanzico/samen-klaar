@@ -35,7 +35,16 @@ The welcome page appears immediately; checking for an existing sign-in runs in t
 
 The same three containers run locally and on the production server: Caddy, the app (Go API + built Svelte frontend), and PostgreSQL with a persistent volume. [docker/Dockerfile](docker/Dockerfile) builds everything inside Docker. Docker and Caddy configuration and deployment scripts live in `docker/`; Make runs Compose with the repository root as its project and build context. `make infra-local` starts just PostgreSQL; `make stop-local` stops the stack while preserving data. After editing code or credentials, rerun `make deploy-local` to rebuild and apply the changes.
 
-Production uses the same stack on one Linux server: `make init-prod DOMAIN=app.your-domain.com ACME_EMAIL=you@your-domain.com`, fill the server credentials, set an immutable release image, then run `make deploy-prod` on the server. Deployments validate configuration, back up production data, run migrations separately, wait for readiness, and attempt app image rollback if replacement fails.
+
+## Production
+
+Production runs the same three containers on one Linux server, behind Caddy with automatic HTTPS. The app refuses to start unless its configuration is complete (`make validate-prod` runs the same check without starting anything). PayPal stays sandbox-only: the app rejects any other mode until PayPal approves the platform.
+
+1. **Configuration.** Copy `.env.example` to `.env.production` (never committed) and change the lines marked `PRODUCTION`: `APP_ENV=production`, `APP_BASE_URL=https://<domain>`, `AUTH0_REDIRECT_URI=https://<domain>/api/auth/callback`, plus `DOMAIN`, `ACME_EMAIL` and the SMTP settings (`SMTP_ADDR`, `SMTP_FROM`, and `SMTP_USERNAME`/`SMTP_PASSWORD` together). Search the file for `TODO`.
+2. **External services.** In Auth0 add `https://<domain>/api/auth/callback` to the Allowed Callback URLs and `https://<domain>` to the Allowed Logout URLs and Web Origins. In PayPal register a webhook at `https://<domain>/api/paypal/webhook` on the sandbox app and put its ID in `PAYPAL_WEBHOOK_ID`. Point the domain's DNS at the server and open ports 80 and 443. Set up SPF, DKIM and DMARC for the sender domain. Prefer a separate R2 bucket and keys for production.
+3. **Release image.** On a clean checkout run `make publish IMAGE_REPO=registry/samen-klaar`. It runs the full check gate, pushes the image and writes `APP_IMAGE=registry/samen-klaar@sha256:…` to `.deploy/release.env`.
+4. **Server.** Copy `.env.production` to the server's project root, run `make init-prod` (it reads `DOMAIN`, `ACME_EMAIL`, `APP_IMAGE` and the app settings from that file, generates the database password and writes `.secrets/prod/app.env` and `.deploy/prod.env`), put the `APP_IMAGE` value in `.deploy/prod.env`, then `make validate-prod` and `make deploy-prod`.
+5. **Operations.** `make backup-prod` takes a database dump (deploys also take one first); `make rollback-prod` restores the previous app image; `make status-prod` and `make logs-prod` show what is running. Run a single app replica until the in-memory locks and limiters move to shared storage. Operator access is provisioned by the owner in PostgreSQL; it cannot be granted from the app.
 
 ## Product capabilities
 
