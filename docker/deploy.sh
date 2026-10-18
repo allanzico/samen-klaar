@@ -21,8 +21,18 @@ compose() {
   docker compose --project-directory . --env-file "$config" -f docker/compose.yaml -f "docker/compose.$mode.yaml" "$@"
 }
 
+# The untracked file that seeds an environment's app settings: .env locally, .env.production in production.
+settings_file() { if [ "$mode" = prod ]; then echo .env.production; else echo .env; fi; }
+
+# One value from the production settings file (DOMAIN, ACME_EMAIL, APP_IMAGE); empty when absent.
+production_value() {
+  [ -f .env.production ] || return 0
+  awk -F= -v key="$1" '$1 == key { print substr($0, length(key) + 2); exit }' .env.production
+}
+
 import_local_settings() {
-  [ "$mode" = local ] && [ -f .env ] || return 0
+  source_file=$(settings_file)
+  [ -f "$source_file" ] || return 0
   # Only fill empty settings on an existing deployment. Keep its database URL,
   # browser origin and callback, and never print provider credentials.
   umask 077
@@ -32,7 +42,7 @@ import_local_settings() {
     FILENAME == ARGV[1] { pos=index($0,"="); if(pos>0) values[substr($0,1,pos-1)]=substr($0,pos+1); next }
     { pos=index($0,"="); key=substr($0,1,pos-1); value=substr($0,pos+1);
       if(pos>0 && key!="DATABASE_URL" && key!="APP_BASE_URL" && key!="AUTH0_REDIRECT_URI" && !empty(values[key]) && (replace_existing=="true" || empty(value))) print key "=" values[key]; else print }
-  ' .env "$secrets/app.env" > "$import_file"
+  ' "$source_file" "$secrets/app.env" > "$import_file"
   if cmp -s "$import_file" "$secrets/app.env"; then
     rm "$import_file"
   else
@@ -46,13 +56,17 @@ init() {
   mkdir -p "$state" "$secrets"
   chmod 700 .deploy .secrets "$state" "$secrets"
   if [ "$mode" = prod ]; then
-    domain=${DOMAIN:-app.example.com}
-    email=${ACME_EMAIL:-you@example.com}
+    # Command-line values win; .env.production fills the rest; the placeholders make deploy refuse to run.
+    domain=${DOMAIN:-$(production_value DOMAIN)}
+    domain=${domain:-app.example.com}
+    email=${ACME_EMAIL:-$(production_value ACME_EMAIL)}
+    email=${email:-you@example.com}
     printf '%s\n' "$domain" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$' || fail 'DOMAIN must be a hostname'
     printf '%s\n' "$email" | grep -Eq '^[a-zA-Z0-9._+%-]+@[a-zA-Z0-9.-]+$' || fail 'ACME_EMAIL must be an email address'
     base="https://$domain"
     app_env=production
-    image=registry.example.com/samen-klaar@sha256:REPLACE_WITH_RELEASE_DIGEST
+    image=${APP_IMAGE:-$(production_value APP_IMAGE)}
+    image=${image:-registry.example.com/samen-klaar@sha256:REPLACE_WITH_RELEASE_DIGEST}
   else
     domain=localhost
     email=''
@@ -94,7 +108,7 @@ backup() {
   umask 077
   mkdir -p ".backups/$mode"
   backup_path=".backups/$mode/$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
-  if compose exec -T db pg_dump -U relay -d relay --format=custom > "$backup_path.tmp"; then
+  if compose exec -T db pg_dump -U samenklaar -d samenklaar --format=custom > "$backup_path.tmp"; then
     mv "$backup_path.tmp" "$backup_path"
     echo "Database backup: $backup_path"
   else

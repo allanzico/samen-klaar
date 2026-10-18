@@ -4,7 +4,8 @@
   import Stepper from '../../ui/Stepper.svelte';
   import type { WorkspaceSummary } from '../../lib/types';
   import { firstName, otherFromLabel, statusUi } from '../../lib/status-ui';
-  import { dayMonth, dayTime } from '../../lib/format';
+  import { dayMonth, dayTime, money, shortDay } from '../../lib/format';
+  import { agentUi } from '../../lib/agent.svelte';
   import { tradeIcon, tradeOf } from '../../lib/trade';
   import { t } from '../../lib/i18n.svelte';
 
@@ -13,6 +14,9 @@
   const status = $derived(statusUi(item.status, 'customer', firstName(item.counterpart) || otherFromLabel(item.statusLabel)));
   const title = $derived(item.title === 'New request' ? t('New request') : item.title);
   const line = $derived(status.pill === 'booked' && item.visitStartUtc ? dayTime(item.visitStartUtc, item.visitTimezone) : status.line);
+  const asking = $derived(agentUi.escalations.find((e) => e.workspaceId === item.id));
+  // Price and visit at a glance, once there is a plan.
+  const facts = $derived([item.totalMinor ? money(item.totalMinor, item.currency) : '', item.visitStartUtc ? shortDay(item.visitStartUtc, item.visitTimezone) : ''].filter(Boolean).join(' · '));
   const who = $derived(item.counterpart || (item.jobId ? '' : t('No professional yet')));
 </script>
 
@@ -22,10 +26,11 @@
     <span class="title">{title}</span>
     {#if !compact}<span class="sub">{[who, line].filter(Boolean).join(' · ')}</span>{/if}
     {#if !compact && status.step}<Stepper step={status.step} variant="compact"/>{/if}
+    {#if asking}<span class="asking"><Icon name="bot" size={14}/>{t('{name} is asking you in the chat', { name: asking.params?.agent || t('Your assistant') })}</span>{/if}
   </span>
   <span class="end">
     <Pill variant={status.pill} label={status.pillLabel} icon={status.icon} light={status.pill === 'booked' && compact} row/>
-    <span class="date">{dayMonth(item.updatedAt)}</span>
+    <span class="date">{facts || dayMonth(item.updatedAt)}</span>
   </span>
   {#if !compact}<Icon name="chevron-right" class="chev"/>{/if}
 </a>
@@ -37,6 +42,7 @@
   .body { display: grid; gap: 6px; min-width: 0; }
   .title { font: 700 18px/1.2 var(--sk-fd); overflow-wrap: anywhere; }
   .sub { font-size: 14px; color: var(--sk-muted); }
+  .asking { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
   .end { display: grid; justify-items: end; gap: 6px; }
   .date { font-size: 12px; color: var(--sk-muted); }
   .compact { grid-template-columns: 1fr; gap: 12px; padding: 16px; align-content: start; }

@@ -86,7 +86,7 @@ esac
         active = local / "app.env"
         active.write_text(
             "AUTH0_ISSUER_URL=\nAUTH0_CLIENT_ID=already-configured\nAUTH0_CLIENT_SECRET=\n"
-            "DATABASE_URL=postgres://relay@db/relay\nAPP_BASE_URL=http://localhost:8090\n"
+            "DATABASE_URL=postgres://samenklaar@db/samenklaar\nAPP_BASE_URL=http://localhost:8090\n"
             "AUTH0_REDIRECT_URI=http://localhost:8090/api/auth/callback\n"
         )
         source = self.root / ".env"
@@ -104,7 +104,7 @@ esac
         self.assertEqual(settings["AUTH0_ISSUER_URL"], "https://tenant.test/")
         self.assertEqual(settings["AUTH0_CLIENT_ID"], "already-configured")
         self.assertEqual(settings["AUTH0_CLIENT_SECRET"], "dummy-local-secret")
-        self.assertEqual(settings["DATABASE_URL"], "postgres://relay@db/relay")
+        self.assertEqual(settings["DATABASE_URL"], "postgres://samenklaar@db/samenklaar")
         self.assertEqual(settings["APP_BASE_URL"], "http://localhost:8090")
         self.assertEqual(settings["AUTH0_REDIRECT_URI"], "http://localhost:8090/api/auth/callback")
         self.assertNotIn("dummy-local-secret", result.stdout + result.stderr)
@@ -117,6 +117,29 @@ esac
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(active.read_text(), before)
+
+    def test_production_init_reads_deployment_values_and_app_settings_from_env_production(self):
+        root = self.root / "fresh"
+        (root / "docker").mkdir(parents=True)
+        shutil.copy(ROOT / "docker/deploy.sh", root / "docker/deploy.sh")
+        shutil.copy(ROOT / "docker/app.env.example", root / "docker/app.env.example")
+        (root / ".env.production").write_text(
+            "DOMAIN=shop.test\nACME_EMAIL=ops@shop.test\nAPP_IMAGE=" + NEW + "\n"
+            "APP_BASE_URL=http://wrong.local\nDATABASE_URL=postgres://wrong\nAI_PROVIDER_KEY=secret-key\nSMTP_FROM=no-reply@shop.test\n"
+        )
+        env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}"}
+        env.pop("DOMAIN", None)
+        env.pop("ACME_EMAIL", None)
+        subprocess.run(["sh", "docker/deploy.sh", "init", "prod"], cwd=root, env=env, check=True, capture_output=True, text=True)
+        deploy = (root / ".deploy/prod.env").read_text()
+        self.assertIn("DOMAIN=shop.test", deploy)
+        self.assertIn("ACME_EMAIL=ops@shop.test", deploy)
+        self.assertIn("APP_IMAGE=" + NEW, deploy)
+        app = (root / ".secrets/prod/app.env").read_text()
+        self.assertIn("APP_BASE_URL=https://shop.test", app)  # generated, never imported
+        self.assertNotIn("wrong", app)
+        self.assertIn("AI_PROVIDER_KEY=secret-key", app)
+        self.assertIn("SMTP_FROM=no-reply@shop.test", app)
 
     def test_success_records_release_and_manual_rollback_swaps_it(self):
         result = self.run_deploy()

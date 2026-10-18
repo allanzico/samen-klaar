@@ -3,6 +3,7 @@
   import Pill from '../../ui/Pill.svelte';
   import type { AppActions, AppState, WorkspaceState } from '../../lib/types';
   import { noteText } from '../../lib/agent-copy';
+  import { isCurrentEvidence } from '../../lib/evidence';
   import { t } from '../../lib/i18n.svelte';
 
   // The assistant's open question, first on the page: the person answers here, with a button or in
@@ -12,6 +13,9 @@
   const dialog = $derived(role === 'professional' ? workspace.proDialog : role === 'customer' ? workspace.agentDialog : undefined);
   const question = $derived([...(workspace.intake?.messages ?? [])].reverse().find((m) => m.role === 'agent' && m.audience === role));
   const choices = $derived(dialog?.choices ?? []);
+  // A question about finished work shows the proof next to it, so the person decides with it in view.
+  const proof = $derived(dialog?.pending === 'approve-work' ? workspace.job.evidence.filter((e) => isCurrentEvidence(workspace.job, e) && e.kind === 'photo' && e.assetId).slice(0, 3) : []);
+  const photoSrc = (assetId?: string) => `/api/evidence/${encodeURIComponent(assetId ?? '')}?workspaceId=${encodeURIComponent(workspace.workspaceId)}`;
 </script>
 
 {#if dialog?.awaiting && question}
@@ -22,6 +26,11 @@
       <Pill variant="your-turn" label={t('Needs you')} small/>
     </div>
     <p class="text">{noteText(question)}</p>
+    {#if proof.length}
+      <ul class="proof" aria-label={t('Photos from the professional')}>
+        {#each proof as photo, i (photo.assetId)}<li><a href={photoSrc(photo.assetId)} target="_blank" rel="noreferrer" aria-label={t('Open photo {n}', { n: i + 1 })}><img src={photoSrc(photo.assetId)} alt="" loading="lazy"/></a></li>{/each}
+      </ul>
+    {/if}
     {#if choices.length}
       <div class="choices" role="group" aria-label={t('Quick replies')}>
         {#each choices as choice (choice.id + choice.label)}
@@ -39,6 +48,8 @@
   .head b { margin-right: auto; font-size: 14px; }
   .avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--sk-r-tile); background: var(--sk-brand); color: var(--sk-on-brand); }
   .text { font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .proof { display: flex; gap: 8px; }
+  .proof img { display: block; width: 96px; height: 72px; object-fit: cover; border-radius: var(--sk-r-tile); background: var(--sk-surface-2); }
   .choices { display: flex; flex-wrap: wrap; gap: 8px; }
   .helper { margin: 0; }
 </style>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
-  import Logo from '../../ui/Logo.svelte';
+  import { assistantName } from '../../lib/agent-names';
   import RequestCard from './RequestCard.svelte';
   import type { AppActions, AppState } from '../../lib/types';
   import { t } from '../../lib/i18n.svelte';
@@ -10,6 +10,7 @@
   let field = $state<HTMLTextAreaElement>();
   const examples = ['My kitchen sink is leaking', 'My cupboard door is stuck', 'An outlet feels warm'];
   const ready = $derived(app.draft.trim().length >= 5);
+  const bot = $derived(assistantName(app.session?.account?.displayName || app.session?.account?.email || ''));
   const recent = $derived([...app.workspaces].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')).slice(0, 3));
 
   function start(event: SubmitEvent) { event.preventDefault(); void actions.startRequest(app.draft); }
@@ -25,8 +26,8 @@
     <p class="lead">{t('Say it in your own words. We’ll ask what the pro needs to know.')}</p>
     <form class="box composer" onsubmit={start}>
       <div class="identity">
-        <span class="assistant" aria-hidden="true"><Logo onNavy wordmark={false} size={22}/></span>
-        <span><b>{t('{brand} assistant', { brand: app.brandName })}</b><small>{t('Your own words, English or Dutch')}</small></span>
+        <span class="assistant" aria-hidden="true"><Icon name="bot" size={20}/></span>
+        <span><b>{bot}</b><small>{t('Your assistant. Your own words, English or Dutch')}</small></span>
       </div>
       <label class="visually-hidden" for="home-description">{t('Describe your job')}</label>
       <textarea id="home-description" bind:this={field} bind:value={app.draft} oninput={actions.persistDraft} onkeydown={onKey} rows="3" minlength="5" maxlength="500" disabled={app.pending} placeholder={t('What’s wrong? For example, my kitchen tap keeps dripping…')} aria-describedby="home-reason"></textarea>
@@ -57,7 +58,7 @@
   .composer { display: grid; gap: 14px; width: 100%; max-width: 720px; margin-top: 18px; padding: 20px 22px 18px; border: 1px solid var(--sk-field); text-align: left; }
   .composer:focus-within { border-color: var(--sk-ink); }
   .identity { display: flex; align-items: center; gap: 10px; }
-  .assistant { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--sk-r-tile); background: var(--sk-brand); }
+  .assistant { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--sk-r-tile); background: var(--sk-brand); color: var(--sk-on-brand); }
   .identity b { display: block; font-size: 13px; font-weight: 700; }
   .identity small { display: block; font-size: 12px; color: var(--sk-muted); }
   textarea { width: 100%; min-height: 120px; padding: 0; border: 0; background: transparent; resize: none; color: var(--sk-ink); font: 500 20px/1.4 var(--sk-fd); }

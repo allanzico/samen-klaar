@@ -5,7 +5,7 @@ RUN npm ci
 COPY index.html svelte.config.js tsconfig.json vite.config.ts ./
 COPY src ./src
 COPY public ./public
-RUN npm run test:controller && npm run check && npm run build
+RUN npm run test:controller && npm run test:names && npm run check && npm run build
 
 FROM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS backend
 WORKDIR /workspace

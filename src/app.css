@@ -28,7 +28,7 @@
   --sk-line: #D3DAE6;
   --sk-line-2: #E2E7F0;
   --sk-field: #75819A;
-  --sk-dash: #97A2B8;
+  --sk-dash: #7F8CA6;
 
   /* Brand navy */
   --sk-brand: #1B2F63;
@@ -319,6 +319,9 @@ input:not([type=checkbox]):not([type=radio]):not([type=file]):focus-visible, tex
 .ledger .ledger-total { align-items: baseline; padding-top: 14px; }
 .ledger .ledger-total dt { font-weight: 600; font-size: 14px; }
 .ledger .ledger-total dd { font: 800 22px/1.05 var(--sk-fd); letter-spacing: -0.02em; }
+
+/* A label that wraps its control (evidence note, related job) reads like a normal field label. */
+label.field > span:first-child { font-size: 14px; font-weight: 600; color: var(--sk-ink); }
 
 /* ---------- Disclosure ---------- */
 .disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; list-style: none; cursor: pointer; font-weight: 600; }

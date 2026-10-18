@@ -65,7 +65,7 @@ func checkConfig() error {
 	}
 	required := []string{"APP_BASE_URL", "DATABASE_URL", "AI_PROVIDER_KEY", "AI_MODEL", "AUTH0_ISSUER_URL", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "AUTH0_REDIRECT_URI", "CLOUDFLARE_R2_ACCESS_KEY_ID", "CLOUDFLARE_R2_SECRET_ACCESS_KEY", "CLOUDFLARE_R2_BUCKET", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"}
 	if mode == "production" {
-		required = append(required, "PAYPAL_WEBHOOK_ID", "PAYPAL_PLATFORM_MERCHANT_ID", "PAYPAL_PARTNER_ATTRIBUTION_ID", "SMTP_ADDR", "SMTP_FROM")
+		required = append(required, "PAYPAL_WEBHOOK_ID", "PAYPAL_PLATFORM_MERCHANT_ID", "PAYPAL_PARTNER_ATTRIBUTION_ID")
 		if (strings.TrimSpace(os.Getenv("SMTP_USERNAME")) == "") != (strings.TrimSpace(os.Getenv("SMTP_PASSWORD")) == "") {
 			return errors.New("SMTP_USERNAME and SMTP_PASSWORD must be set together")
 		}

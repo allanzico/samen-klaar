@@ -60,7 +60,6 @@ export function customerStep(ctx: CustomerContext): StepView | null {
     if (app.paypalStatus === 'authorized') await actions.capturePayPal();
     else await actions.beginPayPalCheckout();
   }
-  const timingHelper = timing === 'at_booking' ? t('PayPal holds it. Nothing is taken until you approve.') : t('No hold now. You pay after approving the work.');
 
   switch (code) {
     case 'quote': {
@@ -70,7 +69,8 @@ export function customerStep(ctx: CustomerContext): StepView | null {
         primary: slots.length
           ? { label: slot ? t('Book {time} · {amount}', { time: shortVisit(slot.startUtc, slot.timezone), amount: total }) : t('Approve {amount} and book', { amount: total }), run: () => book('approve-and-book', slot?.slotId), disabled: !!reason, reason }
           : { label: t('Approve {amount}', { amount: total }), run: async () => { if (await actions.act('approve-quote', '', undefined, undefined, undefined, undefined, timing)) actions.openProposal('date'); }, disabled: !!reason, reason },
-        helper: slots.length ? timingHelper : t('Then suggest a visit time. Nothing is reserved until you both agree.'),
+        // With times to choose, the payment options above already say what happens; do not repeat it.
+        helper: slots.length ? undefined : t('Then suggest a visit time. Nothing is reserved until you both agree.'),
         secondary: releasing ? { label: t('Check payment status'), run: () => actions.reconcilePayPal() } : undefined,
         quiet: [{ label: t('Make a price offer'), run: () => actions.openProposal('price') }, { label: t('Choose another professional'), run: () => actions.act('return-to-matches') }]
       };
@@ -87,7 +87,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
           ? { label: slot ? t('Book {time} · {amount}', { time: shortVisit(slot.startUtc, slot.timezone), amount: total }) : t('Book this visit'), run: () => book('book-appointment', slot?.slotId), disabled: !!reason, reason }
           : { label: t('Suggest a visit time'), run: () => actions.openProposal('date') },
         secondary: releasing ? { label: t('Check payment status'), run: () => actions.reconcilePayPal() } : undefined,
-        helper: slots.length ? timingHelper : undefined,
+        helper: undefined,
         quiet: slots.length ? [{ label: t('Suggest my own time'), run: () => actions.openProposal('date') }] : []
       };
     }

@@ -154,7 +154,7 @@ export type Intake = {
 export type RequestPhoto = { assetId: string; contentType: string; label: string; addedAt?: string };
 
 export type AgentChoice = { id: string; label: string };
-export type AgentDialog = { stage?: string; awaiting: boolean; asked?: number; choices?: AgentChoice[] };
+export type AgentDialog = { stage?: string; awaiting: boolean; asked?: number; pending?: string; choices?: AgentChoice[] };
 export type WorkspaceState = {
   agentDialog?: AgentDialog;
   proDialog?: AgentDialog;
