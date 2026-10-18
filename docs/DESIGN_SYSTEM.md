@@ -45,7 +45,7 @@ All colour comes from custom properties on `:root` in `src/app.css`. Components 
 | `--sk-line` | `#D3DAE6` | Card and box borders |
 | `--sk-line-2` | `#E2E7F0` | Lighter dividers |
 | `--sk-field` | `#75819A` | Field and chip borders |
-| `--sk-dash` | `#97A2B8` | Dashed empty-state border |
+| `--sk-dash` | `#7F8CA6` | Dashed empty-state border (3:1 on the page ground) |
 
 **Brand and turn**
 
@@ -269,7 +269,7 @@ Label above, help below, error replaces help and is announced. Never disable a s
 
 ### 5.8 Lists
 
-Request and job cards show: title, other person, a status pill and one summary line; your-turn items sort first. Professionals' job cards also show the visit date block and the confirm deadline with Confirm / Decline buttons.
+Request and job cards show: title, other person, a status pill, one summary line, and price and visit day once there is a plan; your-turn items sort first. Professionals' job cards also show the visit date block and a relative confirm deadline ("Confirm within 1 h 30 min") with Confirm / Decline buttons.
 
 ---
 
@@ -277,13 +277,13 @@ Request and job cards show: title, other person, a status pill and one summary l
 
 Every customer and professional has an assistant (docs: [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md)). Its design:
 
-- **Identity.** A short bot name (Pip, Juno, Kit, Remy, Nova, Finn, Mika, Luca, Noor, Teo, Ivy, Sky, Rio, Ada, Zed, Bo), stable per person and never shared by the two assistants on a request, with a **bot icon** (never the lightning bolt). In the thread the avatar is the name's first letter on a navy tile and the name is followed by a small bot icon. In cards the avatar is the bot icon itself.
+- **Identity.** A short bot name (Pip, Juno, Kit, Remy, Nova, Finn, Mika, Luca, Noor, Teo, Ivy, Sky, Rio, Ada, Zed, Bo), a hash of the person's name, so it is the same on the home screen, in the intake chat before a match and after it (`src/lib/agent-names.ts` mirrors `internal/workflow/agent_names.go`; a test keeps them equal). The two assistants on a request never share a name. The **bot icon** marks it (never the lightning bolt). In the thread the avatar is the name's first letter on a navy tile and the name is followed by a small bot icon. In cards the avatar is the bot icon itself.
 - **Introduction.** The first message in a request says who it is ("Hi, I'm Pip, your assistant for this job.") once.
-- **The question card (`AssistantAsk`).** Soft-blue panel at the top of the scroll area: bot icon, name, a "Needs you" pill, the question, **quick replies** as chips, and "Or type your answer in the box below." One question at a time.
+- **The question card (`AssistantAsk`).** Soft-blue panel at the top of the scroll area, on every screen width: bot icon, name, a "Needs you" pill, the question, **quick replies** as chips, and "Or type your answer in the box below." One question at a time. For "approve the work?" it shows up to three of the professional's photos next to the question. A new question is scrolled into view once. While it is open the dock's next step hides, and the web aside's next step is demoted (outline button and a note that either way works).
 - **Quick replies.** Chips with plain labels ("Yes, book it", "No, other times", a list of times). A chip sends its label and an id; typed free text is read by the assistant (and the AI provider when needed).
 - **Privacy in the layout.** A person's chat with their assistant is private to them; the agents' negotiation lines ("Could you do this for €120?", "Agreed on €120.") are shared and show with each side's bot name.
 - **Activity panel.** "Your agent" panel: the bot's name, a pill (Handling this / Needs you), and the last few steps with times; "Show everything it did".
-- **Banner.** When an assistant needs its person and they are not on that request: "Your assistant needs you" with an "Open the request" link.
+- **Banner and lists.** When an assistant needs its person and they are not on that request: "<Name> needs you" with an "Open the request" link (an `info` banner: a routine question is not a warning). On the request and job lists the banner is hidden and the asking card carries a line instead: "<Name> is asking you in the chat". The bot's name travels with the open question from the server.
 - **Preferences.** "Assistant preferences" dialog: pause, ceilings, days and hours, address, what to hand over (booking without asking, approving finished work). Payment is never hand-over-able and the dialog says so.
 - **Voice.** First person, short, concrete: say what it did, what it needs, what is missing and why ("I can't approve the work yet: …"). Never promise a result it does not control; offer the way forward on the page when it cannot act.
 
@@ -296,6 +296,7 @@ Every customer and professional has an assistant (docs: [AGENT_ARCHITECTURE.md](
 - Buttons are verbs ("Send reply", "Book visit"); tags are states ("Your turn", "Waiting on Marieke").
 - Money is formatted by `money()` (nl-NL style: `€ 95,00`, tabular numerals) in both languages. Dates and times use `Intl` with the active locale (`en-GB` / `nl-NL`) and the visit's own time zone.
 - Error messages name the problem and the fix; never blame the person; never expose internals.
+- Deadlines are relative ("within 1 h 30 min"), dates absolute.
 - Banned: jargon (workflow, scope, entity), exclamation marks, emoji, "Please" as filler.
 - Glossary (keep these consistent):
 

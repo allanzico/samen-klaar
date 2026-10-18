@@ -107,7 +107,7 @@ import RelatedJobs from './RelatedJobs.svelte';
 {/snippet}
 
 {#snippet asideContent()}
-  {#if view}<NextStep {view} pending={app.pending} placement="aside" extra={timing}/>{/if}
+  {#if view}<NextStep {view} pending={app.pending} placement="aside" extra={timing} demoted={assistantAsking}/>{/if}
   {#if !hasJob && !workspace.cancelled}
     <JobSoFar {intake} busy={app.pending} onEdit={actions.focusComposer}/>
   {:else if hasJob && !stagePage && !workspace.cancelled}

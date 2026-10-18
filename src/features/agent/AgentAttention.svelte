@@ -4,14 +4,22 @@
   import { questionText } from '../../lib/agent-copy';
   import { t } from '../../lib/i18n.svelte';
 
-  // A short line under the app bar when an agent stopped and needs its person. Opens that request.
+  // A short line under the app bar when an assistant stopped and needs its person, named by its bot name.
+  // Opens that request.
   let { onOpen }: { onOpen: (workspaceId: string) => void } = $props();
   const first = $derived(agentUi.escalations[0]);
+  const count = $derived(agentUi.escalations.length);
+  const name = $derived(first?.params?.agent);
+  const title = $derived(
+    count > 1
+      ? (name ? t('{name} needs you on {count} requests', { name, count }) : t('Your assistant needs you on {count} requests', { count }))
+      : (name ? t('{name} needs you', { name }) : t('Your assistant needs you'))
+  );
 </script>
 
 {#if first}
   <div class="attention">
-    <Banner kind="info" title={agentUi.escalations.length > 1 ? t('Your agent needs you on {count} requests', { count: agentUi.escalations.length }) : t('Your agent needs you')}>
+    <Banner kind="info" {title}>
       <p>{questionText(first)} <button type="button" class="link" onclick={() => onOpen(first.workspaceId)}>{t('Open the request')}</button></p>
     </Banner>
   </div>
