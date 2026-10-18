@@ -78,8 +78,8 @@ services:
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     environment:
-      POSTGRES_DB: relay
-      POSTGRES_USER: relay
+      POSTGRES_DB: samenklaar
+      POSTGRES_USER: samenklaar
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     secrets: [postgres_password]
@@ -93,7 +93,7 @@ services:
     pids_limit: 128
     logging: *logging
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U relay -d relay]
+      test: [CMD-SHELL, pg_isready -U samenklaar -d samenklaar]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -107,11 +107,11 @@ networks:
 volumes:
   # Keep previous volume names so the project rename reuses existing data.
   postgres_data:
-    name: relay-${DEPLOY_ENV}_postgres_data
+    name: samenklaar-${DEPLOY_ENV}_postgres_data
   caddy_data:
-    name: relay-${DEPLOY_ENV}_caddy_data
+    name: samenklaar-${DEPLOY_ENV}_caddy_data
   caddy_config:
-    name: relay-${DEPLOY_ENV}_caddy_config
+    name: samenklaar-${DEPLOY_ENV}_caddy_config
 
 secrets:
   app_config:
