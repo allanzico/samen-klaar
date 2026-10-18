@@ -175,7 +175,7 @@ func run() error {
 	if persistent != nil {
 		agents = persistent
 	}
-	app := httpapi.New(httpapi.Dependencies{AppName: appName, WebDirectory: webDirectory, Store: store, Auth: auth, AppBaseURL: appBaseURL, Providers: providers, AI: ai, Evidence: evidence, Payments: payments, Refunds: refunds, Marketplace: paypalService, Webhook: webhookReceiver, Professionals: professionals, Directory: directory, Operators: operators, Agents: agents, Readiness: readiness})
+	app := httpapi.New(httpapi.Dependencies{AppName: appName, WebDirectory: webDirectory, Store: store, Auth: auth, AppBaseURL: appBaseURL, Providers: providers, AI: ai, Evidence: evidence, Payments: payments, Refunds: refunds, Marketplace: paypalService, Webhook: webhookReceiver, Professionals: professionals, Directory: directory, Operators: operators, Agents: agents, Readiness: readiness, ClientIPHeader: os.Getenv("CLIENT_IP_HEADER")})
 	server := &http.Server{
 		Addr: address, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 20 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second,

@@ -33,12 +33,33 @@ func TestClientIPUsesValidatedGatewayHeaderAndFallsBackToPeer(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "192.0.2.8:43120"
 	r.Header.Set("X-Real-IP", "2001:db8::5")
-	if got := clientIP(r); got != "2001:db8::5" {
+	if got := clientIP(r, "X-Real-IP"); got != "2001:db8::5" {
 		t.Fatalf("clientIP() = %q, want normalized IPv6 address", got)
 	}
 	r.Header.Set("X-Real-IP", "not-an-ip")
-	if got := clientIP(r); got != "192.0.2.8" {
+	if got := clientIP(r, "X-Real-IP"); got != "192.0.2.8" {
 		t.Fatalf("clientIP() with invalid gateway header = %q, want peer address", got)
+	}
+}
+
+func TestClientIPHonoursTheConfiguredProxyHeader(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "10.0.0.2:5000"
+	r.Header.Set("X-Real-IP", "203.0.113.9")
+	r.Header.Set("True-Client-IP", "198.51.100.4")
+	if got := clientIP(r, clientIPHeaderName("True-Client-IP")); got != "198.51.100.4" {
+		t.Fatalf("clientIP() = %q, want the configured header's address", got)
+	}
+}
+
+func TestSecurityHeadersAreSetOnEveryResponse(t *testing.T) {
+	server := New(Dependencies{AppBaseURL: "https://example.test"})
+	w := httptest.NewRecorder()
+	server.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/health/live", nil))
+	for header, want := range map[string]string{"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Strict-Transport-Security": "max-age=31536000; includeSubDomains"} {
+		if got := w.Header().Get(header); got != want {
+			t.Fatalf("%s = %q, want %q", header, got, want)
+		}
 	}
 }
 
