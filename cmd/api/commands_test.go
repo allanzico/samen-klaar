@@ -34,6 +34,16 @@ func TestConfigRejectsMismatchedCallbackAndInsecureProduction(t *testing.T) {
 	if err := checkConfig(); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("SMTP_ADDR", "")
+	t.Setenv("SMTP_FROM", "")
+	if err := checkConfig(); err != nil {
+		t.Fatalf("production without SMTP should still start: %v", err)
+	}
+	t.Setenv("SMTP_USERNAME", "user")
+	if err := checkConfig(); err == nil || !strings.Contains(err.Error(), "SMTP_USERNAME") {
+		t.Fatalf("unpaired SMTP credentials accepted: %v", err)
+	}
+	t.Setenv("SMTP_USERNAME", "")
 	t.Setenv("PAYPAL_WEBHOOK_ID", "")
 	if err := checkConfig(); err == nil || !strings.Contains(err.Error(), "PAYPAL_WEBHOOK_ID") {
 		t.Fatalf("production accepted without a registered PayPal webhook: %v", err)

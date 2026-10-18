@@ -58,8 +58,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if environment == "production" && emailSender == nil {
-		return errors.New("SMTP_ADDR and SMTP_FROM are required when APP_ENV=production; SMTP_USERNAME and SMTP_PASSWORD must be set together")
+	if emailSender == nil {
+		slog.Warn("email delivery is not configured; notification emails stay queued until SMTP_ADDR and SMTP_FROM are set")
 	}
 
 	providers := httpapi.ProviderConfig{
