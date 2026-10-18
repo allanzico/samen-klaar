@@ -37,15 +37,15 @@ type SMTP struct {
 	from        string
 }
 
-// NewSMTPFromEnv accepts an entirely absent SMTP configuration for local
-// development. A partial configuration is an error so production cannot
-// silently claim that email delivery is configured.
+// NewSMTPFromEnv accepts an absent SMTP configuration (no address or
+// credentials): the app runs and notification emails stay queued. A partial
+// configuration is an error so it cannot silently claim delivery is configured.
 func NewSMTPFromEnv() (*SMTP, error) {
 	address := strings.TrimSpace(os.Getenv("SMTP_ADDR"))
 	username := strings.TrimSpace(os.Getenv("SMTP_USERNAME"))
 	password := os.Getenv("SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("SMTP_FROM"))
-	if address == "" && username == "" && password == "" && from == "" {
+	if address == "" && username == "" && password == "" {
 		return nil, nil
 	}
 	if address == "" || from == "" || (username == "") != (password == "") {
