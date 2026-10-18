@@ -28,7 +28,7 @@
     <div>
       <h1 class="page-title">{t('Your requests')}</h1>
       {#if app.workspaces.length}
-        <p class="summary">{#if needs}<strong>{needs === 1 ? t('1 needs you.') : t('{count} need you.', { count: needs })}</strong> {/if}{t('{progress} in progress, {done} klaar.', { progress: count('progress'), done: count('done') })}</p>
+        <p class="summary">{#if needs}<strong>{needs === 1 ? t('1 needs you.') : t('{count} need you.', { count: needs })}</strong>{' '}{/if}{t('{progress} in progress, {done} klaar.', { progress: count('progress'), done: count('done') })}</p>
       {/if}
     </div>
     <button type="button" class="btn btn-primary btn-strong" disabled={app.pending} onclick={actions.showHome}><Icon name="plus"/>{t('New request')}</button>

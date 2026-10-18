@@ -80,6 +80,6 @@
   form .field { width: 100%; }
   .summary { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--sk-r-card); background: var(--sk-ground); }
   .task.turn .summary { background: var(--sk-surface); }
-  .eyebrow.small { font-size: 11px; }
+  .eyebrow.small { font-size: 12px; }
   .next { font-size: 12px; color: var(--sk-muted); }
 </style>
