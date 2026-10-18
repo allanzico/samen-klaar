@@ -21,7 +21,7 @@ endif
 
 help:
 	@echo 'make deploy-local                  Build and deploy local containers (localhost:8090)'
-	@echo 'make init-prod DOMAIN=app.example.com ACME_EMAIL=you@example.com'
+	@echo 'make init-prod                      Prepare production (reads DOMAIN, ACME_EMAIL, APP_IMAGE and the app settings from .env.production)'
 	@echo 'make deploy-prod APP_IMAGE=registry/samen-klaar@sha256:...  Deploy on the production server'
 	@echo 'make publish IMAGE_REPO=registry/samen-klaar              Build and push an immutable release'
 	@echo 'make infra-local                   Start PostgreSQL only'
