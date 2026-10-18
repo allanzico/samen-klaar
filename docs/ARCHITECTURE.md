@@ -80,7 +80,7 @@ person cannot post as an assistant. Details: [AGENT_ARCHITECTURE.md](AGENT_ARCHI
 
 ## Operations
 
-The API runs as one replica. The assistants' per-request lock, the reply-reading cache and the rate limiters are in process memory, and a 30 second sweep drives time-based steps; a second replica would not corrupt state (changes are serialized by a PostgreSQL row lock and re-validated by the workflow) but could repeat an AI call or a sweep. An assistant waiting for its person's answer is recorded as an open question (banner and one email); it is not an operator waiting state and no timer nudges it yet. Deployments migrate separately before the app starts and wait for readiness; see the README for the local and production commands.
+The API runs as one replica. The assistants' per-request lock, the reply-reading cache and the rate limiters are in process memory, and a 30 second sweep drives time-based steps; a second replica would not corrupt state (changes are serialized by a PostgreSQL row lock and re-validated by the workflow) but could repeat an AI call or a sweep. An assistant waiting for its person's answer is recorded as an open question (banner and one email); it is not an operator waiting state and no timer nudges it yet. Deployments migrate separately before the app starts and wait for readiness; see `make help` for the local and production commands.
 
 ## Runtime configuration
 
