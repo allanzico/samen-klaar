@@ -14,11 +14,13 @@ export function agreementTerms(job: Job, role: WorkspaceRole | null): Term[] {
   const priceAgreed = job.quoteApproved;
   const terms: Term[] = [];
 
-  const scopeChanged = job.scopeVersion > 1;
+  // Extra work is a line the professional proposed and the customer approved; a negotiated price also bumps the scope version.
+  const scopeChanged = job.quote.lines.some((line) => line.basis?.startsWith('Professional proposal'));
+  const negotiated = job.scopeVersion > 1;
   terms.push({
     key: 'price', icon: priceAgreed ? 'check' : 'clock', agreed: priceAgreed,
     label: priceAgreed ? t('Price, agreed') : job.priceProposal?.status === 'pending' ? t('Price, offer open') : t('Price'),
-    value: priceAgreed ? (job.workStarted && !job.paid ? t('{amount} so far', { amount: money(job.quote.totalMinor, currency) }) : scopeChanged ? t('{amount} with extra', { amount: money(job.quote.totalMinor, currency) }) : money(job.quote.totalMinor, currency)) : t('{amount} published', { amount: money(job.quote.totalMinor, currency) }),
+    value: priceAgreed ? (job.workStarted && !job.paid ? t('{amount} so far', { amount: money(job.quote.totalMinor, currency) }) : scopeChanged ? t('{amount} with extra', { amount: money(job.quote.totalMinor, currency) }) : money(job.quote.totalMinor, currency)) : t(negotiated ? '{amount} negotiated' : '{amount} published', { amount: money(job.quote.totalMinor, currency) }),
     short: money(job.quote.totalMinor, currency)
   });
   if (job.change?.status === 'pending') {

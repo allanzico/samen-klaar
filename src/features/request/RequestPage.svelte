@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import Icon from '../../ui/Icon.svelte';
   import Stepper from '../../ui/Stepper.svelte';
   import Banner from '../../ui/Banner.svelte';
@@ -83,6 +84,15 @@ import RelatedJobs from './RelatedJobs.svelte';
   const listLabel = $derived(t(pro ? 'Your jobs' : 'Your requests'));
 
   // The next step sits in the side column on wide screens and in the dock on narrow ones; focus whichever is showing.
+  // The assistant's open question is the first card, but chat pages open at the newest message: bring a new
+  // question into view once, without yanking the page back on every refresh.
+  let lastAsked = 0;
+  $effect(() => {
+    const dialog = pro ? workspace.proDialog : workspace.agentDialog;
+    if (!dialog?.awaiting || !dialog.asked || dialog.asked === lastAsked) return;
+    lastAsked = dialog.asked;
+    void tick().then(() => document.getElementById('request-thread')?.scrollTo({ top: 0, behavior: 'smooth' }));
+  });
   function focusNextStep() { [...document.querySelectorAll<HTMLElement>('.next-step .btn')].find((button) => button.offsetParent !== null)?.focus(); }
 </script>
 
@@ -144,7 +154,7 @@ import RelatedJobs from './RelatedJobs.svelte';
 
     <div id="request-thread" class="scroll" data-chat={!stagePage && !matching ? 'true' : undefined}>
       {#if app.error}<div class="content-pad"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
-      <div class="dock-step content-pad"><AssistantAsk {app} {actions} {workspace}/></div>
+      <div class="ask-slot content-pad"><AssistantAsk {app} {actions} {workspace}/></div>
       {#if view && !matching && !assistantAsking}<div class="dock-step content-pad"><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
       {#if matching && intake}
         <div class="content-pad"><AgentPanel {app} {workspace}/></div>
@@ -203,6 +213,8 @@ import RelatedJobs from './RelatedJobs.svelte';
   .content { display: grid; gap: 24px; align-content: start; padding-top: 24px; padding-bottom: 28px; }
   .main-col.page .content > :global(*) { max-width: 820px; }
   .dock-step { display: none; padding-top: 16px; }
+  .ask-slot { padding-top: 16px; }
+  .ask-slot:empty { display: none; }
   .conversation-title { margin-top: 8px; }
   .welcome { display: grid; gap: 6px; max-width: 820px; margin: 12vh auto 0; text-align: center; }
   .thinking { display: flex; align-items: center; gap: 10px; color: var(--sk-muted); font-size: 13px; max-width: 820px; width: 100%; margin: 0 auto; }

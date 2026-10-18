@@ -171,6 +171,7 @@
   .compact.message:has(.to) { grid-template-areas: 'to to' 'text send'; padding-top: 10px; }
   .compact .to { grid-area: to; padding: 3px; }
   .compact .to > button { min-height: 30px; padding: 0 12px; }
+  @media (max-width: 639px) { .compact .to > button { min-height: 40px; } }
   .compact.message textarea { min-height: 24px; font: 400 14px/1.5 var(--sk-ft); }
   .compact .message-foot { padding: 0; border: 0; }
   .compact .hint, .compact .send-label { display: none; }
