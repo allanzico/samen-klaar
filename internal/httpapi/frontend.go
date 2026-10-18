@@ -27,6 +27,10 @@ func frontend(api http.Handler, directory string) http.Handler {
 				w.Header().Set("Cache-Control", "no-cache")
 			}
 			w.Header().Set("X-Content-Type-Options", "nosniff")
+			if strings.HasPrefix(r.URL.Path, "/fonts/") {
+				// Open-licence fonts are also loaded by the hosted sign-in page, which is another origin.
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
 			files.ServeHTTP(w, r)
 			return
 		}
