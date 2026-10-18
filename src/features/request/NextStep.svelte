@@ -7,7 +7,7 @@
 
   // Renders one next step. "aside" is the web column; "dock" sits above the composer
   // below 1280 px and on phones, where it becomes the turn card.
-  let { view, pending, placement, extra }: { view: StepView; pending: boolean; placement: 'aside' | 'dock'; extra?: Snippet<[string]> } = $props();
+  let { view, pending, placement, extra, demoted = false }: { view: StepView; pending: boolean; placement: 'aside' | 'dock'; extra?: Snippet<[string]>; demoted?: boolean } = $props();
   const headingId = $derived(`next-step-${placement}`);
 </script>
 
@@ -15,7 +15,7 @@
   {#if btn.href}
     <a class="btn {style === 'main' ? 'btn-turn' : style === 'alt' ? 'btn-outline' : 'btn-quiet'}" class:btn-block={style !== 'quiet'} href={btn.href} target="_blank" rel="noopener noreferrer">{btn.label}</a>
   {:else}
-    <button type="button" class="btn {style === 'main' ? (view.kind === 'your-turn' ? 'btn-turn' : 'btn-primary') : style === 'alt' ? 'btn-outline' : 'btn-quiet'}" class:btn-block={style !== 'quiet'}
+    <button type="button" class="btn {style === 'main' ? (demoted ? 'btn-outline' : view.kind === 'your-turn' ? 'btn-turn' : 'btn-primary') : style === 'alt' ? 'btn-outline' : 'btn-quiet'}" class:btn-block={style !== 'quiet'}
       disabled={pending || btn.disabled} aria-busy={style === 'main' && pending && !btn.disabled ? 'true' : undefined}
       aria-describedby={btn.reason ? `${headingId}-${style}-reason` : undefined} onclick={() => { void btn.run?.(); }}>{btn.label}</button>
   {/if}
@@ -24,6 +24,7 @@
 
 <section class="next-step {view.kind} {placement}" class:turn-panel={view.kind === 'your-turn'} aria-labelledby={headingId}>
   {#if view.banner}<Banner kind={view.banner.kind} title={view.banner.title} text={view.banner.text}/>{/if}
+  {#if demoted}<p class="helper demoted">{t('Your assistant is asking you this too. Either way works.')}</p>{/if}
   <div class="head">
     <Pill variant={view.tag.variant} label={view.tag.label}/>
     <h2 id={headingId}>{view.title}</h2>

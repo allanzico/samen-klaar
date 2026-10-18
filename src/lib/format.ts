@@ -55,3 +55,11 @@ export function dayNumber(iso: string, timeZone?: string): string {
 export function timezoneCity(timeZone: string): string {
   return timeZone.split('/').pop()?.replace(/_/g, ' ') ?? timeZone;
 }
+
+// "1 h 29 min", "45 min": how long until a deadline, for "Confirm within …". Never negative.
+export function untilShort(iso: string, now = Date.now()): string {
+  const minutes = Math.max(0, Math.round((new Date(iso).getTime() - now) / 60000));
+  if (minutes < 60) return t('{minutes} min', { minutes });
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 ? t('{hours} h {minutes} min', { hours, minutes: minutes % 60 }) : t('{hours} h', { hours });
+}

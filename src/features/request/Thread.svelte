@@ -1,9 +1,9 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
-  import Logo from '../../ui/Logo.svelte';
   import Pill from '../../ui/Pill.svelte';
   import type { AppState, Intake, Job } from '../../lib/types';
   import { noteText } from '../../lib/agent-copy';
+  import { assistantName } from '../../lib/agent-names';
   import { firstName } from '../../lib/status-ui';
   import { money, visitRange } from '../../lib/format';
   import { initials } from '../../lib/trade';
@@ -26,7 +26,7 @@
     if (message.role === role) return t('You');
     if (message.role === 'professional') return firstName(message.senderName || job?.professional) || t('Professional');
     if (message.role === 'customer') return firstName(message.senderName || job?.customer) || t('Customer');
-    return t('{brand} assistant', { brand: app.brandName });
+    return '';
   }
   // My answer to my assistant is the last thing in the thread: it is working on the reply.
   const answered = $derived(visible.length > 0 && visible[visible.length - 1].role === role && visible[visible.length - 1].audience === role);
@@ -41,7 +41,9 @@
   const typing = $derived(answered && !typingExpired);
   const isPerson = (r: string) => r === 'professional' || r === 'customer';
   // Assistants go by short bot names; an older message without one is just "Assistant".
-  const agentName = (m: { agent?: string }) => m.agent || t('Assistant');
+  // The customer's assistant also guides the intake before a match, so those lines carry its bot name too.
+  const customerBot = $derived(assistantName((role === 'professional' ? job?.customer : job?.customer || app.session?.account?.displayName || app.session?.account?.email) || ''));
+  const agentName = (m: { agent?: string; role?: string }) => m.agent || (m.role === 'assistant' ? customerBot : t('Assistant'));
 
   // The assistant's payment message points to the step; only the newest one gets the button.
   const lastPaymentLink = $derived([...visible].reverse().find((m) => m.code === 'link:payment'));
@@ -66,9 +68,9 @@
         <p class="bubble">{message.text}</p>
         <span class="meta">{t('You')}</span>
       </div>
-    {:else if message.role === 'agent'}
+    {:else if message.role === 'agent' || message.role === 'assistant'}
       <div class="theirs">
-        <span class="assistant-avatar bot-avatar" aria-hidden="true">{(message.agent || 'A').slice(0, 1)}</span>
+        <span class="assistant-avatar bot-avatar" aria-hidden="true">{agentName(message).slice(0, 1)}</span>
         <div class="body">
           <p class="who"><b>{agentName(message)}</b><span class="bot" aria-label={t('Assistant')}><Icon name="bot" size={14}/></span></p>
           <p class="text">{noteText(message)}</p>
@@ -79,8 +81,7 @@
       </div>
     {:else}
       <div class="theirs">
-        {#if isPerson(message.role)}<span class="avatar" aria-hidden="true">{initials(message.senderName || (message.role === 'professional' ? job?.professional : job?.customer) || '?')}</span>
-        {:else}<span class="assistant-avatar" aria-hidden="true"><Logo onNavy wordmark={false} size={22}/></span>{/if}
+        <span class="avatar" aria-hidden="true">{initials(message.senderName || (message.role === 'professional' ? job?.professional : job?.customer) || '?')}</span>
         <div class="body">
           <p class="who"><b>{sender(message)}</b>{#if isPerson(message.role) && firstOfRole(index)}<span>{roleName(message.role)}</span>{/if}</p>
           <p class="text">{message.text}</p>

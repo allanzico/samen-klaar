@@ -29,6 +29,8 @@
 
   const pendingPro = $derived(app.role === 'professional' && !!app.session?.memberships?.some((m) => m.role === 'professional' && m.status === 'pending'));
   const onRequestPage = $derived(!!app.serverState && !!app.workspaceId && ((app.role === 'customer' && app.customerPage === 'detail') || (app.role === 'professional' && proView === 'jobs' && !pendingPro)));
+  // The job and request lists mark the asking card themselves, so they do not need the banner too.
+  const onListPage = $derived((app.role === 'professional' && proView === 'jobs') || (app.role === 'customer' && app.customerPage === 'requests'));
   const proNeeds = $derived(app.role === 'professional' ? app.workspaces.filter((item) => statusUi(item.status, 'professional').pill === 'your-turn').length : 0);
 
   // The thread pane scrolls, never the page. Chat pages open at the newest message.
@@ -92,7 +94,7 @@
       onHome={() => { if (app.role === 'professional') { proView = 'jobs'; actions.showJobs(); } else actions.showHome(); }}
       onSelectNotification={pendingPro ? undefined : openRequest}
       hideOnPhone={onRequestPage}/>
-    {#if !pendingPro && !onRequestPage}<AgentAttention onOpen={openRequest}/>{/if}
+    {#if !pendingPro && !onRequestPage && !onListPage}<AgentAttention onOpen={openRequest}/>{/if}
     <main id="main-content" class="main" class:request={onRequestPage}>
       {#if app.error && !onRequestPage && !app.loading}<div class="page-error"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
       {#if app.loading && !onRequestPage}

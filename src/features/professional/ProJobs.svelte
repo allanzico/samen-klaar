@@ -4,7 +4,8 @@
   import type { AppActions, AppState, WorkspaceSummary } from '../../lib/types';
   import { api } from '../../lib/api';
   import { firstName, listFilter, otherFromLabel, statusUi, type ListFilter } from '../../lib/status-ui';
-  import { dayMonth, dayNumber, money, shortDay, time, weekdayShort } from '../../lib/format';
+  import { dayMonth, dayNumber, money, shortDay, time, untilShort, weekdayShort } from '../../lib/format';
+  import { agentUi } from '../../lib/agent.svelte';
   import { t } from '../../lib/i18n.svelte';
 
   // F01 / F02 / J02: jobs with All · New · Active · Finished. A job awaiting confirmation can be
@@ -24,9 +25,11 @@
     { key: 'finished' as const, label: t('Finished'), count: count('finished') }
   ]);
 
+  // The assistant's open question for this job, if any: the name of the bot that is asking.
+  const asking = (item: WorkspaceSummary) => { const q = agentUi.escalations.find((e) => e.workspaceId === item.id); return q ? q.params?.agent || t('Your assistant') : ''; };
   function tag(item: WorkspaceSummary) {
     const status = ui(item);
-    if (item.status === 'confirm_visit' && item.confirmDueAt) return { variant: 'your-turn' as const, label: t('Confirm by {time}', { time: time(item.confirmDueAt, item.visitTimezone) }), light: false };
+    if (item.status === 'confirm_visit' && item.confirmDueAt) return { variant: 'your-turn' as const, label: t('Confirm within {time}', { time: untilShort(item.confirmDueAt) }), light: false };
     return { variant: status.pill, label: status.pillLabel, light: status.pill === 'booked', icon: status.icon };
   }
   function when(item: WorkspaceSummary) {
@@ -63,11 +66,12 @@
               {#if item.visitStartUtc}<small>{weekdayShort(item.visitStartUtc, item.visitTimezone)}</small><b>{dayNumber(item.visitStartUtc, item.visitTimezone)}</b>
               {:else}<Icon name="calendar"/>{/if}
             </span>
-            <span class="row-main"><span class="row-title">{item.title}</span><span class="row-when">{when(item)}{#if !item.visitStartUtc && item.updatedAt} · {dayMonth(item.updatedAt)}{/if}</span></span>
+            <span class="row-main"><span class="row-title">{item.title}</span><span class="row-when">{when(item)}{#if !item.visitStartUtc && item.updatedAt}{' · '}{dayMonth(item.updatedAt)}{/if}</span></span>
             <span class="row-tag"><Pill variant={label.variant} label={label.label} light={label.light} icon={label.icon} row/></span>
             <span class="row-price">{item.totalMinor ? money(item.totalMinor, item.currency) : ''}</span>
             {#if !confirming}<Icon name="chevron-right" class="row-chev"/>{/if}
           </a>
+          {#if asking(item)}<p class="asking"><Icon name="bot" size={14}/>{t('{name} is asking you in the chat', { name: asking(item) })}</p>{/if}
           {#if confirming}
             <div class="row-actions">
               <button type="button" class="btn btn-outline btn-sm" disabled={!!busy || app.pending} onclick={() => decide(item, 'decline-appointment')}>{t('Decline')}</button>
@@ -127,4 +131,5 @@
     .row-actions { padding: 0 16px 16px; }
     .row-actions .btn { flex: 1; }
   }
+  .asking { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0 16px 12px; font-size: 13px; font-weight: 600; }
 </style>

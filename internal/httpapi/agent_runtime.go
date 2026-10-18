@@ -105,6 +105,12 @@ func (s *Server) agentStep(ctx context.Context, workspaceID, role string, who wo
 	decision := workflow.DecideAgent(agentCtx)
 	switch decision.Kind {
 	case workflow.AgentEscalate:
+		// The open question carries the assistant's bot name, so banners and cards can say who is asking.
+		named := map[string]string{"agent": assistantFor(state, who, role)}
+		for key, value := range decision.Params {
+			named[key] = value
+		}
+		decision.Params = named
 		opened, err := s.agents.SyncAgentEscalation(ctx, workspaceID, who.AccountID, role, decision.Code, decision.Params)
 		if err == nil && opened {
 			err = s.agents.RecordAgentDecision(ctx, workspaceID, who.AccountID, role, mandate.Version, decision.Code, "", decision.Params, "applied", "")
@@ -157,6 +163,16 @@ func (s *Server) agentStep(ctx context.Context, workspaceID, role string, who wo
 	}
 	_, err = s.agents.SyncAgentEscalation(ctx, workspaceID, who.AccountID, role, "", nil)
 	return false, err
+}
+
+// assistantFor is the bot name of the person's assistant on this request. Before a professional is chosen
+// the customer's name comes from their account.
+func assistantFor(state workflow.State, who workflow.AgentParty, role string) string {
+	job := state.Job
+	if role == "customer" && job.Customer == "" {
+		job.Customer = who.DisplayName
+	}
+	return workflow.AssistantName(job, role)
 }
 
 // ReplyInterpreter reads a free-form reply with a language model. The AI provider implements it when

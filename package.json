@@ -7,7 +7,8 @@
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test:controller": "node --test src/state/create-app-controller.test.mjs",
-    "test:i18n": "node --test src/lib/i18n-coverage.test.mjs"
+    "test:i18n": "node --test src/lib/i18n-coverage.test.mjs",
+    "test:names": "node --test src/lib/agent-names.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.0",
