@@ -23,6 +23,7 @@ func TestReadinessChecksDatabaseAndDrainingWithoutBreakingLiveness(t *testing.T)
 	server := New(Dependencies{
 		Store: workflow.NewMemoryStore(workflow.NewState()), Auth: &identity.Auth{},
 		AI: &intakeStub{}, Evidence: &r2.Store{}, Payments: &paypal.Service{},
+		Providers:     ProviderConfig{AIProvider: "gemini", AIModel: "private-model", EvidenceProvider: "r2", PaymentProvider: "paypal_sandbox"},
 		Professionals: persistent, Directory: persistent, Operators: persistent,
 		Readiness: func(ctx context.Context) error {
 			checks++
@@ -44,11 +45,23 @@ func TestReadinessChecksDatabaseAndDrainingWithoutBreakingLiveness(t *testing.T)
 		if response.Code != want || !strings.HasPrefix(response.Header().Get("Content-Type"), "application/json") {
 			t.Fatalf("%s: status %d, type %s", path, response.Code, response.Header().Get("Content-Type"))
 		}
-		if strings.Contains(response.Body.String(), "credential") {
-			t.Fatal("health response leaked a database error")
+		for _, detail := range []string{"credential", "gemini", "private-model", "r2", "paypal_sandbox"} {
+			if strings.Contains(response.Body.String(), detail) {
+				t.Fatalf("%s leaked implementation detail %q", path, detail)
+			}
 		}
 	}
 	check("/api/health/ready", http.StatusOK)
+	config := httptest.NewRecorder()
+	handler.ServeHTTP(config, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	if config.Code != http.StatusOK || !strings.Contains(config.Body.String(), `"guidedReviewAvailable":true`) || !strings.Contains(config.Body.String(), `"testPayments":true`) {
+		t.Fatalf("public config did not expose the required capabilities: %s", config.Body.String())
+	}
+	for _, detail := range []string{"gemini", "private-model", "r2", "paypal_sandbox"} {
+		if strings.Contains(config.Body.String(), detail) {
+			t.Fatalf("public config leaked implementation detail %q", detail)
+		}
+	}
 	databaseUp = false
 	check("/api/health/ready", http.StatusServiceUnavailable)
 	check("/api/health/live", http.StatusOK)

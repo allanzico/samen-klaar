@@ -7,6 +7,12 @@ func RequestStatus(state State, role string) (string, string) {
 		return "cancelled", "Cancelled"
 	}
 	if state.CancellationReview != nil && state.CancellationReview.Status == "pending" {
+		if state.CancellationReview.Kind == "late-reschedule" {
+			return "reschedule_review", "Visit change under review"
+		}
+		if state.CancellationReview.Kind == "withdrawal" {
+			return "withdrawal_review", "Withdrawal request under review"
+		}
 		return "cancellation_review", "Cancellation request under review"
 	}
 	if job.ID == "" {

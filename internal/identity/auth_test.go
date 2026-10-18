@@ -201,24 +201,68 @@ func TestLoginParametersCannotRequestAnotherRole(t *testing.T) {
 	}
 }
 
+func TestOperatorLoginOnlyRequestsExistingAccess(t *testing.T) {
+	auth, repo := testAuth()
+	response := httptest.NewRecorder()
+	auth.Login(response, httptest.NewRequest(http.MethodGet, auth.config.AppBaseURL+"/api/auth/login?workspace=operator", nil))
+	if response.Code != http.StatusFound {
+		t.Fatal("operator sign-in did not start")
+	}
+	for _, txn := range repo.transactions {
+		if txn.Role != Operator {
+			t.Fatal("operator destination was not retained")
+		}
+	}
+}
+
 type workspaceRepository struct {
 	Repository
-	role   Role
-	status string
+	role            Role
+	status          string
+	operatorStatus  string
+	operatorMissing bool
 }
 
 func (r *workspaceRepository) PreferredRole(context.Context, string) (Role, error) {
 	return r.role, nil
 }
 func (r *workspaceRepository) EnsureMembership(_ context.Context, _ string, role Role) (Membership, error) {
+	if role == Operator && r.operatorMissing {
+		return Membership{}, errors.New("operator membership absent")
+	}
+	if role == Operator && r.operatorStatus != "" {
+		return Membership{Role: role, Status: r.operatorStatus}, nil
+	}
 	return Membership{Role: role, Status: r.status}, nil
 }
 func TestLoginRestoresPreferredWorkspace(t *testing.T) {
 	for _, role := range []Role{Customer, Professional, Operator} {
 		auth := &Auth{repo: &workspaceRepository{role: role, status: "active"}}
-		chosen, membership, err := auth.loginWorkspace(context.Background(), "same-account")
-		if err != nil || chosen != role || membership.Role != role {
+		chosen, membership, denied, err := auth.loginWorkspace(context.Background(), "same-account", Customer)
+		if err != nil || denied || chosen != role || membership.Role != role {
 			t.Fatal("login did not restore persisted role")
 		}
+	}
+}
+
+func TestOperatorDestinationRequiresActiveMembership(t *testing.T) {
+	for _, test := range []struct {
+		name, operatorStatus string
+		missing              bool
+		wantRole             Role
+		wantDenied           bool
+	}{
+		{"active", "active", false, Operator, false},
+		{"pending", "pending", false, Customer, true},
+		{"disabled", "disabled", false, Customer, true},
+		{"missing", "", true, Customer, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth := &Auth{repo: &workspaceRepository{role: Customer, status: "active", operatorStatus: test.operatorStatus, operatorMissing: test.missing}}
+			role, _, denied, err := auth.loginWorkspace(context.Background(), "same-account", Operator)
+			if err != nil || role != test.wantRole || denied != test.wantDenied {
+				t.Fatalf("operator destination: role=%s denied=%t err=%v", role, denied, err)
+			}
+		})
 	}
 }

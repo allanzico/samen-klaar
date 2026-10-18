@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test:controller": "node --test src/state/create-app-controller.test.mjs"
+    "test:controller": "node --test src/state/create-app-controller.test.mjs",
+    "test:i18n": "node --test src/lib/i18n-coverage.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -14,6 +15,8 @@
     "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/instrument-sans": "^5.3.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tsconfig/svelte": "^5.0.0",
     "svelte-check": "^4.0.0",

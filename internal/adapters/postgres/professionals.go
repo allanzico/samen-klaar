@@ -70,6 +70,9 @@ func (s *Store) SaveProfessionalProfile(ctx context.Context, accountID string, p
 		return workflow.ProfessionalProfile{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockProfessionalTimes(ctx, tx, accountID); err != nil {
+		return workflow.ProfessionalProfile{}, err
+	}
 	previous, previousErr := scanProfile(tx.QueryRow(ctx, `SELECT `+profileColumns+` FROM professional_profiles WHERE account_id=$1 FOR UPDATE`, accountID))
 	if previousErr != nil && !errors.Is(previousErr, pgx.ErrNoRows) {
 		return workflow.ProfessionalProfile{}, previousErr
@@ -116,6 +119,11 @@ func (s *Store) SaveProfessionalProfile(ctx context.Context, accountID string, p
 			return workflow.ProfessionalProfile{}, err
 		}
 	}
+	if previousErr != nil || previous.DurationMinutes != saved.DurationMinutes {
+		if _, _, err := s.materializeSchedule(ctx, tx, accountID, time.Now()); err != nil {
+			return workflow.ProfessionalProfile{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return workflow.ProfessionalProfile{}, err
 	}
@@ -131,11 +139,7 @@ func (s *Store) ListProfessionalMatches(ctx context.Context, category string, lo
         LEFT JOIN LATERAL (
             SELECT a.id, a.starts_at, a.ends_at, a.timezone
             FROM professional_availability_slots a
-            WHERE a.professional_account_id = p.account_id AND a.status = 'available' AND a.starts_at > now()
-              AND a.ends_at - a.starts_at >= make_interval(mins => p.duration_minutes)
-              AND NOT EXISTS (SELECT 1 FROM booking_reservations b
-                  WHERE b.professional_id = p.account_id AND b.status = 'booked'
-                    AND b.starts_at < a.ends_at AND b.ends_at > a.starts_at)
+            WHERE a.professional_account_id = p.account_id AND `+bookableAvailabilitySQL("a", "p", "")+`
             ORDER BY a.starts_at, a.id LIMIT 1
         ) earliest ON true
         WHERE p.status = 'active' AND m.status = 'active' AND p.category = $1 AND p.account_id <> $2
@@ -206,6 +210,9 @@ func (s *Store) AddProfessionalAvailability(ctx context.Context, accountID strin
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, accountID); err != nil {
 		return "", err
 	}
+	if err := validateManualAvailabilityTx(ctx, tx, accountID, start, end); err != nil {
+		return "", err
+	}
 	var overlaps bool
 	err = tx.QueryRow(ctx, `
 		SELECT EXISTS (
@@ -224,6 +231,9 @@ func (s *Store) AddProfessionalAvailability(ctx context.Context, accountID strin
 		VALUES ($1, $2, $3, $4, $5)`, id, accountID, start, end, slot.Timezone); err != nil {
 		return "", err
 	}
+	if _, _, err := s.materializeSchedule(ctx, tx, accountID, time.Now()); err != nil {
+		return "", err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", err
 	}
@@ -232,10 +242,10 @@ func (s *Store) AddProfessionalAvailability(ctx context.Context, accountID strin
 
 func (s *Store) ListProfessionalAvailability(ctx context.Context, accountID string) ([]workflow.AvailabilitySlot, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, starts_at, ends_at, timezone, status
-		FROM professional_availability_slots
-		WHERE professional_account_id = $1 AND starts_at > now() AND status IN ('available', 'booked')
-		ORDER BY starts_at LIMIT 100`, accountID)
+		SELECT a.id, a.starts_at, a.ends_at, a.timezone, a.status
+		FROM professional_availability_slots a JOIN professional_profiles p ON p.account_id=a.professional_account_id
+		WHERE a.professional_account_id = $1 AND a.starts_at > now() AND (a.status='booked' OR (`+bookableAvailabilitySQL("a", "p", "")+`))
+		ORDER BY a.starts_at LIMIT 100`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,14 +278,8 @@ func (s *Store) AvailableProfessionalSlots(ctx context.Context, accountID, exclu
 		FROM professional_availability_slots a
 		JOIN professional_profiles p ON p.account_id = a.professional_account_id
 		JOIN account_memberships m ON m.account_id = p.account_id AND m.role = 'professional'
-		WHERE a.professional_account_id = $1 AND a.status = 'available' AND a.starts_at > now()
-		  AND p.status = 'active' AND m.status = 'active'
-		  AND a.ends_at - a.starts_at >= make_interval(mins => p.duration_minutes)
-		  AND NOT EXISTS (
-			SELECT 1 FROM booking_reservations b
-			WHERE b.professional_id = $1 AND b.status = 'booked' AND b.job_id <> $2
-			  AND b.starts_at < a.ends_at AND b.ends_at > a.starts_at
-		  )
+		WHERE a.professional_account_id = $1 AND p.status = 'active' AND m.status = 'active'
+		 AND `+bookableAvailabilitySQL("a", "p", "$2")+`
 		ORDER BY a.starts_at LIMIT 20`, accountID, excludeJobID)
 	if err != nil {
 		return nil, err
@@ -331,39 +335,43 @@ func (s *Store) ListProfessionalApplications(ctx context.Context) ([]workflow.Pr
 }
 
 func (s *Store) ListWorkExceptions(ctx context.Context) ([]workflow.OperatorCase, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT id, account_id, state_json FROM account_workspaces
-		WHERE COALESCE((state_json #>> '{intake,needsReview}')::boolean, false)
-		   OR COALESCE((state_json #>> '{intake,waitlisted}')::boolean, false)
-		   OR state_json #>> '{cancellationReview,status}' = 'pending'
-		   OR state_json #>> '{job,change,status}' = 'pending'
-		   OR state_json #>> '{job,dispute,status}' IN ('open', 'refund_pending', 'partial_refund_review', 'payment_reversal_review')
-		   OR (COALESCE((state_json #>> '{job,evidenceSubmitted}')::boolean, false)
-		       AND COALESCE((state_json #>> '{job,detailAdded}')::boolean, false) = false)
-		   OR (COALESCE((state_json #>> '{job,workStarted}')::boolean,false)
-		       AND NOT COALESCE((state_json #>> '{job,evidenceSubmitted}')::boolean,false)
-		       AND NULLIF(state_json #>> '{job,appointment,endUtc}','')::timestamptz <= now()-interval '24 hours')
-		   OR (COALESCE((state_json #>> '{job,evidenceSubmitted}')::boolean,false)
-		       AND COALESCE((state_json #>> '{job,detailAdded}')::boolean,false)
-		       AND NOT COALESCE((state_json #>> '{job,completionApproved}')::boolean,false)
-		       AND NULLIF(state_json #>> '{job,evidenceSubmittedAt}','')::timestamptz <= now()-interval '24 hours')
-		   OR (COALESCE((state_json #>> '{job,completionApproved}')::boolean,false)
-		       AND COALESCE((state_json #>> '{job,paymentApprovedVersion}')::integer,0) < COALESCE((state_json #>> '{job,scopeVersion}')::integer,0)
-		       AND NULLIF(state_json #>> '{job,completionApprovedAt}','')::timestamptz <= now()-interval '24 hours')
-		ORDER BY updated_at`)
+	rows, err := s.pool.Query(ctx, `SELECT id,account_id,state_json FROM account_workspaces
+  WHERE COALESCE((state_json #>> '{intake,needsReview}')::boolean,false)
+   OR COALESCE((state_json #>> '{intake,waitlisted}')::boolean,false)
+   OR state_json #>> '{cancellationReview,status}'='pending'
+   OR state_json #>> '{job,dispute,status}' IN ('open','refund_pending','partial_refund_review','payment_reversal_review')
+   OR (NULLIF(state_json #>> '{job,id}','') IS NOT NULL AND NOT COALESCE((state_json->>'cancelled')::boolean,false) AND NOT COALESCE((state_json #>> '{job,paid}')::boolean,false))
+  ORDER BY updated_at`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	cases := make([]workflow.OperatorCase, 0)
+	type workspaceException struct {
+		workspaceID, accountID string
+		stateJSON              []byte
+	}
+	workspaces := make([]workspaceException, 0)
 	for rows.Next() {
-		var workspaceID, accountID string
-		var stateJSON []byte
-		if err := rows.Scan(&workspaceID, &accountID, &stateJSON); err != nil {
+		var item workspaceException
+		if err := rows.Scan(&item.workspaceID, &item.accountID, &item.stateJSON); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		workspaces = append(workspaces, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	cases := make([]workflow.OperatorCase, 0)
+	for _, item := range workspaces {
+		workspaceID, accountID, stateJSON := item.workspaceID, item.accountID, item.stateJSON
 		var state workflow.State
 		if err := json.Unmarshal(stateJSON, &state); err != nil {
+			return nil, err
+		}
+		state.WorkspaceID = workspaceID
+		if err := hydrateWaitingTimes(ctx, s.pool, &state); err != nil {
 			return nil, err
 		}
 		if state.Intake != nil && state.Intake.NeedsReview {
@@ -373,7 +381,11 @@ func (s *Store) ListWorkExceptions(ctx context.Context) ([]workflow.OperatorCase
 			cases = append(cases, workflow.OperatorCase{ID: "waitlist:" + workspaceID, AccountID: accountID, WorkspaceID: workspaceID, Kind: "area-waitlist", Description: state.Intake.Description, Category: state.Intake.Category, Detail: state.Intake.Detail, Urgency: state.Intake.Urgency, Location: state.Intake.Location})
 		}
 		if state.CancellationReview != nil && state.CancellationReview.Status == "pending" {
-			cases = append(cases, workflow.OperatorCase{ID: "cancellation:" + workspaceID, AccountID: accountID, WorkspaceID: workspaceID, Kind: "late-cancellation", Description: state.CancellationReview.Reason, ReportedAt: state.CancellationReview.RequestedAt, JobID: state.Job.ID, JobTitle: state.Job.Title})
+			kind := state.CancellationReview.Kind
+			if kind == "" {
+				kind = "late-cancellation"
+			}
+			cases = append(cases, workflow.OperatorCase{ID: kind + ":" + workspaceID, AccountID: accountID, WorkspaceID: workspaceID, Kind: kind, Description: state.CancellationReview.Reason, ReportedAt: state.CancellationReview.RequestedAt, Category: state.Job.Category, JobID: state.Job.ID, JobTitle: state.Job.Title, Paid: state.Job.Paid})
 		}
 		if state.Job.Change != nil && state.Job.Change.Status == "pending" {
 			cases = append(cases, workflow.OperatorCase{ID: "change:" + state.Job.ID, AccountID: accountID, WorkspaceID: workspaceID, Kind: "scope-change", Description: state.Job.Change.Description, Category: state.Job.Category, JobID: state.Job.ID, JobTitle: state.Job.Title})
@@ -381,31 +393,30 @@ func (s *Store) ListWorkExceptions(ctx context.Context) ([]workflow.OperatorCase
 		if state.Job.Dispute != nil && (state.Job.Dispute.Status == "open" || state.Job.Dispute.Status == "refund_pending" || state.Job.Dispute.Status == "partial_refund_review" || state.Job.Dispute.Status == "payment_reversal_review") {
 			cases = append(cases, workflow.OperatorCase{ID: "issue:" + workspaceID, AccountID: accountID, WorkspaceID: workspaceID, Kind: "job-issue", Description: state.Job.Dispute.Reason, ReportedAt: state.Job.Dispute.ReportedAt, Status: state.Job.Dispute.Status, Category: state.Job.Category, JobID: state.Job.ID, JobTitle: state.Job.Title, Paid: state.Job.Paid})
 		}
-		if state.Job.EvidenceSubmitted && !state.Job.DetailAdded {
+		if state.Job.EvidenceSubmitted && !state.Job.CompletionApproved && (!state.Job.DetailAdded || len(workflow.MissingEvidence(state.Job, true)) > 0) {
 			cases = append(cases, workflow.OperatorCase{ID: "evidence:" + state.Job.ID, AccountID: accountID, WorkspaceID: workspaceID, Kind: "missing-evidence", Description: state.Job.Description, Category: state.Job.Category, JobID: state.Job.ID, JobTitle: state.Job.Title})
 		}
-		if reason := stalledJobReason(state, time.Now().UTC()); reason != "" {
-			cases = append(cases, workflow.OperatorCase{ID: "stalled:" + workspaceID, AccountID: accountID, WorkspaceID: workspaceID, Kind: "stalled-job", Description: reason, Category: state.Job.Category, JobID: state.Job.ID, JobTitle: state.Job.Title})
+		for _, wait := range workflow.WaitingStates(state) {
+			if !wait.Due(time.Now().UTC()) {
+				continue
+			}
+			if wait.EventType == "checkout-reminder" {
+				status, err := paymentStatusTx(ctx, s.pool, state.Job)
+				if err != nil {
+					return nil, err
+				}
+				if !checkoutReminderActionable(status) {
+					continue
+				}
+			}
+			cases = append(cases, workflow.OperatorCase{ID: "stalled:" + workspaceID + ":" + wait.EventType, AccountID: accountID, WorkspaceID: workspaceID, Kind: "stalled-job", Description: wait.Detail + " Responsible participant: " + wait.ResponsibleRole + ". Operator action: " + wait.ResolutionAction + ".", ReportedAt: wait.StartedAt, Status: wait.EventType, Category: state.Job.Category, JobID: state.Job.ID, JobTitle: state.Job.Title, ReasonCode: wait.EventType, Responsible: wait.ResponsibleRole})
 		}
 	}
-	return cases, rows.Err()
-}
-
-func stalledJobReason(state workflow.State, now time.Time) string {
-	job := state.Job
-	if job.ID == "" || state.Cancelled || job.Dispute != nil && job.Dispute.Status != "resolved" && job.Dispute.Status != "rework" {
-		return ""
+	coordination, err := s.coordinationExceptions(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if job.WorkStarted && !job.EvidenceSubmitted && job.Appointment != nil && dueAt(job.Appointment.EndUTC, now.Add(-24*time.Hour)) {
-		return "Completion evidence is still missing more than 24 hours after the scheduled visit."
-	}
-	if job.EvidenceSubmitted && job.DetailAdded && !job.CompletionApproved && dueAt(job.EvidenceSubmittedAt, now.Add(-24*time.Hour)) {
-		return "The customer has not reviewed the completion submission within 24 hours."
-	}
-	if job.CompletionApproved && job.PaymentApprovedVersion != job.ScopeVersion && dueAt(job.CompletionApprovedAt, now.Add(-24*time.Hour)) {
-		return "The separate payment approval has been waiting for more than 24 hours."
-	}
-	return ""
+	return append(cases, coordination...), nil
 }
 
 func (s *Store) ReviewProfessionalApplication(ctx context.Context, operatorID, professionalID, decision string, checks workflow.ProfessionalReviewChecks) error {

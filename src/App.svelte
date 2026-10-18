@@ -1,282 +1,136 @@
 <script lang="ts">
-  import { requestStatus } from './lib/request-status';
   import { onMount, tick } from 'svelte';
-  import CustomerWorkspace from './features/customer/CustomerWorkspace.svelte';
-  import OperatorQueue from './features/operator/OperatorQueue.svelte';
-  import ProfessionalPending from './features/auth/ProfessionalPending.svelte';
-  import SignIn from './features/auth/SignIn.svelte';
-  import ProfessionalAvailability from './features/professional/ProfessionalAvailability.svelte';
-  import ProfessionalWorkspace from './features/professional/ProfessionalWorkspace.svelte';
-  import WorkspaceNavigation from './features/workspaces/WorkspaceNavigation.svelte';
-  import NotificationCenter from './features/notifications/NotificationCenter.svelte';
-  import PayPalPayoutSetup from './features/professional/PayPalPayoutSetup.svelte';
-  import type { WorkspaceRole } from './lib/types';
+  import AppBar, { type NavItem } from './features/shell/AppBar.svelte';
+  import ProTabBar from './features/shell/ProTabBar.svelte';
+  import Landing from './features/public/Landing.svelte';
+  import OperatorGate from './features/public/OperatorGate.svelte';
+  import OperatorDashboard from './features/operator/OperatorDashboard.svelte';
+  import CustomerHome from './features/customer/CustomerHome.svelte';
+  import CustomerRequests from './features/customer/CustomerRequests.svelte';
+  import RequestPage from './features/request/RequestPage.svelte';
+  import ProJobs from './features/professional/ProJobs.svelte';
+  import FreeTimes from './features/professional/FreeTimes.svelte';
+  import ProfileServices from './features/professional/ProfileServices.svelte';
+  import ProOnboarding from './features/professional/ProOnboarding.svelte';
+  import AgentSettings from './features/agent/AgentSettings.svelte';
+  import AgentAttention from './features/agent/AgentAttention.svelte';
+  import Banner from './ui/Banner.svelte';
+  import Toast from './ui/Toast.svelte';
+  import Icon from './ui/Icon.svelte';
   import { createAppActions } from './state/create-app-controller';
   import { createAppState } from './state/app-state.svelte';
-  import { currentLocale, setLocale, t } from './lib/i18n.svelte';
+  import { statusUi } from './lib/status-ui';
+  import { refreshAgentEscalations } from './lib/agent.svelte';
+  import { currentLocale, t } from './lib/i18n.svelte';
 
   const app = createAppState();
-  let job = $derived(app.serverState?.job);
-  let intake = $derived(app.newConversation ? undefined : app.serverState?.intake);
-  let activeJob = $derived(!app.newConversation && !!job?.id && !!job?.description);
-  let composing = $derived(app.role === 'customer');
-  let missingDocs = $derived(!!job?.evidenceSubmitted && !job?.detailAdded);
-  let canBecomeProfessional = $derived(app.role === 'customer' && !app.session?.memberships?.some((membership) => membership.role === 'professional'));
-  let statusLabel = $derived(requestStatus(app.serverState, app.role).label);
-  let workspaceLayout = $derived(!!app.session?.authenticated && !!app.serverState && (app.role === 'customer' || app.role === 'professional') && !app.session.memberships?.some((m) => m.role === app.role && m.status === 'pending'));
-  let viewportHeight = $state(0);
-  let keyboardOpen = $state(false);
-  let requestsOpen = $state(false);
-  const proTabs = [
-    { view: 'jobs' as const, label: 'Jobs', icon: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>' },
-    { view: 'times' as const, label: 'Free times', icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/>' },
-    { view: 'profile' as const, label: 'Profile & services', icon: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>' }
-  ];
+  const operatorRoute = window.location.pathname.replace(/\/$/, '') === '/operator';
   let proView = $state<'jobs' | 'times' | 'profile'>('jobs');
-  let requestsButton = $state<HTMLButtonElement>();
-  let accountMenu = $state<HTMLDetailsElement>();
-  let requestPane = $state<HTMLElement>();
-  let accountName = $derived(app.session?.account?.displayName || app.session?.account?.email || t('Your account'));
-  let initials = $derived.by(() => {
-    const words = app.session?.account?.displayName?.trim().split(/\s+/) ?? [];
-    const letters = words.length > 1 ? [words[0], words[words.length - 1]] : [words[0] || app.session?.account?.email || ''];
-    return letters.map((word) => word.charAt(0).toUpperCase()).join('') || '?';
-  });
 
-  $effect(() => {
-    const j = app.serverState?.job;
-    if (app.composeMode !== 'message' && (!j?.id || app.serverState?.cancelled || j.workStarted || j.paid || (app.composeMode === 'price' && j.quoteApproved) || (app.composeMode === 'date' && !j.quoteApproved))) app.composeMode = 'message';
-  });
+  const pendingPro = $derived(app.role === 'professional' && !!app.session?.memberships?.some((m) => m.role === 'professional' && m.status === 'pending'));
+  const onRequestPage = $derived(!!app.serverState && !!app.workspaceId && ((app.role === 'customer' && app.customerPage === 'detail') || (app.role === 'professional' && proView === 'jobs' && !pendingPro)));
+  const proNeeds = $derived(app.role === 'professional' ? app.workspaces.filter((item) => statusUi(item.status, 'professional').pill === 'your-turn').length : 0);
 
+  // The thread pane scrolls, never the page. Chat pages open at the newest message.
   async function scrollToCurrent(smooth = false, targetID?: string) {
     await tick();
     const pane = document.getElementById('request-thread');
-    if (pane && targetID) {
-      const target = document.getElementById(targetID);
-      if (target) pane.scrollTo({top: target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 12, behavior: smooth ? 'smooth' : 'auto'});
-    } else if (pane && smooth) pane.scrollTo({top:pane.scrollHeight,behavior:'smooth'});
-    else if (!pane) document.getElementById('message')?.scrollIntoView({block:'nearest'});
+    if (!pane) return;
+    const target = targetID ? document.getElementById(targetID) : null;
+    if (target) pane.scrollTo({ top: target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 16, behavior: smooth ? 'smooth' : 'auto' });
+    else if (pane.dataset.chat === 'true') pane.scrollTo({ top: pane.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    else pane.scrollTo({ top: 0 });
   }
-
   const actions = createAppActions(app, scrollToCurrent);
 
-  // The request list is a drawer below 1024px. It traps focus while open and closes on Escape.
-  async function openRequests() {
-    requestsOpen = true;
-    await tick();
-    (requestPane?.querySelector<HTMLElement>('[aria-current="page"]:not(:disabled)') ?? requestPane?.querySelector<HTMLElement>('button:not(:disabled)'))?.focus();
-  }
-  function closeRequests(restoreFocus = true) {
-    if (!requestsOpen) return;
-    requestsOpen = false;
-    if (restoreFocus) requestsButton?.focus();
-  }
-  function trapRequests(event: KeyboardEvent) {
-    if (!requestsOpen) return;
-    if (event.key === 'Escape') { event.preventDefault(); closeRequests(); return; }
-    if (event.key !== 'Tab' || !requestPane) return;
-    const focusable = [...requestPane.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')];
-    if (!focusable.length) { event.preventDefault(); return; }
-    const first = focusable[0], last = focusable[focusable.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || !requestPane.contains(active))) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && (active === last || !requestPane.contains(active))) { event.preventDefault(); first.focus(); }
-  }
-  function closeAccountMenu(event: Event) {
-    if (!accountMenu?.open) return;
-    if (event instanceof KeyboardEvent) {
-      if (event.key !== 'Escape') return;
-      accountMenu.open = false;
-      accountMenu.querySelector('summary')?.focus();
-    } else if (!accountMenu.contains(event.target as Node)) accountMenu.open = false;
-  }
-  function onWindowKeydown(event: KeyboardEvent) { closeAccountMenu(event); trapRequests(event); }
-  const selectRequest = (id: string) => { closeRequests(false); proView = 'jobs'; app.error = ''; return actions.selectRequest(id); };
-  const createRequest = () => { closeRequests(false); return actions.createRequest(); };
+  function openRequest(id: string) { proView = 'jobs'; return actions.selectRequest(id); }
+  function backToList() { if (app.role === 'professional') actions.showJobs(); else actions.showRequests(); }
+
+  const customerNav = $derived<NavItem[]>([
+    { label: t('Home'), icon: 'home', current: app.customerPage === 'home', onclick: actions.showHome },
+    { label: t('Requests'), icon: 'list', current: app.customerPage !== 'home', onclick: actions.showRequests, phoneIcon: true }
+  ]);
+  const proNav = $derived<NavItem[]>([
+    { label: t('Jobs'), icon: 'briefcase', current: proView === 'jobs', onclick: () => { proView = 'jobs'; actions.showJobs(); } },
+    { label: t('Free times'), icon: 'calendar', current: proView === 'times', onclick: () => { proView = 'times'; } },
+    { label: t('Profile & services'), icon: 'user', current: proView === 'profile', onclick: () => { proView = 'profile'; } }
+  ]);
+
   onMount(() => {
     document.documentElement.lang = currentLocale();
-    function sizeWorkspace() {
-      viewportHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
-      keyboardOpen = window.innerWidth <= 600 && viewportHeight < 550 && !!document.activeElement?.matches('input, textarea');
-    }
-    // Focus can change during a Svelte render when a composer mode unmounts.
-    // Apply viewport state after that render, never inside its focus event.
-    function queueSizing() { queueMicrotask(sizeWorkspace); }
-    sizeWorkspace();
-    window.visualViewport?.addEventListener('resize', queueSizing);
-    window.addEventListener('resize', queueSizing);
-    document.addEventListener('focusin', queueSizing);
-    document.addEventListener('focusout', queueSizing);
-    const wide = window.matchMedia('(min-width: 1024px)');
-    const closeOnWide = () => { if (wide.matches) requestsOpen = false; };
-    wide.addEventListener('change', closeOnWide);
-    void actions.initialize();
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void actions.refresh(); }, 5000);
-    return () => {
-      window.clearInterval(timer);
-      window.visualViewport?.removeEventListener('resize', queueSizing);
-      window.removeEventListener('resize', queueSizing);
-      document.removeEventListener('focusin', queueSizing);
-      document.removeEventListener('focusout', queueSizing);
-      wide.removeEventListener('change', closeOnWide);
-    };
+    const onLocationChange = () => { void actions.restoreLocation(); };
+    window.addEventListener('popstate', onLocationChange);
+    void Promise.resolve(actions.initialize()).then(() => { if (app.session?.authenticated && (app.role === 'customer' || app.role === 'professional')) void refreshAgentEscalations(); });
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void actions.refresh();
+      if (app.session?.authenticated && (app.role === 'customer' || app.role === 'professional') && !pendingPro) void refreshAgentEscalations();
+    }, 5000);
+    return () => { window.clearInterval(timer); window.removeEventListener('popstate', onLocationChange); };
   });
-
-  function money(minor: number) {
-    return new Intl.NumberFormat(currentLocale() === 'nl' ? 'nl-NL' : 'en-GB', {
-      style: 'currency',
-      currency: app.serverState?.job.quote.currency ?? 'USD'
-    }).format(minor / 100);
-  }
-
-  function roleLabel(role: WorkspaceRole) {
-    return t(role === 'professional' ? 'Professional' : role === 'operator' ? 'Operator' : 'Customer');
-  }
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onclick={closeAccountMenu}/>
-
-{#snippet requestPaneContent(canCreate: boolean)}
-  <button type="button" class="drawer-scrim" class:open={requestsOpen} tabindex="-1" aria-hidden="true" onclick={() => closeRequests()}></button>
-  <div id="request-list" class="request-list-pane" class:open={requestsOpen} bind:this={requestPane} role={requestsOpen ? 'dialog' : undefined} aria-modal={requestsOpen ? 'true' : undefined} aria-label={t('Your requests')}>
-    <div class="drawer-head">
-      <h2>{t('Your requests')}</h2>
-      <button type="button" class="icon-button" aria-label={t('Close')} onclick={() => closeRequests()}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-    </div>
-    <WorkspaceNavigation items={app.workspaces} currentID={app.workspaceId} {canCreate} canLoadMore={!!app.workspaceCursor} busy={app.pending || app.loading} onSelect={selectRequest} onCreate={createRequest} onLoadMore={actions.loadMoreWorkspaces}/>
-  </div>
-{/snippet}
-
-<svelte:head><title>{app.brandName} — {t('Home services, handled faster.')}</title></svelte:head>
+<svelte:head><title>{operatorRoute ? `${t('Operator dashboard')} — ${app.brandName}` : `${app.brandName} — ${t('Home repairs in Amsterdam')}`}</title></svelte:head>
 
 <a class="skip-link" href="#main-content">{t('Skip to main content')}</a>
 
-{#if !app.session?.authenticated}
-  <div class="app-shell landing-shell">
-    <header class="topbar landing-topbar">
-      <a class="brand" href="/" aria-label="{app.brandName} home"><svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12"/><g fill="none" stroke-width="3" stroke-linecap="round"><path d="M24 11v26M11 24h26M15 15l18 18M15 33l18-18"/></g></svg>{app.brandName}</a>
-      <nav class="landing-navigation" aria-label={t('Main navigation')}>
-        <a href="#how-it-works">{t('How it works')}</a>
-      </nav>
-      <div class="landing-account-links">
-        <button class="language-button" aria-label="English" aria-pressed={currentLocale() === 'en'} onclick={() => setLocale('en')}>EN</button>
-        <button class="language-button" aria-label="Nederlands" aria-pressed={currentLocale() === 'nl'} onclick={() => setLocale('nl')}>NL</button>
-        <a class="login-link" href="/api/auth/login">{t('Log in')}</a>
-        <a class="nav-cta" href="/api/auth/login">{t('Get started')} <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10M7 17 17 7"/></svg></a>
-      </div>
-    </header>
-    <main id="main-content" class="landing-main"><SignIn {app}/></main>
-  </div>
+{#if operatorRoute && (!app.session || (!app.role && app.loading))}
+  <OperatorGate {app} {actions} mode="checking"/>
+{:else if operatorRoute && !app.session?.authenticated}
+  <OperatorGate {app} {actions} mode="sign-in"/>
+{:else if operatorRoute && app.role !== 'operator'}
+  <OperatorGate {app} {actions} mode="no-access"/>
+{:else if !app.session?.authenticated}
+  <Landing {app}/>
+{:else if app.role === 'operator'}
+  <OperatorDashboard {app} {actions}/>
 {:else}
-  <div class="app-shell" class:workspace-shell={workspaceLayout} class:keyboard-open={workspaceLayout && keyboardOpen} style:height={workspaceLayout && viewportHeight ? `${viewportHeight}px` : undefined}>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="{app.brandName} home"><svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12"/><g fill="none" stroke-width="3" stroke-linecap="round"><path d="M24 11v26M11 24h26M15 15l18 18M15 33l18-18"/></g></svg>{app.brandName}</a>
-      {#if app.role === 'professional' || app.role === 'operator'}<span class="role-tag">{t(app.role === 'operator' ? 'Operator' : 'Pro')}</span>{/if}
-      {#if workspaceLayout && app.role === 'professional'}
-      <nav class="pro-nav" aria-label={t('Professional navigation')}>
-        {#each proTabs as tab (tab.view)}<button type="button" class:current={proView === tab.view} aria-current={proView === tab.view ? 'page' : undefined} onclick={() => { proView = tab.view; }}>{t(tab.label)}</button>{/each}
-      </nav>
-      {/if}
-      <div class="topbar-actions">
-      <div class="language-switch language-switch-wide" role="group" aria-label={t('Language')}>
-        <button class:active={currentLocale() === 'en'} aria-pressed={currentLocale() === 'en'} onclick={() => setLocale('en')}>EN</button>
-        <button class:active={currentLocale() === 'nl'} aria-pressed={currentLocale() === 'nl'} onclick={() => setLocale('nl')}>NL</button>
-      </div>
-      {#if (app.session.memberships?.filter((item) => item.status !== 'disabled').length ?? 0) > 1}
-      <nav class="role-switch role-switch-wide" aria-label={t('Account workspace')}>
-        {#each app.session.memberships ?? [] as membership (membership.role)}
-          {#if membership.status !== 'disabled'}
-            <button class:active={membership.role === app.role} disabled={app.pending || app.loading} aria-pressed={membership.role === app.role} onclick={() => { if (membership.role !== app.role) void actions.switchWorkspace(membership.role); }}>{roleLabel(membership.role)}</button>
-          {/if}
-        {/each}
-      </nav>
-      {/if}
-      {#if workspaceLayout && (app.role !== 'professional' || proView === 'jobs')}<button type="button" class="requests-button" bind:this={requestsButton} aria-controls="request-list" aria-expanded={requestsOpen} onclick={openRequests}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="requests-label">{t('Requests')}</span></button>{/if}
-      {#if app.role === 'customer' || app.role === 'professional'}<NotificationCenter onSelect={selectRequest}/>{/if}
-      <details class="account-menu" bind:this={accountMenu}>
-        <summary aria-label={accountName}><span aria-hidden="true">{initials}</span></summary>
-        <div class="account-menu-panel">
-          <p class="account-panel-name">{accountName}</p>
-          {#if (app.session.memberships?.filter((m) => m.status !== 'disabled').length ?? 0) > 1}
-          <nav class="role-switch role-switch-mobile" aria-label={t('Account workspace')}>
-            {#each app.session.memberships ?? [] as membership (membership.role)}
-              {#if membership.status !== 'disabled'}<button class:active={membership.role === app.role} disabled={app.pending || app.loading} aria-pressed={membership.role === app.role} onclick={() => { if (membership.role !== app.role) void actions.switchWorkspace(membership.role); }}>{roleLabel(membership.role)}</button>{/if}
-            {/each}
-          </nav>
-          {/if}
-          
-          <div class="language-switch language-switch-mobile" role="group" aria-label={t('Language')}>
-            <button class:active={currentLocale() === 'en'} aria-pressed={currentLocale() === 'en'} onclick={() => setLocale('en')}>EN</button>
-            <button class:active={currentLocale() === 'nl'} aria-pressed={currentLocale() === 'nl'} onclick={() => setLocale('nl')}>NL</button>
-          </div>
-          {#if app.session.account?.displayName}<small>{app.session.account?.email}</small>{/if}
-          {#if canBecomeProfessional}<button class="workspace-link" disabled={app.pending} onclick={actions.beginProfessional}>{t('Become a professional')}</button>{/if}
-          <button class="sign-out-button" onclick={actions.logout}>{t('Sign out')}</button>
-        </div>
-      </details>
-      </div>
-    </header>
-
-    <main id="main-content" class:workspace-main={workspaceLayout}>
-      {#if app.error}<div class="error" role="alert">{t(app.error)}<button class="text-button" onclick={actions.dismissError} aria-label={t('Dismiss error')}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>{/if}
-      {#if app.loading}
-        <div class="card loading" role="status">{t('Loading your requests…')}</div>
-      {:else if app.role === 'professional' && app.session.memberships?.some((item) => item.role === 'professional' && item.status === 'pending')}
-        <ProfessionalPending {actions}/>
-      {:else if app.role === 'operator'}
-        <OperatorQueue {actions}/>
-      {:else if app.role === 'professional' && !app.serverState}
-        
-        <WorkspaceNavigation items={app.workspaces} currentID={app.workspaceId} canCreate={false} canLoadMore={!!app.workspaceCursor} busy={app.pending || app.loading} onSelect={actions.selectRequest} onCreate={actions.createRequest} onLoadMore={actions.loadMoreWorkspaces}/>
-        <section class="card service-setup" aria-labelledby="service-setup-title"><h2 id="service-setup-title">{t('Set up your service and times')}</h2><ProfessionalAvailability/></section>
-        <div class="card empty-state"><span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span><h2>{t('No assigned requests yet.')}</h2><p>{t('Your customer bookings will appear here. You can keep your service profile and availability up to date.')}</p></div>
-      {:else if !app.serverState}
-        <div class="card"><h2>{t('Workspace unavailable')}</h2><p>{t('Your account is signed in, but its workspace data could not be loaded.')}</p><button onclick={actions.loadState}>{t('Try again')}</button></div>
+  <div class="frame">
+    <AppBar {app} {actions}
+      nav={pendingPro ? [] : app.role === 'professional' ? proNav : customerNav}
+      badge={app.role === 'professional' ? t('Pro') : undefined}
+      onHome={() => { if (app.role === 'professional') { proView = 'jobs'; actions.showJobs(); } else actions.showHome(); }}
+      onSelectNotification={pendingPro ? undefined : openRequest}
+      hideOnPhone={onRequestPage}/>
+    {#if !pendingPro && !onRequestPage}<AgentAttention onOpen={openRequest}/>{/if}
+    <main id="main-content" class="main" class:request={onRequestPage}>
+      {#if app.error && !onRequestPage && !app.loading}<div class="page-error"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
+      {#if app.loading && !onRequestPage}
+        <p class="loading" role="status"><span class="spinner" aria-hidden="true"></span>{t('Loading…')}</p>
+      {:else if pendingPro}
+        <ProOnboarding {actions}/>
       {:else if app.role === 'customer'}
-        <div class="request-shell">
-        {@render requestPaneContent(true)}
-        <div class="request-main" inert={requestsOpen}>
-        {#key app.workspaceId}
-        <CustomerWorkspace
-          {app}
-          {actions}
-          state={app.serverState}
-          {job}
-          {intake}
-          {activeJob}
-          {composing}
-          {missingDocs}
-          {statusLabel}
-          {money}
-        />
-        {/key}
-        </div>
-        </div>
-      {:else if app.role === 'professional' && proView !== 'jobs'}
-        <section class="pro-page" aria-labelledby="pro-page-title">
-          <h1 id="pro-page-title">{t(proView === 'times' ? 'Free times' : 'Profile & services')}</h1>
-          {#if proView === 'times'}
-            <p class="lead">{t('Customers can book the times you add here. Add future times so they can pick one.')}</p>
-            <ProfessionalAvailability show="times"/>
-          {:else}
-            <ProfessionalAvailability show="profile"/>
-            <PayPalPayoutSetup/>
-          {/if}
-        </section>
+        {#if app.customerPage === 'home'}<CustomerHome {app} {actions}/>
+        {:else if app.customerPage === 'requests'}<CustomerRequests {app} {actions}/>
+        {:else if app.serverState}{#key app.workspaceId}<RequestPage {app} {actions} workspace={app.serverState} onBack={backToList}/>{/key}
+        {:else}
+          <div class="failed">
+            <div class="empty"><span class="icon-tile icon-tile-48" aria-hidden="true"><Icon name="alert"/></span><h1>{t('We couldn’t load this request')}</h1><p>{t('Check your connection and try again.')}</p>
+              <div class="row"><button type="button" class="btn btn-primary" onclick={actions.loadState}>{t('Try again')}</button><button type="button" class="btn btn-outline" onclick={actions.showRequests}>{t('Back to your requests')}</button></div></div>
+          </div>
+        {/if}
       {:else if app.role === 'professional'}
-        <div class="request-shell">
-        {@render requestPaneContent(false)}
-        <div class="request-main" inert={requestsOpen}>
-        {#key app.workspaceId}<ProfessionalWorkspace {app} {actions} {job} {intake} {activeJob} {statusLabel} {money}/>{/key}
-        </div>
-        </div>
+        {#if proView === 'times'}<FreeTimes/>
+        {:else if proView === 'profile'}<ProfileServices/>
+        {:else if app.serverState && app.workspaceId}{#key app.workspaceId}<RequestPage {app} {actions} workspace={app.serverState} onBack={backToList}/>{/key}
+        {:else}<ProJobs {app} {actions} onSetTimes={() => { proView = 'times'; }} onProfile={() => { proView = 'profile'; }}/>{/if}
       {/if}
-      {#if !workspaceLayout}<footer><span>{t('Made for a little less back-and-forth.')}</span><span>{app.session.account?.email ?? t('Your account workspace')}</span></footer>{/if}
     </main>
-    {#if workspaceLayout && app.role === 'professional'}
-    <nav class="pro-tabs" aria-label={t('Professional navigation')}>
-      {#each proTabs as tab (tab.view)}<button type="button" class:current={proView === tab.view} aria-current={proView === tab.view ? 'page' : undefined} onclick={() => { proView = tab.view; }}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">{@html tab.icon}</svg><span>{t(tab.label)}</span></button>{/each}
-    </nav>
+    {#if !pendingPro}<AgentSettings {app}/>{/if}
+    {#if app.role === 'professional' && !pendingPro && !onRequestPage}
+      <ProTabBar items={proNav.map((item, i) => ({ ...item, badge: i === 0 ? proNeeds : undefined }))}/>
     {/if}
   </div>
 {/if}
+<Toast/>
+
+<style>
+  .frame { display: flex; flex-direction: column; min-height: 100svh; }
+  .main { flex: 1; min-width: 0; }
+  .main.request { overflow: hidden; }
+  .page-error { max-width: 1040px; margin: 16px auto 0; padding: 0 16px; }
+  .loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18vh 16px; color: var(--sk-muted); }
+  .failed { max-width: 640px; margin: 0 auto; padding: 12vh 16px; }
+  .failed h1 { font: 700 22px/1.2 var(--sk-fd); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; }
+</style>

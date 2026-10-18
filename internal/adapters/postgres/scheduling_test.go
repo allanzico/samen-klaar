@@ -14,6 +14,7 @@ import (
 
 func TestLifecycleSchedulerQueuesRemindersOnceAndEscalatesStalledWork(t *testing.T) {
 	ctx, store := accountTestStore(t)
+	store.stopBackgroundLoops()
 	customer := accountFixture(t, ctx, store)
 	professional := accountFixture(t, ctx, store)
 	if _, err := store.EnsureMembership(ctx, professional, identity.Professional); err != nil {
@@ -77,6 +78,7 @@ func TestLifecycleSchedulerQueuesRemindersOnceAndEscalatesStalledWork(t *testing
 
 func TestLifecycleSchedulerAdvancesPastFirstHundredJobs(t *testing.T) {
 	ctx, store := accountTestStore(t)
+	store.stopBackgroundLoops()
 	customer := accountFixture(t, ctx, store)
 	start := time.Now().UTC().Add(12 * time.Hour).Format(time.RFC3339)
 	end := time.Now().UTC().Add(13 * time.Hour).Format(time.RFC3339)
@@ -151,4 +153,107 @@ func hasOperatorCase(cases []workflow.OperatorCase, kind, workspaceID string) bo
 		}
 	}
 	return false
+}
+
+func TestLifecycleSchedulerCoversRemainingWaitsOnceAndEscalates(t *testing.T) {
+	ctx, store := accountTestStore(t)
+	store.stopBackgroundLoops()
+	customer, professional := accountFixture(t, ctx, store), accountFixture(t, ctx, store)
+	started := time.Now().Add(-25 * time.Hour).UTC().Format(time.RFC3339)
+	tests := []struct {
+		event string
+		setup func(*workflow.Job)
+	}{
+		{"missed-visit-reminder", func(j *workflow.Job) {
+			j.Appointment = &workflow.Appointment{StartUTC: time.Now().Add(-26 * time.Hour).UTC().Format(time.RFC3339), EndUTC: started}
+			j.AppointmentConfirmation = &workflow.AppointmentConfirmation{Status: "confirmed"}
+		}},
+		{"price-proposal-reminder", func(j *workflow.Job) {
+			j.PriceProposal = &workflow.PriceProposal{ID: "pending-price", Status: "pending", Actor: "professional", ScopeVersion: 1, CreatedAt: started}
+		}},
+		{"date-proposal-reminder", func(j *workflow.Job) {
+			j.DateProposal = &workflow.DateProposal{ID: "pending-date", Status: "pending", Actor: "customer", CreatedAt: started}
+		}},
+		{"scope-change-reminder", func(j *workflow.Job) {
+			j.Change = &workflow.ScopeChange{Status: "pending", CreatedAt: started, ProposedFrom: 1}
+		}},
+		{"completion-note-overdue", func(j *workflow.Job) { j.EvidenceSubmitted = true; j.EvidenceSubmittedAt = started }},
+		{"checkout-reminder", func(j *workflow.Job) {
+			j.CompletionApproved = true
+			j.PaymentApprovedVersion = 1
+			j.PaymentApprovedAt = started
+		}},
+	}
+	states := make([]workflow.State, 0, len(tests))
+	for _, tc := range tests {
+		state, err := store.CreateWorkspace(ctx, customer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.Job = workflow.Job{ID: "wait-" + rand.Text(), ScopeVersion: 1, ProfessionalAccountID: professional}
+		tc.setup(&state.Job)
+		persistLifecycleState(t, ctx, store, state)
+		states = append(states, state)
+	}
+	for range 2 {
+		if err := store.scheduleLifecycleNotifications(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var workers sync.WaitGroup
+	results := make(chan error, 2)
+	for range 2 {
+		workers.Add(1)
+		go func() { defer workers.Done(); results <- store.scheduleLifecycleNotifications(ctx) }()
+	}
+	workers.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases, err := store.ListWorkExceptions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, tc := range tests {
+		state := states[i]
+		assertOutboxCount(t, ctx, store, state.Job.ID, tc.event, 1)
+		found := false
+		for _, item := range cases {
+			if item.WorkspaceID == state.WorkspaceID && item.Kind == "stalled-job" && item.Status == tc.event && item.ReportedAt == started {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s did not reach an actionable operator case", tc.event)
+		}
+	}
+}
+
+func TestUnclearCurrentEvidenceReachesOperatorWithoutApprovalChasing(t *testing.T) {
+	ctx, store := accountTestStore(t)
+	store.stopBackgroundLoops()
+	customer, _, state := bookedCancellationFixture(t, ctx, store)
+	state.Job.WorkStarted = true
+	state.Job.EvidenceSubmitted = true
+	state.Job.DetailAdded = true
+	state.Job.EvidenceSubmittedAt = time.Now().Add(-25 * time.Hour).UTC().Format(time.RFC3339)
+	state.Job.WorkItems = []workflow.WorkItem{{ID: "valve-photo", Description: "Document the repaired valve", Kind: "photo", AddedInScope: state.Job.ScopeVersion}}
+	state.Job.Evidence = []workflow.Evidence{{AssetID: "asset-valve", Kind: "photo", ContentType: "image/jpeg", ScopeVersion: state.Job.ScopeVersion, CompletionRound: workflow.EvidenceRound(state.Job), WorkItemIDs: []string{"valve-photo"}}}
+	state.Job.EvidenceReview = &workflow.EvidenceReview{Coverage: []workflow.EvidenceFinding{{ScopeItem: "valve-photo", Coverage: "unclear", Observation: "The connection is obscured."}}}
+	persistLifecycleState(t, ctx, store, state)
+	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertOutboxCount(t, ctx, store, state.Job.ID, "completion-review-reminder", 0)
+	cases, err := store.ListWorkExceptions(ctx)
+	if err != nil || !hasOperatorCase(cases, "missing-evidence", state.WorkspaceID) {
+		t.Fatalf("unclear evidence has no operator path: %+v, %v", cases, err)
+	}
+	loaded, err := store.LoadWorkspace(ctx, customer, "customer", state.WorkspaceID)
+	if err != nil || loaded.Job.CompletionApproved {
+		t.Fatal("operator routing approved incomplete evidence")
+	}
 }

@@ -45,7 +45,7 @@ CREATE TABLE notification_outbox (
     event_key text NOT NULL,
     event_type text NOT NULL,
     recipient_role text NOT NULL CHECK (recipient_role IN ('customer', 'professional')),
-    status text NOT NULL CHECK (status IN ('queued', 'sending', 'adapter_unconfigured', 'sent', 'failed')),
+    status text NOT NULL CHECK (status IN ('queued', 'sending', 'adapter_unconfigured', 'sent', 'failed', 'obsolete')),
     attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     last_error text NOT NULL DEFAULT '' CHECK (char_length(last_error) <= 100),
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -62,6 +62,7 @@ CREATE TABLE accounts (
     email text NOT NULL DEFAULT '',
     display_name text NOT NULL DEFAULT '',
     preferred_role text NOT NULL DEFAULT 'customer' CHECK (preferred_role IN ('customer', 'professional', 'operator')),
+    locale text NOT NULL DEFAULT 'en' CHECK (locale IN ('en', 'nl')),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (issuer, subject)
@@ -136,6 +137,7 @@ CREATE TABLE professional_availability_slots (
     ends_at timestamptz NOT NULL,
     timezone text NOT NULL,
     status text NOT NULL CHECK (status IN ('available', 'booked', 'cancelled')) DEFAULT 'available',
+    source text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'schedule')),
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (starts_at < ends_at),
     UNIQUE (professional_account_id, starts_at, ends_at)
@@ -192,6 +194,7 @@ CREATE TABLE paypal_payment_operations (
     refund_request_id text NOT NULL DEFAULT '',
     refund_id text,
     seller_merchant_id text NOT NULL DEFAULT '',
+    authorization_expires_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (job_id, scope_version)
@@ -229,3 +232,163 @@ CREATE INDEX paypal_seller_accounts_status_idx ON paypal_seller_accounts (status
 
 CREATE INDEX IF NOT EXISTS professional_profiles_active_service_idx
 ON professional_profiles (category, service_name) WHERE status = 'active';
+
+-- Migrations 017, 019, 021, 022 and 023 (tables only; the parent-request trigger lives in the migration).
+CREATE TABLE professional_schedules (
+    professional_account_id text PRIMARY KEY REFERENCES professional_profiles(account_id) ON DELETE CASCADE,
+    timezone text NOT NULL DEFAULT 'Europe/Amsterdam',
+    gap_minutes integer NOT NULL DEFAULT 30 CHECK (gap_minutes BETWEEN 0 AND 120),
+    notice_minutes integer NOT NULL DEFAULT 1440 CHECK (notice_minutes BETWEEN 60 AND 20160),
+    horizon_days integer NOT NULL DEFAULT 28 CHECK (horizon_days BETWEEN 7 AND 90),
+    materialized_through date,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE professional_working_hours (
+    professional_account_id text NOT NULL REFERENCES professional_schedules(professional_account_id) ON DELETE CASCADE,
+    weekday smallint NOT NULL CHECK (weekday BETWEEN 1 AND 7),
+    starts_local time NOT NULL,
+    ends_local time NOT NULL,
+    CHECK (starts_local < ends_local),
+    PRIMARY KEY (professional_account_id, weekday, starts_local)
+);
+
+CREATE TABLE professional_days_off (
+    id text PRIMARY KEY,
+    professional_account_id text NOT NULL REFERENCES professional_schedules(professional_account_id) ON DELETE CASCADE,
+    first_day date NOT NULL,
+    last_day date NOT NULL,
+    note text NOT NULL DEFAULT '' CHECK (char_length(note) <= 80),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (first_day <= last_day AND last_day - first_day < 366)
+);
+CREATE INDEX professional_days_off_window_idx ON professional_days_off (professional_account_id, last_day);
+
+CREATE TABLE professional_slot_exclusions (
+    professional_account_id text NOT NULL REFERENCES professional_schedules(professional_account_id) ON DELETE CASCADE,
+    starts_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (professional_account_id, starts_at)
+);
+
+
+CREATE TABLE professional_evidence_policies (
+ profile_id text PRIMARY KEY REFERENCES professional_profiles(id) ON DELETE CASCADE,
+ requirements jsonb NOT NULL DEFAULT '[]', proposed jsonb NOT NULL DEFAULT '[]',
+ status text NOT NULL DEFAULT 'pending', reviewed_at timestamptz, reviewed_by text REFERENCES accounts(id), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE operator_case_work (
+ workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+ kind text NOT NULL, assigned_to text REFERENCES accounts(id), status text NOT NULL DEFAULT 'open',
+ outcome text NOT NULL DEFAULT '', updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(workspace_id,kind)
+);
+CREATE TABLE operator_case_notes (
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+ kind text NOT NULL, actor_account_id text NOT NULL REFERENCES accounts(id),
+ recipient_role text NOT NULL DEFAULT '', note text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX operator_case_notes_workspace ON operator_case_notes(workspace_id,id);
+CREATE TABLE operator_case_access (
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+ kind text NOT NULL, actor_account_id text NOT NULL REFERENCES accounts(id), accessed_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE coordination_tasks (
+    id text PRIMARY KEY,
+    workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+    job_id text NOT NULL,
+    scope_version integer NOT NULL CHECK (scope_version > 0),
+    completion_round integer NOT NULL CHECK (completion_round > 0),
+    trigger text NOT NULL CHECK (trigger IN ('completion-note', 'post-booking-scope')),
+    recipient_role text NOT NULL DEFAULT 'professional' CHECK (recipient_role = 'professional'),
+    status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'awaiting_reply', 'queued_summary', 'summary_ready', 'operator_review', 'completed', 'obsolete')),
+    source_message text NOT NULL DEFAULT '' CHECK (char_length(source_message) <= 1000),
+    question text NOT NULL DEFAULT '' CHECK (char_length(question) <= 500),
+    reply text NOT NULL DEFAULT '' CHECK (char_length(reply) <= 1500),
+    summary text NOT NULL DEFAULT '' CHECK (char_length(summary) <= 2000),
+    proposed_action text NOT NULL DEFAULT '' CHECK (proposed_action IN ('', 'request-work-note', 'review-scope', 'review-completion', 'operator-review')),
+    outcome text NOT NULL DEFAULT '' CHECK (char_length(outcome) <= 500),
+    revision bigint NOT NULL DEFAULT 1,
+    workspace_revision bigint NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(workspace_id,job_id,scope_version,completion_round,trigger)
+);
+CREATE INDEX coordination_tasks_active_idx ON coordination_tasks(workspace_id,status);
+
+CREATE TABLE parent_requests (
+ id text PRIMARY KEY, account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ description text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE request_job_plans (
+ parent_request_id text NOT NULL REFERENCES parent_requests(id) ON DELETE CASCADE,
+ plan_id text NOT NULL, workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+ description text NOT NULL, PRIMARY KEY(parent_request_id,plan_id)
+);
+
+CREATE TABLE consumer_policy_versions (
+    kind text NOT NULL CHECK (kind IN ('terms','cancellation','withdrawal','early_start')),
+    version text NOT NULL CHECK (length(version) BETWEEN 1 AND 80),
+    locale text NOT NULL CHECK (locale IN ('en','nl')),
+    title text NOT NULL CHECK (length(title) BETWEEN 3 AND 160),
+    body text NOT NULL CHECK (length(body) BETWEEN 10 AND 20000),
+    requires_acknowledgment boolean NOT NULL DEFAULT false,
+    reviewer_id text NOT NULL REFERENCES accounts(id),
+    review_rationale text NOT NULL CHECK (length(review_rationale) BETWEEN 10 AND 1000),
+    review_reference text NOT NULL CHECK (length(review_reference) BETWEEN 1 AND 1000),
+    published_by text NOT NULL REFERENCES accounts(id),
+    published_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (kind,version)
+);
+CREATE INDEX consumer_policy_versions_current_idx ON consumer_policy_versions (kind,published_at DESC);
+
+CREATE TABLE consumer_policy_acknowledgments (
+    workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+    account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    job_id text NOT NULL,
+    scope_version integer NOT NULL CHECK (scope_version > 0),
+    policy_kind text NOT NULL,
+    policy_version text NOT NULL,
+    acknowledged_at timestamptz NOT NULL,
+    PRIMARY KEY (workspace_id,job_id,scope_version,policy_kind,policy_version),
+    FOREIGN KEY (policy_kind,policy_version) REFERENCES consumer_policy_versions(kind,version)
+);
+
+CREATE TABLE agent_mandates (
+    account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    role text NOT NULL CHECK (role IN ('customer', 'professional')),
+    mandate jsonb NOT NULL,
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, role)
+);
+
+CREATE TABLE agent_decisions (
+    id bigserial PRIMARY KEY,
+    workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+    account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    role text NOT NULL CHECK (role IN ('customer', 'professional')),
+    mandate_version integer NOT NULL CHECK (mandate_version > 0),
+    code text NOT NULL CHECK (length(code) BETWEEN 1 AND 80),
+    action text NOT NULL DEFAULT '',
+    params jsonb NOT NULL DEFAULT '{}'::jsonb,
+    outcome text NOT NULL CHECK (outcome IN ('applied', 'rejected')),
+    error text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX agent_decisions_workspace_idx ON agent_decisions (workspace_id, account_id, role, id DESC);
+
+CREATE TABLE agent_escalations (
+    id bigserial PRIMARY KEY,
+    workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
+    account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    role text NOT NULL CHECK (role IN ('customer', 'professional')),
+    code text NOT NULL CHECK (length(code) BETWEEN 1 AND 80),
+    params jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz
+);
+CREATE UNIQUE INDEX agent_escalations_open_idx ON agent_escalations (workspace_id, account_id, role) WHERE resolved_at IS NULL;
+CREATE INDEX agent_escalations_account_idx ON agent_escalations (account_id, role, created_at DESC) WHERE resolved_at IS NULL;

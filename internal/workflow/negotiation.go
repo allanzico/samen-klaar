@@ -41,7 +41,7 @@ func applyNegotiation(state *State, input Action) error {
 		if len(note) < 3 || len(note) > 500 {
 			return errors.New("explain the price proposal in 3 to 500 characters")
 		}
-		job.PriceProposal = &PriceProposal{ID: rand.Text(), Status: "pending", Actor: input.Actor, AmountMinor: input.PriceAmountMinor, Note: note, ScopeVersion: job.ScopeVersion}
+		job.PriceProposal = &PriceProposal{ID: rand.Text(), CreatedAt: time.Now().UTC().Format(time.RFC3339), Status: "pending", Actor: input.Actor, AmountMinor: input.PriceAmountMinor, Note: note, ScopeVersion: job.ScopeVersion}
 		addEvent(job, fmt.Sprintf("%s proposed %s %.2f total: %s", input.Actor, job.Quote.Currency, float64(input.PriceAmountMinor)/100, note), "attention")
 	case "accept-price", "decline-price":
 		p := job.PriceProposal
@@ -71,7 +71,7 @@ func applyNegotiation(state *State, input Action) error {
 		if len(note) > 500 {
 			return errors.New("date proposal note must be 500 characters or fewer")
 		}
-		job.DateProposal = &DateProposal{ID: rand.Text(), Status: "pending", Actor: input.Actor, Note: note, Appointment: slot}
+		job.DateProposal = &DateProposal{ID: rand.Text(), CreatedAt: time.Now().UTC().Format(time.RFC3339), Status: "pending", Actor: input.Actor, Note: note, Appointment: slot}
 		addEvent(job, input.Actor+" proposed a visit: "+slot.StartsAt+" · "+slot.Timezone+" "+note, "attention")
 	case "accept-date", "decline-date":
 		p := job.DateProposal
@@ -90,10 +90,39 @@ func applyNegotiation(state *State, input Action) error {
 		if serviceAddressRequired(*state) && job.ServiceAddress == "" {
 			return errors.New("add the full service address before confirming the visit")
 		}
+		if job.Appointment != nil && (job.Appointment.StartUTC != slot.StartUTC || job.Appointment.EndUTC != slot.EndUTC) {
+			late, err := VisitChangeNeedsReview(job.Appointment, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			if late {
+				state.CancellationReview = &CancellationRequest{Kind: "late-reschedule", Status: "pending", RequestedBy: p.Actor, Reason: p.Note, RequestedAt: time.Now().UTC().Format(time.RFC3339), ProposalID: p.ID, ProposedAppointment: &slot}
+				p.Status = "review_pending"
+				addEvent(job, "Both parties requested a late visit change · operator review required; the current visit remains booked", "attention")
+				return nil
+			}
+		}
+		if input.Actor == "customer" && input.PaymentAuthorizationTiming != "" {
+			timing, err := paymentAuthorizationTiming(input.PaymentAuthorizationTiming)
+			if err != nil {
+				return err
+			}
+			if job.PaymentAuthorizedVersion == job.ScopeVersion && timing != job.PaymentAuthorizationTiming {
+				return errors.New("payment timing cannot change after authorization succeeds")
+			}
+			job.PaymentAuthorizationTiming = timing
+		}
 		p.Status = "accepted"
 		job.Appointment = &slot
-		job.AppointmentConfirmation = &AppointmentConfirmation{Status: "confirmed", RespondedAt: time.Now().UTC().Format(time.RFC3339), Appointment: slot}
-		addEvent(job, "Both parties agreed the visit: "+slot.StartsAt+" · "+slot.Timezone, "done")
+		if job.PaymentAuthorizationTiming == PaymentAuthorizationAtBooking && job.PaymentAuthorizedVersion != job.ScopeVersion {
+			if err := startAppointmentConfirmation(job, slot); err != nil {
+				return err
+			}
+			addEvent(job, "Both parties agreed the visit · customer PayPal authorization and professional confirmation required", "attention")
+		} else {
+			job.AppointmentConfirmation = &AppointmentConfirmation{Status: "confirmed", RespondedAt: time.Now().UTC().Format(time.RFC3339), Appointment: slot}
+			addEvent(job, "Both parties agreed the visit: "+slot.StartsAt+" · "+slot.Timezone, "done")
+		}
 	default:
 		return errors.New("unknown negotiation action")
 	}

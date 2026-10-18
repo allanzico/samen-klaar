@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -157,6 +158,28 @@ func (s *Server) professionalAvailabilityHandler(w http.ResponseWriter, r *http.
 	if r.Method == http.MethodGet {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
+		if r.URL.Query().Has("from") || r.URL.Query().Has("days") {
+			service, ok := s.scheduleService(w)
+			if !ok {
+				return
+			}
+			days := 7
+			if value := r.URL.Query().Get("days"); value != "" {
+				var err error
+				days, err = strconv.Atoi(value)
+				if err != nil {
+					http.Error(w, "Choose from 1 to 90 days of availability.", http.StatusBadRequest)
+					return
+				}
+			}
+			window, err := service.ProfessionalAvailabilityWindow(ctx, principal.User.ID, r.URL.Query().Get("from"), days)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, window)
+			return
+		}
 		slots, err := s.professionals.ListProfessionalAvailability(ctx, principal.User.ID)
 		if err != nil {
 			http.Error(w, "availability could not be loaded", http.StatusServiceUnavailable)
@@ -299,7 +322,7 @@ func (s *Server) resolveWorkCaseHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "invalid operator case resolution", http.StatusBadRequest)
 		return
 	}
-	if input.Kind != "late-cancellation" && input.Kind != "job-issue" {
+	if input.Kind != "late-cancellation" && input.Kind != "late-reschedule" && input.Kind != "withdrawal" && input.Kind != "job-issue" {
 		http.Error(w, "unsupported operator case type", http.StatusBadRequest)
 		return
 	}

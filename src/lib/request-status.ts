@@ -1,25 +1,46 @@
 import type { WorkspaceState, WorkspaceRole } from './types';
 
-export function requestStatus(state: WorkspaceState | null, role: WorkspaceRole | null): { code: string; label: string } {
-  if (!state) return { code: 'loading', label: 'Loading your request' };
+// Mirrors RequestStatus() in internal/workflow/request_status.go so an open request and its list
+// summary use the same codes. A few client-only codes refine states the summary cannot see:
+// waitlist, authorize_booking and note_requested.
+export type RequestCode =
+  | 'loading' | 'draft' | 'describing' | 'matching' | 'waitlist'
+  | 'quote' | 'booking' | 'review_price' | 'waiting_price' | 'review_date' | 'waiting_date'
+  | 'authorize_booking' | 'confirm_visit' | 'waiting_visit_confirmation' | 'choose_visit'
+  | 'booked' | 'in_progress' | 'review_change' | 'waiting_change'
+  | 'review' | 'note_requested' | 'payment' | 'paid'
+  | 'dispute_review' | 'refund_pending' | 'refunded' | 'issue_resolved'
+  | 'cancellation_review' | 'cancelled';
+
+export function requestStatus(state: WorkspaceState | null, role: WorkspaceRole | null): RequestCode {
+  if (!state) return 'loading';
   const job = state.job;
-  if (state.cancelled) return { code: 'cancelled', label: 'Cancelled' };
-  if (state.cancellationReview?.status === 'pending') return { code: 'cancellation_review', label: 'Cancellation request under review' };
-  if (!job.id) return { code: state.intake?.step === 'matches' ? 'matching' : 'describing', label: state.intake?.step === 'matches' ? 'Review matching services' : 'Tell us about the job' };
-  const other = role === 'professional' ? job.customer : job.professional;
-  if (job.dispute?.status === 'open') return { code: 'dispute_review', label: job.paid ? 'Payment dispute under review' : 'Issue under review · payment paused' };
-  if (job.dispute?.status === 'refund_pending') return { code: 'refund_pending', label: 'Full refund processing' };
-  if (job.dispute?.status === 'refunded') return { code: 'refunded', label: 'Full refund complete' };
-  if (job.paid) return { code: 'paid', label: 'Payment complete' };
-  if (job.appointmentConfirmation?.status === 'pending') return { code: 'appointment_confirmation', label: role === 'professional' ? 'Confirm this visit' : 'Waiting for visit confirmation' };
-  if (job.appointmentConfirmation?.status === 'expired' || job.appointmentConfirmation?.status === 'declined') return { code: 'choose_new_visit', label: 'Choose another visit time' };
-  if (job.change?.status === 'pending') return { code: 'change', label: role === 'customer' ? 'Review the additional work' : `Waiting for ${other}` };
-  if (job.dateProposal?.status === 'pending') return { code: 'date', label: job.dateProposal.actor === role ? `Waiting for ${other}` : 'Review the proposed visit' };
-  if (job.priceProposal?.status === 'pending') return { code: 'price', label: job.priceProposal.actor === role ? `Waiting for ${other}` : 'Review the price offer' };
-  if (job.completionApproved) return { code: 'payment', label: 'Ready for payment' };
-  if (job.evidenceSubmitted) return { code: 'review', label: 'Review completion' };
-  if (job.workStarted) return { code: 'working', label: 'Work in progress' };
-  if (job.appointment) return { code: 'booked', label: 'Visit booked' };
-  if (job.quoteApproved) return { code: 'booking', label: 'Choose or propose a visit' };
-  return { code: 'quote', label: role === 'customer' ? 'Review the plan and price' : 'Waiting for customer approval' };
+  if (state.cancelled) return 'cancelled';
+  if (state.cancellationReview?.status === 'pending') return 'cancellation_review';
+  if (!job.id) {
+    if (!state.intake) return 'draft';
+    if (state.intake.step === 'matches') return 'matching';
+    if (state.intake.step === 'waitlist') return 'waitlist';
+    return 'describing';
+  }
+  switch (job.dispute?.status) {
+    case 'open': case 'partial_refund_review': case 'payment_reversal_review': return 'dispute_review';
+    case 'refund_pending': return 'refund_pending';
+    case 'refunded': return 'refunded';
+  }
+  if (job.paid) return 'paid';
+  if (job.appointmentConfirmation?.status === 'pending') {
+    if (job.paymentAuthorizationTiming === 'at_booking' && job.paymentAuthorizedVersion !== job.scopeVersion) return 'authorize_booking';
+    return role === 'professional' ? 'confirm_visit' : 'waiting_visit_confirmation';
+  }
+  if (job.appointmentConfirmation?.status === 'declined' || job.appointmentConfirmation?.status === 'expired') return 'choose_visit';
+  if (job.change?.status === 'pending') return role === 'customer' ? 'review_change' : 'waiting_change';
+  if (job.dateProposal?.status === 'pending') return job.dateProposal.actor === role ? 'waiting_date' : 'review_date';
+  if (job.priceProposal?.status === 'pending') return job.priceProposal.actor === role ? 'waiting_price' : 'review_price';
+  if (job.completionApproved) return 'payment';
+  if (job.evidenceSubmitted) return role === 'professional' && job.detailsRequested && !job.detailAdded ? 'note_requested' : 'review';
+  if (job.workStarted) return 'in_progress';
+  if (job.appointment) return 'booked';
+  if (job.quoteApproved) return 'booking';
+  return 'quote';
 }

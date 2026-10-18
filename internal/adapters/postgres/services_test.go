@@ -13,6 +13,9 @@ func TestServiceAreaCovers(t *testing.T) {
 		{name: "city coverage includes slash-qualified neighborhood", provider: "Amsterdam", request: "Amsterdam/Centrum", want: true},
 		{name: "neighborhood coverage matches city-qualified request", provider: "Centrum", request: "Amsterdam-Centrum", want: true},
 		{name: "city coverage includes Amsterdam postcode", provider: "Amsterdam", request: "1012 AB", want: true},
+		{name: "postcode within saved area label", provider: "AMSTERDAM CENTRUM 1020EN", request: "1020EN", want: true},
+		{name: "postcode within saved area label with space", provider: "Amsterdam Centrum 1020 EN", request: "1020EN", want: true},
+		{name: "different postcode in saved area label", provider: "AMSTERDAM CENTRUM 1020EN", request: "1021AB", want: false},
 		{name: "outside market is rejected", provider: "Amsterdam", request: "Rotterdam", want: false},
 	}
 

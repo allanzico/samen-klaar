@@ -62,7 +62,7 @@ func enqueueNotificationTx(ctx context.Context, tx pgx.Tx, riverClient *river.Cl
 		       $4, $2, $3
 		FROM account_workspaces w
 		JOIN accounts recipient ON recipient.id = CASE $4 WHEN 'customer' THEN w.account_id ELSE w.state_json #>> '{job,professionalAccountId}' END
-		WHERE w.state_json #>> '{job,id}' = $1
+		WHERE `+notificationRequestID("w")+` = $1
 		ON CONFLICT (recipient_account_id,event_key) DO NOTHING`, args.JobID, args.EventKey, args.EventType, args.RecipientRole)
 	if err != nil {
 		return err

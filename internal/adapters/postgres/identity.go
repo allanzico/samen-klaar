@@ -33,7 +33,7 @@ func (s *Store) UpsertIdentity(ctx context.Context, issuer, subject, email, disp
 		SET email = CASE WHEN EXCLUDED.email = '' THEN accounts.email ELSE EXCLUDED.email END,
 		    display_name = CASE WHEN EXCLUDED.display_name = '' THEN accounts.display_name ELSE EXCLUDED.display_name END,
 		    updated_at = now()
-		RETURNING id, email, display_name`, id, issuer, subject, email, displayName).Scan(&user.ID, &user.Email, &user.DisplayName)
+		RETURNING id, email, display_name, locale`, id, issuer, subject, email, displayName).Scan(&user.ID, &user.Email, &user.DisplayName, &user.Locale)
 	return user, err
 }
 
@@ -77,11 +77,11 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash, accountID string, 
 func (s *Store) Session(ctx context.Context, tokenHash string) (identity.Principal, error) {
 	var principal identity.Principal
 	err := s.pool.QueryRow(ctx, `
-		SELECT a.id, a.email, a.display_name, s.active_role, s.expires_at
+		SELECT a.id, a.email, a.display_name, a.locale, s.active_role, s.expires_at
 		FROM account_sessions s
 		JOIN accounts a ON a.id = s.account_id
 		JOIN account_memberships active ON active.account_id = s.account_id AND active.role = s.active_role
-		WHERE s.token_hash = $1 AND s.expires_at > now() AND active.status <> 'disabled'`, tokenHash).Scan(&principal.User.ID, &principal.User.Email, &principal.User.DisplayName, &principal.ActiveRole, &principal.ExpiresAt)
+		WHERE s.token_hash = $1 AND s.expires_at > now() AND active.status <> 'disabled'`, tokenHash).Scan(&principal.User.ID, &principal.User.Email, &principal.User.DisplayName, &principal.User.Locale, &principal.ActiveRole, &principal.ExpiresAt)
 	if err != nil {
 		return identity.Principal{}, err
 	}
@@ -138,6 +138,26 @@ func (s *Store) PreferredRole(ctx context.Context, accountID string) (identity.R
 		AND m.role = a.preferred_role AND (m.status = 'active' OR m.role = 'professional' AND m.status = 'pending')
 	) THEN a.preferred_role ELSE 'customer' END FROM accounts a WHERE a.id = $1`, accountID).Scan(&role)
 	return role, err
+}
+
+func (s *Store) AccountLocale(ctx context.Context, accountID string) (string, error) {
+	var locale string
+	err := s.pool.QueryRow(ctx, `SELECT locale FROM accounts WHERE id=$1`, accountID).Scan(&locale)
+	return locale, err
+}
+
+func (s *Store) SetAccountLocale(ctx context.Context, accountID, locale string) error {
+	if locale != "en" && locale != "nl" {
+		return errors.New("choose Dutch or English")
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE accounts SET locale=$2,updated_at=now() WHERE id=$1`, accountID, locale)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return errors.New("account was not found")
+	}
+	return nil
 }
 
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {

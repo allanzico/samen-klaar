@@ -211,6 +211,8 @@ func TestRefundOperationRoundTripsRequestIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	jobID := fmt.Sprintf("refund-record-%s", rand.Text())
+	state.Job = workflow.Job{ID: jobID, ScopeVersion: 1, Quote: workflow.Quote{TotalMinor: 1000, Currency: "EUR"}}
+	persistLifecycleState(t, ctx, store, state)
 	intent := paypal.IntentRecord{WorkspaceID: state.WorkspaceID, JobID: jobID, ScopeVersion: 1, AmountMinor: 1000, Currency: "EUR", Status: "captured", CaptureID: "capture-refund", OrderRequestID: "order-1", AuthRequestID: "auth-1", CaptureRequestID: "capture-1", VoidRequestID: "void-1", RefundRequestID: "refund-request-stable"}
 	if _, err := store.CreatePaymentIntent(ctx, intent); err != nil {
 		t.Fatal(err)

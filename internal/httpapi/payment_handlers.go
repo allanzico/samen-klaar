@@ -64,6 +64,9 @@ func (s *Server) paypalAuthorizeHandler(w http.ResponseWriter, r *http.Request) 
 	if err == nil {
 		err = s.paypal.Authorize(ctx, state, input.OrderID)
 	}
+	if err == nil && state.Job.PaymentAuthorizationTiming == workflow.PaymentAuthorizationAtBooking && !state.Job.WorkStarted {
+		state, err = s.recordBookingAuthorization(ctx, principal.User.ID, string(principal.ActiveRole), state)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -116,6 +119,7 @@ func (s *Server) paypalCaptureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"status": status, "state": state})
+	s.TriggerAgents(state.WorkspaceID) // the professional's assistant reports the payment
 }
 
 func (s *Server) paypalReconcileHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +140,9 @@ func (s *Server) paypalReconcileHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	status, err := s.paypal.Reconcile(ctx, state)
+	if err == nil && status == "authorized" && state.Job.PaymentAuthorizationTiming == workflow.PaymentAuthorizationAtBooking && !state.Job.WorkStarted {
+		state, err = s.recordBookingAuthorization(ctx, principal.User.ID, string(principal.ActiveRole), state)
+	}
 	if err == nil && status == "captured" && !state.Job.Paid {
 		var captureID string
 		captureID, err = s.paypal.CaptureID(ctx, state)
@@ -151,6 +158,25 @@ func (s *Server) paypalReconcileHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, map[string]any{"status": status, "state": state})
+	if state.Job.Paid {
+		s.TriggerAgents(state.WorkspaceID) // both assistants report the payment
+	}
+}
+
+// The database repeats these identity checks under the workspace/payment locks.
+// A callback that cannot save the projection leaves the durable authorization
+// recoverable; booking cancellation/expiry queues its own release transactionally.
+func (s *Server) recordBookingAuthorization(ctx context.Context, accountID, role string, state State) (State, error) {
+	record, err := s.paypal.VerifiedAuthorization(ctx, state)
+	if err != nil {
+		return state, err
+	}
+	return s.applyAction(ctx, accountID, role, Action{
+		Action: "record-payment-authorization", Actor: role, PayPalAuthorized: true,
+		PaymentAuthorizationID:           record.AuthorizationID,
+		PaymentAuthorizationRequestID:    record.AuthRequestID,
+		PaymentAuthorizationScopeVersion: record.ScopeVersion,
+	}, state.WorkspaceID)
 }
 
 func (s *Server) paypalStatusHandler(w http.ResponseWriter, r *http.Request) {

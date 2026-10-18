@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
+// Svelte runes are compiled away in the app; the controller only needs them to be plain values here.
+globalThis.$state = (value) => value;
+
 const bundle = await build({ entryPoints: ['src/state/create-app-controller.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
 const module = { exports: {} };
 new Function('module', 'exports', bundle.outputFiles[0].text)(module, module.exports);
@@ -15,15 +18,19 @@ function setup(fetcher) {
     removeItem: (key) => storage.delete(key)
   };
   globalThis.window = {
-    location: { href: 'https://example.test/?workspaceId=A' },
-    history: { replaceState: (_, __, path) => { window.location.href = 'https://example.test' + path; } }
+    location: { href: 'https://example.test/?workspaceId=A', pathname: '/' },
+    history: {
+      replaceState: (_, __, path) => { window.location.href = 'https://example.test' + path; window.location.pathname = new URL(window.location.href).pathname; },
+      pushState: (_, __, path) => { window.location.href = 'https://example.test' + path; window.location.pathname = new URL(window.location.href).pathname; }
+    },
+    scrollTo: () => {}
   };
   globalThis.fetch = fetcher;
   const app = {
-    session: { account: { id: 'customer' } }, role: 'customer', workspaceId: 'A',
+    session: { account: { id: 'customer' } }, role: 'customer', customerPage: 'detail', workspaceId: 'A',
     workspaces: [{ id: 'A' }, { id: 'B' }, { id: 'C' }], serverState: { job: { id: 'job-A' } },
     workspaceCursor: null,
-    providerConfig: { paymentProvider: '' }, pending: false, loading: false, error: '',
+    providerConfig: { paymentsAvailable: false }, pending: false, loading: false, error: '',
     draft: '', draftRestored: false, draftSaved: true, paypalStatus: 'not_started'
   };
   return { app, actions: createAppActions(app, async () => {}) };
@@ -89,4 +96,99 @@ test('older request pages append without losing current selection', async () => 
   assert.deepEqual(app.workspaces.map((item) => item.id), ['A', 'B', 'C', 'D']);
   assert.equal(app.workspaceId, 'A');
   assert.equal(app.workspaceCursor, null);
+});
+
+test('customer home clears the selected request and preserves it in history', () => {
+  const { app, actions } = setup(async () => { throw new Error('unexpected request'); });
+  actions.showHome();
+  assert.equal(app.customerPage, 'home');
+  assert.equal(app.workspaceId, null);
+  assert.equal(app.serverState, null);
+  assert.equal(window.location.href, 'https://example.test/');
+  actions.showRequests();
+  assert.equal(app.customerPage, 'requests');
+  assert.equal(window.location.href, 'https://example.test/requests');
+});
+
+test('opening a request gives the customer a direct detail URL', async () => {
+  const { app, actions } = setup(async (url) => {
+    if (url === '/api/state?workspaceId=B') return response({ job: { id: 'job-B' } });
+    throw new Error(`unexpected ${url}`);
+  });
+  actions.showRequests();
+  await actions.selectRequest('B');
+  assert.equal(app.customerPage, 'detail');
+  assert.equal(app.workspaceId, 'B');
+  assert.equal(window.location.href, 'https://example.test/requests/B');
+});
+
+test('describing a job creates a request and submits its first answer', async () => {
+  const calls = [];
+  const { app, actions } = setup(async (url, init) => {
+    calls.push(url);
+    if (url === '/api/workspaces' && init?.method === 'POST') return response({ workspace: { workspaceId: 'new-id', job: {} } });
+    if (url === '/api/workspaces') return response({ workspaces: [{ id: 'new-id' }] });
+    if (url === '/api/actions') {
+      assert.deepEqual(JSON.parse(init.body), { workspaceId: 'new-id', action: 'start-intake', value: 'A leaking kitchen sink' });
+      return response({ workspaceId: 'new-id', intake: { step: 'detail' }, job: {} });
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+  actions.showHome();
+  app.draft = 'A leaking kitchen sink';
+  await actions.startRequest(app.draft);
+  assert.equal(app.customerPage, 'detail');
+  assert.equal(window.location.href, 'https://example.test/requests/new-id');
+  assert.equal(app.serverState.intake.step, 'detail');
+  assert.equal(app.draft, '');
+  assert.ok(calls.includes('/api/actions'));
+});
+
+test('signed-in customer lands on the description form without creating a request', async () => {
+  const calls = [];
+  const { app, actions } = setup(async (url, init) => {
+    calls.push([url, init?.method]);
+    if (url === '/api/config') return response({ appName: 'SamenKlaar', paymentsAvailable: false });
+    if (url === '/api/auth/session') return response({ authenticated: true, activeRole: 'customer', account: { id: 'customer' }, memberships: [{ role: 'customer', status: 'active' }] });
+    if (url === '/api/workspaces') return response({ workspaces: [{ id: 'A', title: 'Sink leak', status: 'quote' }] });
+    throw new Error(`unexpected ${url}`);
+  });
+  window.location.href = 'https://example.test/';
+  await actions.initialize();
+  assert.equal(app.customerPage, 'home');
+  assert.equal(app.workspaceId, null);
+  assert.equal(app.serverState, null);
+  assert.ok(!calls.some(([url, method]) => url === '/api/workspaces' && method === 'POST'));
+});
+
+test('direct operator URL switches only an authorized membership before loading requests', async () => {
+  const calls = [];
+  const { actions } = setup(async (url) => {
+    calls.push(url);
+    if (url === '/api/config') return response({ appName: 'SamenKlaar', paymentsAvailable: false });
+    if (url === '/api/auth/session') return response({ authenticated: true, activeRole: 'customer', memberships: [{ role: 'customer', status: 'active' }, { role: 'operator', status: 'active' }] });
+    if (url === '/api/auth/role') return response({ path: '/operator' });
+    throw new Error(`unexpected ${url}`);
+  });
+  window.location.pathname = '/operator';
+  let destination = '';
+  window.location.replace = (path) => { destination = path; };
+  await actions.initialize();
+  assert.equal(destination, '/operator');
+  assert.deepEqual(calls.sort(), ['/api/auth/role', '/api/auth/session', '/api/config']);
+});
+
+test('direct operator URL never activates an absent membership', async () => {
+  const calls = [];
+  const { app, actions } = setup(async (url) => {
+    calls.push(url);
+    if (url === '/api/config') return response({ appName: 'SamenKlaar', paymentsAvailable: false });
+    if (url === '/api/auth/session') return response({ authenticated: true, activeRole: 'customer', memberships: [{ role: 'customer', status: 'active' }] });
+    throw new Error(`unexpected ${url}`);
+  });
+  window.location.pathname = '/operator';
+  await actions.initialize();
+  assert.equal(app.role, 'customer');
+  assert.equal(app.loading, false);
+  assert.deepEqual(calls.sort(), ['/api/auth/session', '/api/config']);
 });

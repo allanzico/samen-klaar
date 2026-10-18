@@ -39,14 +39,23 @@ func (s *Store) ResolveWorkCase(ctx context.Context, operatorID, workspaceID, ki
 	state.WorkspaceID = workspaceID
 	action := ""
 	switch kind {
+	case "late-reschedule", "withdrawal":
+		action, err = s.resolveConsumerCaseTx(ctx, tx, &state, kind, decision, rationale)
+		if err != nil {
+			return err
+		}
 	case "late-cancellation":
 		request := state.CancellationReview
-		if request == nil || request.Status != "pending" {
+		if request == nil || request.Status != "pending" || request.Kind != "" && request.Kind != "late-cancellation" {
 			return errors.New("late cancellation is no longer awaiting review")
 		}
 		switch decision {
 		case "approve-cancellation":
+			if err := s.enqueueAuthorizationReleaseTx(ctx, tx, workspaceID, state.Job); err != nil {
+				return err
+			}
 			state.Cancelled = true
+			state.Job.PaymentAuthorizedVersion = 0
 			state.CancelledBy = request.RequestedBy
 			request.Status = "approved"
 			action = "approve-late-cancellation"
@@ -77,6 +86,7 @@ func (s *Store) ResolveWorkCase(ctx context.Context, operatorID, workspaceID, ki
 			}
 			issue.Status = "rework"
 			action = "request-work-rework"
+			state.Job.CompletionRound = workflow.EvidenceRound(state.Job) + 1
 			state.Job.EvidenceSubmitted = false
 			state.Job.EvidenceSubmittedAt = ""
 			state.Job.DetailsRequested = true
@@ -84,6 +94,8 @@ func (s *Store) ResolveWorkCase(ctx context.Context, operatorID, workspaceID, ki
 			state.Job.CompletionApproved = false
 			state.Job.CompletionApprovedAt = ""
 			state.Job.PaymentApprovedVersion = 0
+			state.Job.PaymentApprovedAt = ""
+			state.Job.DetailAddedAt = ""
 			state.Job.EvidenceReview = nil
 		case "close-review":
 			issue.Status = "resolved"

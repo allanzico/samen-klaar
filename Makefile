@@ -29,9 +29,8 @@ help:
 	@echo 'make rollback-prod                 Restore the previous app image'
 	@echo 'make check                         Run Go and frontend checks'
 	@echo 'make check-flow                    Run workflow integration tests with disposable PostgreSQL'
-	@echo 'make seed-local                    Seed local test accounts, offers and availability'
-	@echo 'make import-seed-auth0              Import their passwords into the configured Auth0 tenant'
-	@echo 'make benchmark-local               Measure real AI routing and directory matching'
+	@echo 'make seed-pros                     Seed ten named test professionals (see docs/SEED_PROFESSIONALS.md)'
+	@echo 'make import-seed-pros-auth0        Import those ten into the configured Auth0 tenant'
 
 init-local init-prod deploy-local deploy-prod infra-local validate-local validate-prod migrate-local migrate-prod status-local status-prod logs-local logs-prod stop-local stop-prod backup-local backup-prod:
 	@./docker/deploy.sh $(word 1,$(subst -, ,$@)) $(word 2,$(subst -, ,$@))
@@ -50,6 +49,6 @@ check:
 check-flow:
 	@sh ./docker/verify-flow.sh
 
-.PHONY: seed-local benchmark-local import-seed-auth0
-seed-local benchmark-local import-seed-auth0:
+.PHONY: seed-pros import-seed-pros-auth0
+seed-pros import-seed-pros-auth0:
 	@sh ./docker/data.sh $@

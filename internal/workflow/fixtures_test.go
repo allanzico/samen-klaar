@@ -37,7 +37,7 @@ func NewDemoState(scenario string) State {
 		job.QuoteApproved = true
 		job.Appointment = &state.AvailableSlots[0]
 		job.WorkStarted, job.EvidenceSubmitted = true, true
-		job.Evidence = []Evidence{{AssetID: "test_asset", Label: "Completion photo", Description: "Test evidence reference.", Kind: "photo"}}
+		job.Evidence = []Evidence{{AssetID: "test_asset", ContentType: "image/png", Label: "Completion photo", Description: "Test evidence reference.", Kind: "photo"}}
 		if scenario == "ready-review" || scenario == "change-review" {
 			job.DetailAdded = true
 			job.Evidence = append(job.Evidence, Evidence{Label: "Work note", Description: "Test completion note.", Kind: "note"})

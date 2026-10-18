@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-boards",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "design"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "app-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "--config",
+        ".claude/vite.dev.config.mjs"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "app-local",
+      "url": "http://localhost:8090"
+    }
+  ]
+}

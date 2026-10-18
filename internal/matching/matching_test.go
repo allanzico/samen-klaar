@@ -45,3 +45,25 @@ func TestUnsupportedWorkAsksInsteadOfUnrelatedMatch(t *testing.T) {
 		t.Fatalf("unexpected fallback: %v %q %v", matches, q, err)
 	}
 }
+
+type postcodeDirectory struct{}
+
+func (postcodeDirectory) ServiceCatalog(context.Context, string, string, string, ...workflow.Location) ([]Service, error) {
+	return []Service{{Name: "Sink repair"}}, nil
+}
+
+func (postcodeDirectory) ServiceMatches(context.Context, string, string, Service, ...workflow.Location) ([]workflow.Match, error) {
+	return []workflow.Match{
+		{ID: "city-1", Area: "Amsterdam", EarliestAppointment: &workflow.Appointment{StartUTC: "2026-10-18T09:00:00Z"}},
+		{ID: "city-2", Area: "Amsterdam", EarliestAppointment: &workflow.Appointment{StartUTC: "2026-10-19T09:00:00Z"}},
+		{ID: "city-3", Area: "Amsterdam", EarliestAppointment: &workflow.Appointment{StartUTC: "2026-10-20T09:00:00Z"}},
+		{ID: "postcode", Area: "AMSTERDAM CENTRUM 1020EN"},
+	}, nil
+}
+
+func TestExactPostcodeProfessionalRemainsVisibleWhenOnlyThreeMatchesAreShown(t *testing.T) {
+	matches, _, err := Find(context.Background(), postcodeDirectory{}, testSelector{Selection{Fits: []Fit{{Index: 0, Reason: "This service covers the requested sink repair."}}}}, "Plumbing", "Sink repair", "customer", workflow.Location{Label: "1020EN"})
+	if err != nil || len(matches) != 3 || matches[0].ID != "postcode" {
+		t.Fatalf("postcode professional omitted from visible matches: %+v, %v", matches, err)
+	}
+}
