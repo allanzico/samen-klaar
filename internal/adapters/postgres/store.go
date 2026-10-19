@@ -210,7 +210,7 @@ func (s *Store) LoadFor(ctx context.Context, accountID, role string) (workflow.S
 	}
 	query := `SELECT id, state_json FROM account_workspaces WHERE account_id = $1 ORDER BY updated_at DESC LIMIT 1`
 	if role == "professional" {
-		query = `SELECT id, state_json FROM account_workspaces WHERE state_json #>> '{job,professionalAccountId}' = $1 ORDER BY updated_at DESC LIMIT 1`
+		query = `SELECT id, state_json FROM account_workspaces WHERE state_json #>> '{job,professionalAccountId}' = $1 AND ` + notRemovedByProfessional + ` ORDER BY updated_at DESC LIMIT 1`
 	}
 	var workspaceID string
 	var stateJSON []byte
@@ -249,7 +249,11 @@ const workspaceSummaryJSON = `jsonb_build_object(
     'dateProposal', state_json #> '{job,dateProposal}', 'priceProposal', state_json #> '{job,priceProposal}',
     'completionApproved', state_json #> '{job,completionApproved}',
     'evidenceSubmitted', state_json #> '{job,evidenceSubmitted}',
-    'workStarted', state_json #> '{job,workStarted}'))`
+    'workStarted', state_json #> '{job,workStarted}',
+    'paymentAuthorizedVersion', state_json #> '{job,paymentAuthorizedVersion}',
+    'paymentApprovedVersion', state_json #> '{job,paymentApprovedVersion}',
+    'paymentAuthorizationTiming', state_json #> '{job,paymentAuthorizationTiming}',
+    'paymentTransactionId', state_json #> '{job,paymentTransactionId}'))`
 
 type workspaceCursor struct {
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -296,7 +300,7 @@ func (s *Store) listWorkspaceSummaries(ctx context.Context, accountID, role stri
 	}
 	query := `SELECT id, ` + workspaceSummaryJSON + `, updated_at FROM account_workspaces WHERE account_id = $1`
 	if role == "professional" {
-		query = `SELECT id, ` + workspaceSummaryJSON + `, updated_at FROM account_workspaces WHERE state_json #>> '{job,professionalAccountId}' = $1`
+		query = `SELECT id, ` + workspaceSummaryJSON + `, updated_at FROM account_workspaces WHERE state_json #>> '{job,professionalAccountId}' = $1 AND ` + notRemovedByProfessional
 	}
 	var beforeAt any
 	beforeID := ""
@@ -350,7 +354,22 @@ func (s *Store) CreateWorkspace(ctx context.Context, accountID string) (workflow
 	if err != nil {
 		return workflow.State{}, err
 	}
-	if _, err := s.pool.Exec(ctx, `INSERT INTO account_workspaces (id, account_id, state_json) VALUES ($1, $2, $3)`, id, accountID, raw); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return workflow.State{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	open, err := lockOpenRequestCountTx(ctx, tx, accountID, "")
+	if err != nil {
+		return workflow.State{}, err
+	}
+	if err := workflow.CheckOpenRequestLimit(open, 1); err != nil {
+		return workflow.State{}, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO account_workspaces (id, account_id, state_json) VALUES ($1, $2, $3)`, id, accountID, raw); err != nil {
+		return workflow.State{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return workflow.State{}, err
 	}
 	return state, nil
@@ -507,9 +526,21 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 		}
 	}
 
+	// Finding another professional reopens a request the professional cancelled, so it takes
+	// a place under the open-request limit again.
+	if input.Action == "return-to-matches" && role == "customer" && current.Cancelled {
+		open, err := lockOpenRequestCountTx(ctx, tx, ownerID, workspaceID)
+		if err != nil {
+			return workflow.State{}, err
+		}
+		if err := workflow.CheckOpenRequestLimit(open, 1); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	if err := prepareConsumerPolicyActionTx(ctx, tx, &current, &input); err != nil {
 		return workflow.State{}, err
 	}
+	wasCancelled := current.Cancelled
 	previousTiming := current.Job.PaymentAuthorizationTiming
 	if err = workflow.Apply(&current, input); err != nil {
 		return workflow.State{}, err
@@ -568,10 +599,20 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 	if err = s.enqueueCoordinationTx(ctx, tx, workspaceID, state, input, revision+1); err != nil {
 		return workflow.State{}, err
 	}
+	if input.Action == "remove-request" {
+		if _, err = tx.Exec(ctx, `INSERT INTO professional_removed_requests (workspace_id, account_id, job_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, workspaceID, actorAccountID, state.Job.ID); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	if _, err = tx.Exec(ctx, `INSERT INTO audit_events (account_id, actor_account_id, workspace_id, job_id, actor, action, scope_version, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, ownerID, actorAccountID, workspaceID, state.Job.ID, input.Actor, input.Action, int32(state.Job.ScopeVersion), revision+1); err != nil {
 		return workflow.State{}, err
 	}
-	if eventType, recipient, ok := notificationForAction(input, state.Job); ok {
+	notifyInput := input
+	if input.Action == "remove-request" && !wasCancelled {
+		// Removing an active request declines it; the customer hears about it as a cancellation.
+		notifyInput.Action = "cancel-request"
+	}
+	if eventType, recipient, ok := notificationForAction(notifyInput, state.Job); ok {
 		eventKey := fmt.Sprintf("%s:%d:%s", state.Job.ID, revision+1, input.Action)
 		if err = enqueueNotificationTx(ctx, tx, s.river, NotificationArgs{JobID: state.Job.ID, EventKey: eventKey, EventType: eventType, RecipientRole: recipient}); err != nil {
 			return workflow.State{}, fmt.Errorf("enqueue notification transactionally: %w", err)
@@ -640,6 +681,9 @@ func reserveBooking(ctx context.Context, tx pgx.Tx, job workflow.Job, agreed ...
 	if err := validateVisitCoverageTx(ctx, tx, job); err != nil {
 		return err
 	}
+	if err := validateProfessionalSuspensionTx(ctx, tx, professionalID); err != nil {
+		return err
+	}
 	if len(agreed) == 0 || !agreed[0] {
 		if err := validateScheduledBookingTx(ctx, tx, professionalID, requestedStart, requestedEnd, job.ID); err != nil {
 			return err
@@ -694,6 +738,9 @@ func reserveAgreedDate(ctx context.Context, tx pgx.Tx, job *workflow.Job) error 
 		return errors.New("an agreed visit is required")
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, job.ProfessionalAccountID); err != nil {
+		return err
+	}
+	if err := validateProfessionalSuspensionTx(ctx, tx, job.ProfessionalAccountID); err != nil {
 		return err
 	}
 	var conflict bool

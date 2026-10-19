@@ -134,7 +134,8 @@ func (s *Store) SaveProfessionalProfile(ctx context.Context, accountID string, p
 			return workflow.ProfessionalProfile{}, err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE account_memberships SET status='pending',updated_at=now()
-			WHERE account_id=$1 AND role='professional' AND status='disabled'`, accountID); err != nil {
+			WHERE account_id=$1 AND role='professional' AND status='disabled'
+			AND NOT EXISTS(SELECT 1 FROM operator_membership_suspensions WHERE account_id=$1 AND role='professional')`, accountID); err != nil {
 			return workflow.ProfessionalProfile{}, err
 		}
 	}

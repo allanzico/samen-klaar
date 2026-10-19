@@ -1,4 +1,5 @@
 import type { AgentActivity, AgentEscalation, AgentMandate, AuthSession, CaseNote, ConsumerPolicy, CoordinationTask, EvidenceRequirement, OperatorCaseDetail, ServiceEvidencePolicy, AvailabilitySlot, Location, NegotiationInput, NotificationDeliveryHealth, OperatorCase, PayPalPayoutSetupStatus, ProfessionalApplication, ProfessionalProfile, ProfessionalProfileInput, ProfessionalReviewChecks, ProviderConfig, UserNotification, WorkspaceRole, WorkspaceState, WorkspaceSummary } from './types';
+import type { AdminLocationPage, AdminUserAction, AdminUserDetail, AdminUserFilter, AdminUserPage } from './operator-admin';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -17,14 +18,35 @@ function post<T>(url: string, body: unknown): Promise<T> {
   });
 }
 
+// Only these public codes are suitable for display. Provider responses and
+// deployment errors may contain private details, even when they are JSON.
+const payoutErrors: Record<string, string> = {
+  PAYPAL_PAYOUTS_UNAVAILABLE: 'PayPal payouts are not available yet. Please contact our team.',
+  PAYPAL_CONNECTION_START_FAILED: 'We couldn’t open PayPal. Please try again. If this continues, contact our team.',
+  PAYPAL_CONNECTION_VERIFY_FAILED: 'We couldn’t verify your PayPal connection. Choose Check status to try again. If this continues, contact our team.',
+  PAYPAL_ALREADY_CONNECTED: 'PayPal is already connected. Choose Check status to refresh.'
+};
+
+async function payoutRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { code?: unknown } | null;
+    const message = typeof body?.code === 'string' && Object.prototype.hasOwnProperty.call(payoutErrors, body.code) ? payoutErrors[body.code] : undefined;
+    throw new Error(message ?? (response.status === 401 ? 'Please sign in again to connect PayPal.' : 'SamenKlaar is temporarily unavailable. Please try again.'));
+  }
+  return response.json() as Promise<T>;
+}
+
 export const api = {
   locations: (query: string, language: string, purpose: string, signal: AbortSignal) => request<{ locations: Location[]; attribution: string }>(`/api/locations?${new URLSearchParams({ q: query, language, purpose })}`, { signal }),
   config: () => request<ProviderConfig>('/api/config', { signal: AbortSignal.timeout(5000) }),
   session: () => request<AuthSession>('/api/auth/session', { signal: AbortSignal.timeout(5000) }),
-  workspaces: (cursor = '') => request<{ workspaces: WorkspaceSummary[]; nextCursor?: string }>(`/api/workspaces${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  workspaces: (cursor = '') => request<{ workspaces: WorkspaceSummary[]; nextCursor?: string; openRequests?: number; openRequestLimit?: number }>(`/api/workspaces${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   notifications: () => request<{ notifications: UserNotification[] }>('/api/notifications'),
   markNotificationRead: (id: number) => post<{ status: string }>('/api/notifications/read', { id }),
   createWorkspace: () => post<{ workspace: WorkspaceState }>('/api/workspaces', {}),
+  // Deletes a customer's unapproved request, or takes an unapproved job off a professional's list.
+  deleteWorkspace: (workspaceId: string) => request<{ status: 'deleted' | 'removed' }>(`/api/workspaces/${encodeURIComponent(workspaceId)}`, { method: 'DELETE' }),
   state: (workspaceId?: string | null) => request<WorkspaceState>(`/api/state${workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`),
   action: (workspaceId: string | null, action: string, value = '', location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number, paymentAuthorizationTiming?: 'after_completion' | 'at_booking') =>
     post<WorkspaceState>('/api/actions', { workspaceId, action, value, location, changeAmountMinor, rating, ...negotiation, paymentAuthorizationTiming }),
@@ -33,12 +55,16 @@ export const api = {
   logout: () => post<{ logoutUrl: string }>('/api/auth/logout', {}),
   professionalProfile: () => request<{ profile: ProfessionalProfile | null }>('/api/professional/profile'),
   saveProfessionalProfile: (profile: ProfessionalProfileInput) => post<{ profile: ProfessionalProfile }>('/api/professional/profile', profile),
-  beginPayPalSellerOnboarding: () => post<{ actionUrl: string }>('/api/professional/paypal/onboarding', {}),
-  paypalSellerStatus: (merchantIdInPayPal?: string) => request<PayPalPayoutSetupStatus>(`/api/professional/paypal/status${merchantIdInPayPal ? `?merchantIdInPayPal=${encodeURIComponent(merchantIdInPayPal)}` : ''}`),
+  beginPayPalSellerOnboarding: () => payoutRequest<{ actionUrl: string }>('/api/professional/paypal/onboarding', { method: 'POST' }),
+  paypalSellerStatus: (merchantIdInPayPal?: string) => payoutRequest<PayPalPayoutSetupStatus>(`/api/professional/paypal/status${merchantIdInPayPal ? `?merchantIdInPayPal=${encodeURIComponent(merchantIdInPayPal)}` : ''}`),
   professionalAvailability: () => request<{ slots: AvailabilitySlot[] }>('/api/professional/availability'),
   addProfessionalAvailability: (slot: { startUtc: string; endUtc: string; timezone: string }) =>
     post<{ id: string; status: string }>('/api/professional/availability', slot),
   operatorQueue: () => request<{ cases: OperatorCase[]; professionalApplications: ProfessionalApplication[]; notificationDelivery: NotificationDeliveryHealth }>('/api/operator/queue'),
+  operatorUsers: (filter: AdminUserFilter) => request<AdminUserPage>(`/api/operator/users?${new URLSearchParams(filter)}`),
+  operatorUser: (id: string) => request<AdminUserDetail>(`/api/operator/users/${encodeURIComponent(id)}`),
+  administerUser: (id: string, action: AdminUserAction) => post<{ status: string }>(`/api/operator/users/${encodeURIComponent(id)}`, action),
+  operatorLocations: (q: string, status: string, offset: number) => request<AdminLocationPage>(`/api/operator/locations?${new URLSearchParams({ q, status, offset: String(offset) })}`),
   reviewProfessional: (id: string, decision: 'save' | 'approve' | 'reject', checks: ProfessionalReviewChecks) =>
     post<{ status: string }>(`/api/operator/professionals/${encodeURIComponent(id)}/review`, { decision, checks }),
   resolveWorkCase: (workspaceId: string, kind: string, decision: string, rationale: string) =>

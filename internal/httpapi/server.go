@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -146,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/coordination", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.coordinationHandler)))
 	mux.Handle("/api/request-plan", s.protect(false, identity.Customer)(http.HandlerFunc(s.parentRequestHandler)))
 	mux.Handle("/api/workspaces", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.workspacesHandler)))
+	mux.Handle("/api/workspaces/{id}", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.workspaceHandler)))
 	mux.Handle("/api/notifications", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.notificationListHandler)))
 	mux.Handle("/api/notifications/read", s.protect(true, identity.Customer, identity.Professional)(http.HandlerFunc(s.notificationReadHandler)))
 	mux.Handle("/api/state", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.stateHandler)))
@@ -183,6 +185,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/support/messages", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.participantSupportHandler)))
 	mux.Handle("/api/account/locale", s.protect(false, identity.Customer, identity.Professional, identity.Operator)(http.HandlerFunc(s.accountLocaleHandler)))
 	mux.Handle("/api/operator/queue", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorQueueHandler)))
+	mux.Handle("/api/operator/users", s.protect(true, identity.Operator)(http.HandlerFunc(s.operatorUsersHandler)))
+	mux.Handle("/api/operator/users/{id}", s.protect(true, identity.Operator)(http.HandlerFunc(s.operatorUserHandler)))
+	mux.Handle("/api/operator/locations", s.protect(true, identity.Operator)(http.HandlerFunc(s.operatorLocationsHandler)))
 	mux.Handle("/api/operator/professionals/{id}/review", s.protect(true, identity.Operator)(http.HandlerFunc(s.professionalReviewHandler)))
 	mux.Handle("/api/operator/cases/{workspaceId}/resolve", s.protect(true, identity.Operator)(http.HandlerFunc(s.resolveWorkCaseHandler)))
 	return s.securityHeaders(frontend(mux, s.webDirectory))
@@ -409,7 +414,11 @@ func (s *Server) workspacesHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "request list could not be loaded", http.StatusServiceUnavailable)
 				return
 			}
-			writeJSON(w, map[string]any{"workspaces": items, "nextCursor": nextCursor})
+			response := map[string]any{"workspaces": items, "nextCursor": nextCursor}
+			if !s.addOpenRequests(ctx, w, principal, response) {
+				return
+			}
+			writeJSON(w, response)
 			return
 		}
 		items, err := store.ListWorkspaces(ctx, principal.User.ID, string(principal.ActiveRole))
@@ -417,13 +426,21 @@ func (s *Server) workspacesHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "request list could not be loaded", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(w, map[string]any{"workspaces": items})
+		response := map[string]any{"workspaces": items}
+		if !s.addOpenRequests(ctx, w, principal, response) {
+			return
+		}
+		writeJSON(w, response)
 	case http.MethodPost:
 		if principal.ActiveRole != identity.Customer {
 			http.Error(w, "only customers can create service requests", http.StatusForbidden)
 			return
 		}
 		state, err := store.CreateWorkspace(ctx, principal.User.ID)
+		if errors.Is(err, workflow.ErrOpenRequestLimit) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		if err != nil {
 			http.Error(w, "request workspace could not be created", http.StatusServiceUnavailable)
 			return

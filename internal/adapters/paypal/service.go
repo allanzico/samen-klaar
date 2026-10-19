@@ -165,11 +165,18 @@ func (p *Service) accessToken(ctx context.Context) (string, error) {
 		return "", errors.New("PayPal sandbox authentication request failed")
 	}
 	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", errors.New("could not read PayPal sandbox authentication response")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", newProviderError(resp.StatusCode, "authentication", data, resp.Header)
+	}
 	var result struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result) != nil || result.AccessToken == "" {
+	if json.Unmarshal(data, &result) != nil || result.AccessToken == "" {
 		return "", fmt.Errorf("PayPal sandbox authentication returned HTTP %d", resp.StatusCode)
 	}
 	p.token = result.AccessToken
@@ -232,7 +239,7 @@ func (p *Service) apiWithHeaders(ctx context.Context, method, path string, paylo
 		return nil, errors.New("could not read PayPal sandbox response")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("PayPal sandbox API returned HTTP %d", resp.StatusCode)
+		return nil, newProviderError(resp.StatusCode, "API", data, resp.Header)
 	}
 	return data, nil
 }

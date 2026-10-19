@@ -13,7 +13,7 @@ func TestWorkspaceSummariesAreProjectedAndPaginated(t *testing.T) {
 	ctx, store := accountTestStore(t)
 	account := accountFixture(t, ctx, store)
 	for i := 0; i < 105; i++ {
-		state, err := store.CreateWorkspace(ctx, account)
+		state, err := workspaceFixture(ctx, store, account)
 		if err != nil {
 			t.Fatal(err)
 		}

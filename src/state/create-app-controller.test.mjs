@@ -192,3 +192,59 @@ test('direct operator URL never activates an absent membership', async () => {
   assert.equal(app.loading, false);
   assert.deepEqual(calls.sort(), ['/api/auth/session', '/api/config']);
 });
+
+test('deleting the open request returns to the list and drops it', async () => {
+  const calls = [];
+  const { app, actions } = setup(async (url, init) => {
+    calls.push([url, init?.method]);
+    if (url === '/api/workspaces/A' && init?.method === 'DELETE') return response({ status: 'deleted' });
+    if (url === '/api/workspaces') return response({ workspaces: [{ id: 'B' }, { id: 'C' }], openRequests: 1, openRequestLimit: 3 });
+    throw new Error(`unexpected ${url}`);
+  });
+  assert.equal(await actions.deleteRequest('A'), true);
+  assert.deepEqual(app.workspaces.map((item) => item.id), ['B', 'C']);
+  assert.equal(app.workspaceId, null);
+  assert.equal(app.customerPage, 'requests');
+  assert.equal(window.location.href, 'https://example.test/requests');
+  assert.equal(app.openRequests, 1);
+  assert.ok(calls.some(([url, method]) => url === '/api/workspaces/A' && method === 'DELETE'));
+});
+
+test('a refused delete keeps the request and shows why', async () => {
+  const { app, actions } = setup(async (url, init) => {
+    if (url === '/api/workspaces/A' && init?.method === 'DELETE') return response('Only requests without an approved plan can be deleted. Cancel it instead, or message the other person.', false);
+    throw new Error(`unexpected ${url}`);
+  });
+  assert.equal(await actions.deleteRequest('A'), false);
+  assert.equal(app.workspaceId, 'A');
+  assert.equal(app.workspaces.length, 3);
+  assert.match(app.error, /approved plan/);
+});
+
+test('at the open-request limit a new request is not created', async () => {
+  const calls = [];
+  const { app, actions } = setup(async (url, init) => {
+    calls.push([url, init?.method]);
+    throw new Error(`unexpected ${url}`);
+  });
+  app.openRequests = 3;
+  app.openRequestLimit = 3;
+  await actions.createRequest();
+  assert.equal(calls.length, 0);
+  assert.equal(app.workspaceId, 'A');
+  assert.match(app.error, /3 open requests/);
+});
+
+test('the server limit message reaches the customer when starting a request', async () => {
+  const { app, actions } = setup(async (url, init) => {
+    if (url === '/api/workspaces' && init?.method === 'POST') return response('You have 3 open requests. Finish, cancel or delete one before starting another.', false);
+    throw new Error(`unexpected ${url}`);
+  });
+  app.openRequests = null;
+  actions.showHome();
+  app.draft = 'A leaking kitchen sink';
+  await actions.startRequest(app.draft);
+  assert.equal(app.workspaceId, null);
+  assert.match(app.error, /3 open requests/);
+  assert.equal(app.draft, 'A leaking kitchen sink');
+});

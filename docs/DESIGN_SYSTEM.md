@@ -10,6 +10,7 @@ The design system as it ships, on 18 October 2026. It documents what is in the c
 | Shared components | `src/ui/` |
 | App shell | `src/features/shell/` |
 | Request page and its parts | `src/features/request/` |
+| Operator navigation, account directory and coverage directory | `src/features/operator/OperatorDashboard.svelte`, `UserDirectory.svelte`, `LocationDirectory.svelte` |
 | Status → look mapping | `src/lib/status-ui.ts`, `src/lib/step-view.ts`, `src/lib/next-steps.ts` |
 | Copy and translations | `src/lib/i18n.svelte.ts`, `src/lib/i18n-redesign.ts`, `src/lib/agent-copy.ts` |
 
@@ -272,6 +273,19 @@ Label above, help below, error replaces help and is announced. Never disable a s
 ### 5.8 Lists
 
 Request and job cards show: title, other person, a status pill, one summary line, and price and visit day once there is a plan; your-turn items sort first. Professionals' job cards also show the visit date block and a relative confirm deadline ("Confirm within 1 h 30 min") with Confirm / Decline buttons.
+
+### 5.9 Operator administration
+
+Users and Locations extend the existing operator dashboard. The navy AppBar and Operator badge stay in place; the labelled section navigation contains Review queue, Users (`users` icon), Locations (`pin` icon) and Policies. The current section uses `aria-current="page"` and the existing soft fill.
+
+- **Users: search → list → detail.** Submit a name, email or account ID with role and access-status filters. Show the matching count and Previous / Next controls in pages of 25. Each full-width row shows identity, workspace access and any professional service; selection uses a soft fill, ink outline and `aria-current`. The adjacent detail contains account facts, a sign-in identity disclosure, professional service, workspace access and action history. Shared-email warnings ask the operator to compare issuer and identity ID. A pending professional links back to application review.
+- **Access actions need a reason.** Suspend or restore one workspace, or sign out all sessions, through an inline confirmation form that states the consequence. Require at least 10 characters, with a 1000-character limit and visible help, before enabling confirmation; suspension uses the danger button. Disable competing actions while saving, confirm success with the shared toast and offer a refresh on errors. Accounts with operator access are managed by the service owner. History shows the most recent 50 actions with reason, actor, time and any access-status change.
+- **Locations: coverage and demand.** Search by city, neighbourhood or postcode and filter by active coverage, no active professionals or waitlisted demand. The paginated table shows location and service categories, active and pending professionals, customer jobs, waitlisted requests and a View professionals action. That action opens Users filtered to professionals in the selected area, with a visible, clearable area filter. Coverage is grouped by published area or base postcode; the explanatory copy says a full visit address confirms attendance.
+- **Responsive structure.** The dashboard navigation moves above its content at 1023 px and below. User list/detail columns stack at 1199 px and below; selecting an account then focuses its detail region. Filters reflow below 768 px and account facts become one column on phones. The locations table keeps its columns and scrolls horizontally inside its labelled, keyboard-focusable region (`tabindex="0"`), with a caption and scoped row/column headers. Scrolling stays within that region.
+
+These screens retain Bricolage Grotesque display headings (26 px, 800; 20 px on phones), Instrument Sans body text, muted 12–13 px supporting text and tabular table numerals. They reuse the existing navy, ink, surface, soft, line and status tokens, shared pill-shaped buttons, single-border fields, Pill, Banner, disclosure, rows and toast conventions. No new typography, palette or token family is introduced.
+
+Visual review on 19 October 2026: the finish reviewer opened all five screenshots in `.impeccable/review/operator-admin` and returned **Ship**, with no material findings. Horizontal table scrolling on mobile is a bounded limitation of the coverage comparison.
 
 ---
 
