@@ -52,7 +52,7 @@ func randomTrackingID() (string, error) {
 
 func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (string, error) {
 	if !p.marketplaceReady() {
-		return "", errors.New("PayPal marketplace setup requires PAYPAL_PLATFORM_MERCHANT_ID and PAYPAL_PARTNER_ATTRIBUTION_ID")
+		return "", errPayoutsUnavailable
 	}
 	if strings.TrimSpace(accountID) == "" {
 		return "", errors.New("professional account is required for PayPal onboarding")
@@ -60,10 +60,10 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 
 	record, found, err := p.marketplace.GetPayPalSeller(ctx, accountID)
 	if err != nil {
-		return "", errors.New("PayPal seller setup could not be loaded")
+		return "", sellerConnectionError("load_seller", "PayPal seller setup could not be loaded")
 	}
 	if found && record.Status == "verified" {
-		return "", errors.New("PayPal payouts are already connected")
+		return "", errAlreadyConnected
 	}
 	if !found || record.Status == "revoked" || record.Status == "ineligible" {
 		trackingID, err := randomTrackingID()
@@ -73,7 +73,7 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 		requestID := stableRequestID("seller-referral:" + accountID + ":" + trackingID)
 		record, err = p.marketplace.BeginPayPalSellerReferral(ctx, accountID, trackingID, requestID)
 		if err != nil {
-			return "", errors.New("PayPal seller setup could not be reserved")
+			return "", sellerConnectionError("reserve_referral", "PayPal seller setup could not be reserved")
 		}
 	}
 	if record.ReferralSelfURL != "" {
@@ -117,7 +117,7 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 		} `json:"links"`
 	}
 	if json.Unmarshal(data, &response) != nil {
-		return "", errors.New("PayPal seller onboarding returned an unreadable response")
+		return "", sellerConnectionError("decode_referral", "PayPal seller onboarding returned an unreadable response")
 	}
 	var selfURL, actionURL string
 	for _, link := range response.Links {
@@ -129,10 +129,10 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 		}
 	}
 	if !safePayPalURL(selfURL) || !safePayPalURL(actionURL) {
-		return "", errors.New("PayPal did not return a valid seller onboarding link")
+		return "", sellerConnectionError("validate_referral", "PayPal did not return a valid seller onboarding link")
 	}
 	if err := p.marketplace.SavePayPalSellerReferral(ctx, accountID, record.TrackingID, selfURL); err != nil {
-		return "", errors.New("PayPal onboarding link could not be saved")
+		return "", sellerConnectionError("save_referral", "PayPal onboarding link could not be saved")
 	}
 	return actionURL, nil
 }
@@ -166,11 +166,11 @@ func safePayPalURL(value string) bool {
 func (p *Service) SellerOnboardingStatus(ctx context.Context, accountID, merchantIDFromReturn string) (PayoutSetupStatus, error) {
 	status := PayoutSetupStatus{Status: "not_started"}
 	if !p.marketplaceReady() {
-		return status, errors.New("PayPal marketplace setup requires PAYPAL_PLATFORM_MERCHANT_ID and PAYPAL_PARTNER_ATTRIBUTION_ID")
+		return status, errPayoutsUnavailable
 	}
 	record, found, err := p.marketplace.GetPayPalSeller(ctx, accountID)
 	if err != nil {
-		return status, errors.New("PayPal seller setup could not be loaded")
+		return status, sellerConnectionError("load_seller", "PayPal seller setup could not be loaded")
 	}
 	if !found {
 		return status, nil
@@ -203,7 +203,7 @@ func (p *Service) SellerOnboardingStatus(ctx context.Context, accountID, merchan
 		newStatus = "ineligible"
 	}
 	if err := p.marketplace.UpdatePayPalSellerStatus(ctx, accountID, merchantID, newStatus, verified.PaymentsReceivable, verified.PrimaryEmailConfirmed, verified.Scopes); err != nil {
-		return status, errors.New("verified PayPal seller status could not be saved")
+		return status, sellerConnectionError("save_verification", "verified PayPal seller status could not be saved")
 	}
 	status = PayoutSetupStatus{Status: newStatus, Connected: ready, PaymentsReceivable: verified.PaymentsReceivable, PrimaryEmailConfirmed: verified.PrimaryEmailConfirmed}
 	return status, nil

@@ -1,6 +1,8 @@
 <script lang="ts">
 import CaseDetailPanel from './CaseDetailPanel.svelte';
 import PolicyAdmin from './PolicyAdmin.svelte';
+import UserDirectory from './UserDirectory.svelte';
+import LocationDirectory from './LocationDirectory.svelte';
   import { onMount } from 'svelte';
   import Icon from '../../ui/Icon.svelte';
   import Pill from '../../ui/Pill.svelte';
@@ -25,7 +27,8 @@ import PolicyAdmin from './PolicyAdmin.svelte';
   let notes = $state<Record<string, string>>({});
   let tab = $state<'applications' | 'exceptions'>('applications');
   let selectedId = $state('');
-  let view = $state<'queue' | 'policies'>('queue');
+  let view = $state<'queue' | 'policies' | 'users' | 'locations'>('queue');
+  let userLocation = $state('');
   let updatedAt = $state<Date | null>(null);
 
   onMount(() => { void load(); });
@@ -104,11 +107,14 @@ import PolicyAdmin from './PolicyAdmin.svelte';
     if (checks.identityBusiness !== 'verified') return t('Not ready to approve. Identity and business aren’t verified yet.');
     return t('Not ready to approve. Answer every check, with a reason for anything not required.');
   }
+  function reviewFromDirectory(id: string) { view = 'queue'; tab = 'applications'; selectedId = id; void load(); }
 </script>
 
 {#snippet bar()}
-  {#if updatedAt}<span class="updated">{t('Updated {time}', { time: time(updatedAt.toISOString()) })}</span>{/if}
-  <button type="button" class="btn btn-sm btn-outline-navy" disabled={loading} onclick={load}><Icon name="refresh"/>{t('Refresh queue')}</button>
+  {#if view === 'queue'}
+    {#if updatedAt}<span class="updated">{t('Updated {time}', { time: time(updatedAt.toISOString()) })}</span>{/if}
+    <button type="button" class="btn btn-sm btn-outline-navy" disabled={loading} onclick={load} aria-label={t('Refresh queue')}><Icon name="refresh"/><span class="refresh-label">{t('Refresh queue')}</span></button>
+  {/if}
 {/snippet}
 
 {#snippet decision(item: OperatorCase, options: { label: string; decision: string; primary?: boolean; danger?: boolean }[])}
@@ -139,13 +145,15 @@ import PolicyAdmin from './PolicyAdmin.svelte';
       </Banner>
     </div>
   {/if}
-  <div class="layout">
+  <div class="layout" class:directory-layout={view === 'users' || view === 'locations'}>
     <aside class="list" aria-label={t('Review queue')}>
       <h1 class="list-title">{t('Operator dashboard')}</h1>
-      <div class="segmented tabs" role="tablist" aria-label={t('Operator sections')}>
-        <button type="button" role="tab" aria-selected={view === 'queue'} onclick={() => { view = 'queue'; }}>{t('Review queue')}</button>
-        <button type="button" role="tab" aria-selected={view === 'policies'} onclick={() => { view = 'policies'; }}>{t('Policies')}</button>
-      </div>
+      <nav class="sections" aria-label={t('Operator sections')}>
+        <button type="button" aria-current={view === 'queue' ? 'page' : undefined} onclick={() => { view = 'queue'; }}><Icon name="check-circle"/>{t('Review queue')}</button>
+        <button type="button" aria-current={view === 'users' ? 'page' : undefined} onclick={() => { userLocation = ''; view = 'users'; }}><Icon name="users"/>{t('Users')}</button>
+        <button type="button" aria-current={view === 'locations' ? 'page' : undefined} onclick={() => { view = 'locations'; }}><Icon name="pin"/>{t('Locations')}</button>
+        <button type="button" aria-current={view === 'policies' ? 'page' : undefined} onclick={() => { view = 'policies'; }}><Icon name="file"/>{t('Policies')}</button>
+      </nav>
       {#if view === 'queue'}
       <div class="segmented tabs" role="tablist" aria-label={t('Review queue')}>
         <button type="button" role="tab" id="tab-applications" aria-selected={tab === 'applications'} aria-controls="queue" onclick={() => { tab = 'applications'; }}>{t('Applications ({count})', { count: applications.length })}</button>
@@ -172,9 +180,13 @@ import PolicyAdmin from './PolicyAdmin.svelte';
       {/if}
     </aside>
 
-    <section class="detail" aria-live="polite">
+    <section class="detail" class:directory-detail={view === 'users' || view === 'locations'}>
       {#if error}<Banner kind="error" text={t(error)} onDismiss={() => { error = ''; }}/>{/if}
-      {#if view === 'policies'}
+      {#if view === 'users'}
+        {#key userLocation}<UserDirectory location={userLocation} onReview={reviewFromDirectory}/>{/key}
+      {:else if view === 'locations'}
+        <LocationDirectory onBrowse={(area) => { userLocation = area; view = 'users'; }}/>
+      {:else if view === 'policies'}
         <PolicyAdmin/>
       {:else if !loading && !applications.length && !cases.length}
         <div class="empty">
@@ -283,6 +295,11 @@ import PolicyAdmin from './PolicyAdmin.svelte';
   .list-title { font: 800 26px/1.1 var(--sk-fd); font-stretch: 90%; }
   .tabs { width: 100%; }
   .tabs > button { flex: 1; }
+  .sections { display: grid; gap: 4px; }
+  .sections button { display: flex; align-items: center; gap: 10px; padding: 12px; border: 0; border-radius: var(--sk-r-tile); text-align: left; color: var(--sk-ink); background: transparent; font-weight: 600; }
+  .sections button:hover, .sections button[aria-current] { background: var(--sk-soft); }
+  .layout.directory-layout { grid-template-columns: 240px minmax(0,1fr); }
+  .detail.directory-detail { max-width: none; min-width: 0; padding: 28px 32px 56px; }
   .queue { display: grid; gap: 8px; }
   .queue-row { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--sk-line); border-radius: var(--sk-r-card); background: var(--sk-surface); color: var(--sk-ink); text-align: left; }
   .queue-row[aria-current="true"] { border: 2px solid var(--sk-ink); padding: 13px; }
@@ -306,8 +323,11 @@ import PolicyAdmin from './PolicyAdmin.svelte';
   .strip dd { font-weight: 600; }
   @media (max-width: 1023px) {
     .layout { grid-template-columns: 1fr; }
+    .layout.directory-layout { grid-template-columns: 1fr; }
+    .detail.directory-detail { padding: 24px 20px 48px; }
+    .sections { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .list { border-right: 0; border-bottom: 0.5px solid var(--sk-line); }
     .detail { padding: 24px 20px 48px; }
   }
-  @media (max-width: 639px) { .updated { display: none; } .detail-title, .list-title { font-size: 20px; } .delivery { padding: 12px 16px 0; } }
+  @media (max-width: 639px) { .updated, .refresh-label { display: none; } .detail-title, .list-title { font-size: 20px; } .delivery { padding: 12px 16px 0; } }
 </style>

@@ -72,6 +72,9 @@ func (s *Server) runAction(ctx context.Context, principal identity.Principal, in
 	if input.Action == "record-payment-authorization" {
 		return State{}, http.StatusForbidden, errors.New("PayPal authorizations must be recorded by the payment callback")
 	}
+	if input.Action == "remove-request" {
+		return State{}, http.StatusBadRequest, errors.New("remove a request with DELETE /api/workspaces/{id}")
+	}
 	if input.Action == "create-request" {
 		return State{}, http.StatusBadRequest, errors.New("create a request through the conversation")
 	}

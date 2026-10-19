@@ -2,6 +2,7 @@
   import Icon from '../../ui/Icon.svelte';
   import { assistantName } from '../../lib/agent-names';
   import RequestCard from './RequestCard.svelte';
+  import OpenRequestNotice from './OpenRequestNotice.svelte';
   import type { AppActions, AppState } from '../../lib/types';
   import { t } from '../../lib/i18n.svelte';
 
@@ -9,7 +10,8 @@
   let { app, actions }: { app: AppState; actions: AppActions } = $props();
   let field = $state<HTMLTextAreaElement>();
   const examples = ['My kitchen sink is leaking', 'My cupboard door is stuck', 'An outlet feels warm'];
-  const ready = $derived(app.draft.trim().length >= 5);
+  const atLimit = $derived(app.openRequests !== null && app.openRequests >= app.openRequestLimit);
+  const ready = $derived(app.draft.trim().length >= 5 && !atLimit);
   const bot = $derived(assistantName(app.session?.account?.displayName || app.session?.account?.email || ''));
   const recent = $derived([...app.workspaces].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')).slice(0, 3));
 
@@ -24,6 +26,7 @@
   <section class="hero" aria-labelledby="home-title">
     <h1 id="home-title" class="page-title">{t('What needs fixing?')}</h1>
     <p class="lead">{t('Say it in your own words. We’ll ask what the pro needs to know.')}</p>
+    <div class="limit"><OpenRequestNotice {app} onShowRequests={actions.showRequests}/></div>
     <form class="box composer" onsubmit={start}>
       <div class="identity">
         <span class="assistant" aria-hidden="true"><Icon name="bot" size={20}/></span>
@@ -34,7 +37,7 @@
       <div class="foot">
         <button class="btn btn-primary btn-strong" disabled={app.pending || !ready} aria-busy={app.pending ? 'true' : undefined}>{t('Start my request')}<Icon name="arrow-right"/></button>
       </div>
-      {#if !ready && app.draft}<p id="home-reason" class="reason">{t('Write a few more words to start')}</p>{/if}
+      {#if !ready && app.draft && !atLimit}<p id="home-reason" class="reason">{t('Write a few more words to start')}</p>{/if}
     </form>
     <div class="examples">
       <span class="secondary-text">{t('Or try:')}</span>
@@ -55,6 +58,8 @@
   .home { display: grid; gap: 56px; max-width: 1040px; margin: 0 auto; padding: 72px 48px 72px; }
   .hero { display: grid; justify-items: center; gap: 18px; text-align: center; }
   .lead { font-size: 16px; color: var(--sk-muted); }
+  .limit { width: 100%; max-width: 720px; text-align: left; }
+  .limit:empty { display: none; }
   .composer { display: grid; gap: 14px; width: 100%; max-width: 720px; margin-top: 18px; padding: 20px 22px 18px; border: 1px solid var(--sk-field); text-align: left; }
   .composer:focus-within { border-color: var(--sk-ink); }
   .identity { display: flex; align-items: center; gap: 10px; }

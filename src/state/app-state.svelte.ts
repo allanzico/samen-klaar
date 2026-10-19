@@ -6,6 +6,8 @@ export function createAppState(): AppState {
     serverState: null,
     workspaces: [],
     workspaceCursor: null,
+    openRequests: null,
+    openRequestLimit: 3,
     workspaceId: null,
     session: null,
     providerConfig: null,

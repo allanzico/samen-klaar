@@ -20,6 +20,9 @@ type WorkspaceSummary struct {
 	VisitEndUTC   string `json:"visitEndUtc,omitempty"`
 	VisitTimezone string `json:"visitTimezone,omitempty"`
 	ConfirmDueAt  string `json:"confirmDueAt,omitempty"`
+	// CanDelete says whether this account may delete the request (customer) or take it off
+	// their list (professional). The server checks again on every delete.
+	CanDelete bool `json:"canDelete,omitempty"`
 }
 
 func SummarizeWorkspace(state State, role string, updatedAt time.Time) WorkspaceSummary {
@@ -34,6 +37,11 @@ func SummarizeWorkspace(state State, role string, updatedAt time.Time) Workspace
 	}
 	status, statusLabel := RequestStatus(state, role)
 	summary := WorkspaceSummary{ID: state.WorkspaceID, JobID: state.Job.ID, Title: title, Status: status, StatusLabel: statusLabel, Role: role, UpdatedAt: updatedAt}
+	if role == "professional" {
+		summary.CanDelete = ProfessionalCanRemove(state)
+	} else {
+		summary.CanDelete = CustomerCanDelete(state)
+	}
 	job := state.Job
 	if job.ID == "" {
 		if state.Intake != nil {

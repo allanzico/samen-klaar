@@ -13,6 +13,7 @@
   const job = $derived(workspace.job);
   const canCancel = $derived(!!job.id && canCancelRequest(workspace));
   const canWithdraw = $derived(app.role === 'customer' && !!job.id && !workspace.cancelled && workspace.cancellationReview?.status !== 'pending');
+  const canDelete = $derived(!!app.workspaces.find((item) => item.id === app.workspaceId)?.canDelete);
   const canReport = $derived(app.role === 'customer' && job.workStarted && !job.paid && !job.dispute);
 
   function run(fn: () => unknown) { open = false; void fn(); }
@@ -37,6 +38,7 @@
       {#if canWithdraw}<button type="button" class="menu-row" onclick={() => run(() => { requestUi.withdrawing = true; })}><Icon name="sign-out"/>{t('Withdraw from the service')}</button>{/if}
       {#if job.id}<button type="button" class="menu-row" onclick={() => run(onHistory)}><Icon name="list"/>{t('Job history')}</button>{/if}
       <button type="button" class="menu-row" disabled={app.pending} onclick={() => run(actions.refresh)}><Icon name="refresh"/>{t('Check for updates')}</button>
+      {#if canDelete}<button type="button" class="menu-row danger" onclick={() => run(() => { app.error = ''; requestUi.deleting = true; })}><Icon name="trash"/>{app.role === 'professional' ? t('Remove from my jobs') : t('Delete request')}</button>{/if}
       {#if canCancel}<button type="button" class="menu-row danger" onclick={() => run(() => { requestUi.cancelling = true; })}><Icon name="close"/>{app.role === 'professional' ? t('Cancel job') : t('Cancel request')}</button>
       {:else if job.id && !workspace.cancelled && !job.paid}<p class="menu-note">{t('Work or payment has started. Message the other person to change or stop it.')}</p>{/if}
     </div>
