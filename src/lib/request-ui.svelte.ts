@@ -12,6 +12,7 @@ export const requestUi = $state({
   extraWork: false,
   policy: false,
   withdrawing: false,
+  deleting: false,
   photo: null as null | { src: string; caption: string; index: number; total: number }
 });
 
@@ -24,6 +25,7 @@ export function resetRequestUi() {
   requestUi.extraWork = false;
   requestUi.policy = false;
   requestUi.withdrawing = false;
+  requestUi.deleting = false;
   requestUi.photo = null;
 }
 

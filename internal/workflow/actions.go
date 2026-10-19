@@ -8,6 +8,9 @@ import (
 )
 
 func Apply(state *State, input Action) error {
+	if input.Action == "remove-request" {
+		return removeRequest(state, input)
+	}
 	if state.Cancelled && input.Action != "send-message" && input.Action != "agent-say" && !(input.Action == "return-to-matches" && state.CancelledBy == "professional") {
 		return errors.New("this request is cancelled; create a new request to book another service")
 	}

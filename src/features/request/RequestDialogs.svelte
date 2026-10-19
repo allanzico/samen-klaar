@@ -1,6 +1,7 @@
 <script lang="ts">
 import EvidenceRecord from './EvidenceRecord.svelte';
   import Modal from '../../ui/Modal.svelte';
+  import DeleteRequestDialog from './DeleteRequestDialog.svelte';
   import type { AppActions, AppState, WorkspaceState } from '../../lib/types';
   import { requestUi } from '../../lib/request-ui.svelte';
   import { firstName } from '../../lib/status-ui';
@@ -35,6 +36,12 @@ import EvidenceRecord from './EvidenceRecord.svelte';
     <button type="button" class="btn btn-outline" onclick={() => { requestUi.cancelling = false; }}>{pro ? t('Keep job') : t('Keep request')}</button>
   {/snippet}
 </Modal>
+
+{#if app.workspaceId}
+  <DeleteRequestDialog {app} {actions} bind:open={requestUi.deleting} workspaceId={app.workspaceId}
+    title={job.id ? job.title || job.description : workspace.intake?.description || 'New request'}
+    counterpart={pro ? firstName(job.customer) : job.professional} cancelled={workspace.cancelled}/>
+{/if}
 
 <Modal bind:open={requestUi.reporting} title={t('What’s not right?')}>
   <p class="secondary-text">{t('Payment pauses while our team reviews it. People decide on rework or a refund.')}</p>

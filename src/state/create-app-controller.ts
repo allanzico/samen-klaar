@@ -399,9 +399,16 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     }
   }
 
+  function rememberOpenRequests(result: { openRequests?: number; openRequestLimit?: number }) {
+    if (typeof result.openRequests !== 'number') return;
+    app.openRequests = result.openRequests;
+    if (result.openRequestLimit) app.openRequestLimit = result.openRequestLimit;
+  }
+  const atRequestLimit = () => app.role === 'customer' && app.openRequests !== null && app.openRequests >= app.openRequestLimit;
   async function refreshWorkspaces() {
     if (app.role !== 'customer' && app.role !== 'professional') return;
     const result = await api.workspaces();
+    rememberOpenRequests(result);
     const seen = new Set(result.workspaces.map((item) => item.id));
     const hadOlderPages = app.workspaces.length > 100;
     app.workspaces = [...result.workspaces, ...app.workspaces.filter((item) => !seen.has(item.id))];
@@ -456,6 +463,11 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
 
   async function createRequest() {
     if (app.pending || app.role !== 'customer') return;
+    // The server enforces the limit too; this saves a round trip and explains why.
+    if (atRequestLimit()) {
+      app.error = 'You have 3 open requests. Finish, cancel or delete one before starting another.';
+      return;
+    }
     stateGeneration++;
     app.pending = true;
     app.error = '';
@@ -475,6 +487,28 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     } finally {
       app.pending = false;
     }
+  }
+
+  async function deleteRequest(id: string) {
+    if (app.pending || !id || (app.role !== 'customer' && app.role !== 'professional')) return false;
+    app.pending = true;
+    app.error = '';
+    try {
+      await api.deleteWorkspace(id);
+      app.workspaces = app.workspaces.filter((item) => item.id !== id);
+    } catch (error) {
+      app.error = error instanceof Error ? error.message.trim() : 'This request could not be deleted.';
+      return false;
+    } finally {
+      app.pending = false;
+    }
+    if (app.workspaceId === id) {
+      if (app.role === 'customer') setCustomerPage('requests');
+      else showJobs();
+    }
+    saveDraft(draftKey(app.session?.account?.id, app.role, id), '');
+    try { await refreshWorkspaces(); } catch { /* The request is gone; the next refresh updates the list. */ }
+    return true;
   }
 
   async function startRequest(description: string) {
@@ -523,6 +557,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       const lists = await api.workspaces();
       const state = workspace ? await api.state(workspace) : null;
       if (generation === stateGeneration && !app.pending && app.workspaceId === workspace) {
+        rememberOpenRequests(lists);
         const seen = new Set(lists.workspaces.map((item) => item.id));
         const hadOlderPages = app.workspaces.length > 100;
         app.workspaces = [...lists.workspaces, ...app.workspaces.filter((item) => !seen.has(item.id))];
@@ -546,6 +581,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     loadMoreWorkspaces,
     selectRequest,
     createRequest,
+    deleteRequest,
     act,
     switchWorkspace,
     beginProfessional,

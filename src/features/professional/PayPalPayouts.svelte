@@ -14,36 +14,44 @@
   let loading = $state(true);
   let starting = $state(false);
   let returned = $state(false);
-  let linkFailed = $state(false);
+  let returnedMerchantID = $state<string | undefined>(undefined);
   let error = $state('');
 
   onMount(() => {
     const url = new URL(window.location.href);
     returned = url.searchParams.get('paypal_onboarding') === '1';
-    void refresh(returned ? url.searchParams.get('merchantIdInPayPal') ?? undefined : undefined, returned);
+    returnedMerchantID = returned ? url.searchParams.get('merchantIdInPayPal') ?? undefined : undefined;
+    void refresh();
   });
 
-  async function refresh(merchantID?: string, fromPayPal = false) {
+  async function refresh() {
     loading = true;
     error = '';
-    try { status = await api.paypalSellerStatus(merchantID); onStatus?.(status); }
-    catch (e) { error = e instanceof Error ? e.message : t('We couldn’t check your PayPal status.'); }
-    finally {
-      loading = false;
-      if (fromPayPal) {
+    try {
+      status = await api.paypalSellerStatus(returnedMerchantID);
+      onStatus?.(status);
+      // Keep the return reference until the server has checked and saved it.
+      // A failed request must remain retryable, including after a page reload.
+      if (returned) {
         const url = new URL(window.location.href);
         for (const key of ['paypal_onboarding', 'merchantId', 'merchantIdInPayPal', 'permissionsGranted', 'accountStatus', 'consentStatus', 'productIntentId', 'productIntentID', 'isEmailConfirmed', 'returnMessage', 'riskStatus']) url.searchParams.delete(key);
         window.history.replaceState({}, '', url.pathname + url.search + url.hash);
         returned = false;
+        returnedMerchantID = undefined;
       }
     }
+    catch (e) { error = e instanceof Error ? e.message : t('We couldn’t check your PayPal status.'); }
+    finally { loading = false; }
   }
   async function connect() {
     if (starting) return;
     starting = true;
-    linkFailed = false;
+    error = '';
     try { window.location.assign((await api.beginPayPalSellerOnboarding()).actionUrl); }
-    catch { linkFailed = true; starting = false; }
+    catch (e) {
+      error = e instanceof Error ? e.message : t('We couldn’t open PayPal. Nothing changed. Try again in a moment.');
+      starting = false;
+    }
   }
 
   type State = { tag: PillVariant; label: string; title: string; text: string; action?: string };
@@ -74,7 +82,6 @@
       {#if loading}<Pill variant="neutral" label={t('Checking')}/>{:else}<Pill variant={card.tag} label={card.label}/>{/if}
     </div>
     {#if layout === 'card' && !loading}<p class="secondary-text">{card.text}</p>{/if}
-    {#if linkFailed}<Banner kind="error" text={t('We couldn’t open PayPal. Nothing changed. Try again in a moment.')}/>{/if}
     {#if starting}<Banner kind="info" text={t('Opening PayPal. You’ll finish on PayPal, then come back here.')}/>{/if}
     {#if error}<Banner kind="error" text={t(error)}/>{/if}
     {#if loading}

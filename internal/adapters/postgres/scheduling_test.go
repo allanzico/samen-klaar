@@ -186,7 +186,7 @@ func TestLifecycleSchedulerCoversRemainingWaitsOnceAndEscalates(t *testing.T) {
 	}
 	states := make([]workflow.State, 0, len(tests))
 	for _, tc := range tests {
-		state, err := store.CreateWorkspace(ctx, customer)
+		state, err := workspaceFixture(ctx, store, customer)
 		if err != nil {
 			t.Fatal(err)
 		}

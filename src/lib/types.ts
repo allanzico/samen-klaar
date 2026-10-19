@@ -186,6 +186,8 @@ export type WorkspaceSummary = {
   visitEndUtc?: string;
   visitTimezone?: string;
   confirmDueAt?: string;
+  // The customer may delete it, or the professional may take it off their list. The server checks again.
+  canDelete?: boolean;
 };
 
 export type ProviderConfig = {
@@ -202,6 +204,9 @@ export type AppState = {
   serverState: WorkspaceState | null;
   workspaces: WorkspaceSummary[];
   workspaceCursor: string | null;
+  // The customer's requests that are not yet approved, cancelled, started or finished, and the cap on them.
+  openRequests: number | null;
+  openRequestLimit: number;
   workspaceId: string | null;
   session: AuthSession | null;
   providerConfig: ProviderConfig | null;
@@ -235,6 +240,7 @@ export type AppActions = {
   loadMoreWorkspaces: () => Promise<void>;
   selectRequest: (id: string) => Promise<void>;
   createRequest: () => Promise<void>;
+  deleteRequest: (id: string) => Promise<boolean>;
   act: (action: string, value?: string, location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number, paymentAuthorizationTiming?: 'after_completion' | 'at_booking') => Promise<boolean | void>;
   switchWorkspace: (role: WorkspaceRole) => Promise<void>;
   beginProfessional: () => Promise<void>;

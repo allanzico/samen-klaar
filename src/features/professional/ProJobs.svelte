@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
   import Pill from '../../ui/Pill.svelte';
+  import DeleteRequestDialog from '../request/DeleteRequestDialog.svelte';
   import type { AppActions, AppState, WorkspaceSummary } from '../../lib/types';
   import { api } from '../../lib/api';
   import { firstName, listFilter, otherFromLabel, statusUi, type ListFilter } from '../../lib/status-ui';
@@ -37,6 +38,9 @@
     const range = t('{start} to {end}', { start: time(item.visitStartUtc, item.visitTimezone), end: time(item.visitEndUtc ?? item.visitStartUtc, item.visitTimezone) });
     return listFilter(item.status, 'professional') === 'finished' ? t('Done {day}', { day: shortDay(item.visitStartUtc, item.visitTimezone) }) : `${shortDay(item.visitStartUtc, item.visitTimezone)} · ${range}`;
   }
+  let removing = $state<WorkspaceSummary | null>(null);
+  let confirmOpen = $state(false);
+  function askRemove(item: WorkspaceSummary) { app.error = ''; removing = item; confirmOpen = true; }
   async function decide(item: WorkspaceSummary, action: 'confirm-appointment' | 'decline-appointment') {
     if (busy) return;
     busy = item.id;
@@ -69,9 +73,14 @@
             <span class="row-main"><span class="row-title">{item.title}</span><span class="row-when">{when(item)}{#if !item.visitStartUtc && item.updatedAt}{' · '}{dayMonth(item.updatedAt)}{/if}</span></span>
             <span class="row-tag"><Pill variant={label.variant} label={label.label} light={label.light} icon={label.icon} row/></span>
             <span class="row-price">{item.totalMinor ? money(item.totalMinor, item.currency) : ''}</span>
-            {#if !confirming}<Icon name="chevron-right" class="row-chev"/>{/if}
+            {#if !confirming && !item.canDelete}<Icon name="chevron-right" class="row-chev"/>{/if}
           </a>
           {#if asking(item)}<p class="asking"><Icon name="bot" size={14}/>{t('{name} is asking you in the chat', { name: asking(item) })}</p>{/if}
+          {#if item.canDelete && !confirming}
+            <div class="row-actions">
+              <button type="button" class="btn btn-quiet btn-sm" disabled={!!busy || app.pending} aria-label={t('Remove “{title}” from your jobs', { title: item.title })} onclick={() => askRemove(item)}><Icon name="trash"/>{t('Remove')}</button>
+            </div>
+          {/if}
           {#if confirming}
             <div class="row-actions">
               <button type="button" class="btn btn-outline btn-sm" disabled={!!busy || app.pending} onclick={() => decide(item, 'decline-appointment')}>{t('Decline')}</button>
@@ -96,6 +105,10 @@
     </section>
   {/if}
 </div>
+
+{#if removing}
+  <DeleteRequestDialog {app} {actions} bind:open={confirmOpen} workspaceId={removing.id} title={removing.title} counterpart={firstName(removing.counterpart)} cancelled={removing.status === 'cancelled'}/>
+{/if}
 
 <style>
   .jobs { display: grid; gap: 22px; max-width: 920px; margin: 0 auto; padding: 56px 48px 72px; }

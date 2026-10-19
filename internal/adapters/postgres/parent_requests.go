@@ -81,6 +81,25 @@ func (s *Store) AddRequestJobs(ctx context.Context, accountID, workspaceID strin
 	if count+len(plans) > 8 {
 		return workflow.ParentRequest{}, errors.New("this request already has the maximum number of job plans")
 	}
+	adding := 0
+	for _, plan := range plans {
+		var exists bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM request_job_plans WHERE parent_request_id=$1 AND plan_id=$2)`, parentID, plan.ID).Scan(&exists); err != nil {
+			return workflow.ParentRequest{}, err
+		}
+		if !exists {
+			adding++
+		}
+	}
+	if adding > 0 {
+		open, err := lockOpenRequestCountTx(ctx, tx, accountID, "")
+		if err != nil {
+			return workflow.ParentRequest{}, err
+		}
+		if err := workflow.CheckOpenRequestLimit(open, adding); err != nil {
+			return workflow.ParentRequest{}, err
+		}
+	}
 	for _, plan := range plans {
 		var exists bool
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM request_job_plans WHERE parent_request_id=$1 AND plan_id=$2)`, parentID, plan.ID).Scan(&exists); err != nil {
