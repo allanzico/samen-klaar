@@ -14,7 +14,7 @@ docker network create "$run" >/dev/null
 docker run -d --name "$run-db" --network "$run" --network-alias db \
   --tmpfs /var/lib/postgresql/data \
   -e POSTGRES_DB=samenklaar -e POSTGRES_USER=samenklaar -e POSTGRES_PASSWORD=flow-test-only \
-  postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea >/dev/null
+  postgres:16-alpine >/dev/null
 attempt=0
 until docker exec "$run-db" pg_isready -U samenklaar -d samenklaar >/dev/null 2>&1; do
   attempt=$((attempt + 1))

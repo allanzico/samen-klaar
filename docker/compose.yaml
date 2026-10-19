@@ -24,7 +24,7 @@ x-app: &app
 
 services:
   gateway:
-    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    image: caddy:2-alpine
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:-localhost}
@@ -75,7 +75,7 @@ services:
     cpus: 0.5
 
   db:
-    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: samenklaar
