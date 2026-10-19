@@ -30,7 +30,7 @@ func TestDutchIntakeKeepsStableOptionMeaning(t *testing.T) {
 		t.Fatalf("timing meaning or budget language changed: %+v", state.Intake)
 	}
 	act("answer-intake", "intake:budget:understand_cost")
-	if state.Intake.Step != "location" || !strings.Contains(state.Intake.Question, "buurt") {
+	if state.Intake.Step != "location" || !strings.Contains(state.Intake.Question, "postcode") {
 		t.Fatalf("location prompt=%+v", state.Intake)
 	}
 	act("set-location", "Amsterdam Noord")

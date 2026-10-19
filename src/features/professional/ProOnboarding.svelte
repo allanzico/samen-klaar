@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '../../ui/Icon.svelte';
+  import LocationSearch from '../../ui/LocationSearch.svelte';
   import Pill from '../../ui/Pill.svelte';
   import Banner from '../../ui/Banner.svelte';
   import FreeTimes from './FreeTimes.svelte';
   import PayPalPayouts from './PayPalPayouts.svelte';
-  import type { AppActions, ProfessionalProfile, ProfessionalProfileInput } from '../../lib/types';
+  import type { AppActions, Location, ProfessionalProfile, ProfessionalProfileInput } from '../../lib/types';
   import { api } from '../../lib/api';
   import { money } from '../../lib/format';
   import { initials } from '../../lib/trade';
@@ -21,7 +22,9 @@
   let error = $state('');
   let step = $state(0);
   let freeTimes = $state<FreeTimes>();
-  let areaInput = $state('');
+  let baseLocation = $state<Location | null>(null);
+  let baseText = $state('');
+  let travelRadius = $state(25);
   let areaError = $state('');
   let otherDuration = $state(false);
   let form = $state<Form>({ displayName: '', category: 'Plumbing', serviceName: '', serviceDescription: '', serviceArea: '', latitude: '', longitude: '', currency: 'EUR', price: '', callout: '0', durationMinutes: 60, materialsPolicy: '', exclusions: '' });
@@ -41,6 +44,7 @@
       profile = (await api.professionalProfile()).profile;
       if (profile) {
         form = { displayName: profile.displayName, category: profile.category, serviceName: profile.serviceName, serviceDescription: profile.serviceDescription, serviceArea: profile.serviceArea, latitude: profile.latitude ? String(profile.latitude) : '', longitude: profile.longitude ? String(profile.longitude) : '', currency: profile.currency, price: (profile.priceMinor / 100).toFixed(2), callout: (profile.calloutMinor / 100).toFixed(2), durationMinutes: profile.durationMinutes, materialsPolicy: profile.materialsPolicy, exclusions: (profile.exclusions ?? []).join('\n') };
+        baseLocation = profile.baseLocation ?? null; baseText = baseLocation?.address || baseLocation?.label || ''; travelRadius = profile.travelRadiusKm || 25;
         otherDuration = !presets.includes(profile.durationMinutes);
         step = 4;
       }
@@ -48,20 +52,9 @@
     finally { loading = false; }
   });
 
-  function commitArea() {
-    const value = areaInput.replace(/,/g, ' ').trim();
-    if (value && !areas.includes(value)) form.serviceArea = [...areas, value].join(', ');
-    areaInput = '';
-  }
-  function removeArea(area: string) { form.serviceArea = areas.filter((a) => a !== area).join(', '); }
-  function areaKey(event: KeyboardEvent) {
-    if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); commitArea(); }
-    else if (event.key === 'Backspace' && !areaInput && areas.length) removeArea(areas[areas.length - 1]);
-  }
   function continueBasics(event: SubmitEvent) {
     event.preventDefault();
-    commitArea();
-    areaError = areas.length ? '' : t('Add at least one area to continue');
+    areaError = baseLocation ? '' : t('Choose a base address or postcode from the suggestions.');
     if (!areaError) step = 2;
   }
   async function saveService(event: SubmitEvent) {
@@ -71,8 +64,8 @@
     error = '';
     try {
       const input: ProfessionalProfileInput = {
-        displayName: form.displayName, category: form.category, serviceName: form.serviceName, serviceDescription: form.serviceDescription, serviceArea: form.serviceArea,
-        latitude: Number(form.latitude || 0), longitude: Number(form.longitude || 0), currency: form.currency.toUpperCase(),
+        displayName: form.displayName, category: form.category, serviceName: form.serviceName, serviceDescription: form.serviceDescription, serviceArea: baseLocation?.label || form.serviceArea, baseLocation, travelRadiusKm: travelRadius,
+        latitude: baseLocation?.latitude ?? Number(form.latitude || 0), longitude: baseLocation?.longitude ?? Number(form.longitude || 0), currency: form.currency.toUpperCase(),
         priceMinor: Math.round(Number(form.price) * 100), calloutMinor: Math.round(Number(form.callout) * 100), durationMinutes: Number(form.durationMinutes),
         materialsPolicy: form.materialsPolicy, exclusions: form.exclusions.split('\n').map((x) => x.trim()).filter(Boolean)
       };
@@ -91,7 +84,7 @@
     {#if form.serviceDescription}<p class="secondary-text">{form.serviceDescription}</p>{/if}
     <p class="amount price">{money(previewMinor, form.currency)}</p>
     <p class="meta">{t('including call-out, {minutes} minutes', { minutes: form.durationMinutes })}</p>
-    {#if areas.length}<div class="area-tags">{#each areas as area}<span class="pill pill--fact">{area}</span>{/each}</div>{/if}
+    {#if baseLocation}<p class="meta">{t('Within {radius} km of {area}', { radius: travelRadius, area: baseLocation.label })}</p>{:else if areas.length}<div class="area-tags">{#each areas as area}<span class="pill pill--fact">{area}</span>{/each}</div>{/if}
   </aside>
 {/snippet}
 
@@ -125,7 +118,7 @@
               <li><span class="mark" aria-hidden="true">3</span><span><b>{t('Payout account')}</b><small>{t('Connect PayPal below.')}</small></span></li>
             </ol>
             <div class="row">
-              <button type="button" class="btn btn-outline btn-sm" onclick={() => { step = 2; }}>{t('Edit your service')}</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick={() => { step = 1; }}>{t('Edit your service')}</button>
               <button type="button" class="btn btn-outline btn-sm" onclick={() => { step = 3; }}>{t('Add free times')}</button>
             </div>
           </section>
@@ -151,15 +144,9 @@
             <fieldset class="field"><legend class="field-label">{t('Service category')}</legend>
               <div class="trades">{#each trades as trade (trade.value)}<label class="radio-card"><input type="radio" name="trade" value={trade.value} bind:group={form.category}/><span class="radio-dot" aria-hidden="true"></span><span><b>{t(trade.value)}</b><small>{t(trade.note)}</small></span></label>{/each}</div>
             </fieldset>
-            <div class="field">
-              <label for="area-input">{t('Neighbourhoods or postcode areas')}</label>
-              <div class="chips-input" class:invalid={!!areaError}>
-                {#each areas as area (area)}<span class="pill pill--fact">{area}<button type="button" class="remove" aria-label={t('Remove {area}', { area })} onclick={() => removeArea(area)}><Icon name="close" size={14}/></button></span>{/each}
-                <input id="area-input" bind:value={areaInput} onkeydown={areaKey} onblur={commitArea} maxlength="60" placeholder={areas.length ? '' : t('For example Oost or 1092')} aria-describedby="area-help area-error" aria-invalid={areaError ? 'true' : undefined}/>
-              </div>
-              <p id="area-help" class="field-help">{t('Press Enter after each area. Customers only share their area until they choose you.')}</p>
-              <p id="area-error" class="field-error" role="alert">{areaError}</p>
-            </div>
+            <LocationSearch id="professional-base" label={t('Your base address or postcode')} purpose="base" bind:value={baseText} bind:selected={baseLocation} help={t('Your base stays private. We use it to find jobs within your travel radius.')}/>
+            <div class="field"><label for="travel-radius">{t('How far will you travel?')}</label><select id="travel-radius" class="input" bind:value={travelRadius}>{#if ![5, 10, 15, 25, 50, 75, 100].includes(travelRadius)}<option value={travelRadius}>{travelRadius} km</option>{/if}{#each [5, 10, 15, 25, 50, 75, 100] as radius}<option value={radius}>{radius} km</option>{/each}</select></div>
+            {#if areaError}<p class="field-error" role="alert">{areaError}</p>{/if}
             <div class="row"><button class="btn btn-primary">{t('Continue')}</button></div>
           </form>
         {:else if step === 2}
@@ -221,12 +208,6 @@
   .trades { display: grid; gap: 10px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .short { max-width: 140px; margin-top: 8px; }
-  .chips-input { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 40px; padding: 6px 10px; border: 1.5px solid var(--sk-field); border-radius: var(--sk-r-card); background: var(--sk-surface); }
-  .chips-input.invalid { border-color: var(--sk-danger); }
-  .chips-input:focus-within { border-color: var(--sk-ink); }
-  .chips-input input { flex: 1; min-width: 140px; min-height: 34px; border: 0; background: transparent; font: 400 14px/1.4 var(--sk-ft); color: var(--sk-ink); }
-  .chips-input input:focus-visible { outline: none; }
-  .remove { display: grid; place-items: center; width: 24px; height: 24px; margin: -4px -6px -4px 0; padding: 0; border: 0; border-radius: 50%; background: transparent; }
   .skip { justify-self: start; margin-left: -8px; }
   .preview { position: sticky; top: calc(var(--sk-topbar-h) + 20px); display: grid; gap: 10px; padding: 20px; }
   .eyebrow.small { font-size: 12px; }

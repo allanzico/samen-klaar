@@ -114,7 +114,10 @@ CREATE TABLE professional_profiles (
     exclusions_json jsonb NOT NULL DEFAULT '[]'::jsonb,
     status text NOT NULL CHECK (status IN ('pending', 'active', 'rejected', 'disabled')),
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    base_location jsonb,
+    travel_radius_km integer NOT NULL DEFAULT 0 CHECK (travel_radius_km BETWEEN 0 AND 100),
+    CONSTRAINT professional_geographic_coverage CHECK ((base_location IS NULL AND travel_radius_km = 0) OR (base_location IS NOT NULL AND travel_radius_km BETWEEN 1 AND 100))
 );
 CREATE TABLE professional_review_checks (
     professional_profile_id text PRIMARY KEY REFERENCES professional_profiles(id) ON DELETE CASCADE,

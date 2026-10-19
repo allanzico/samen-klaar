@@ -186,6 +186,8 @@ func (s *Server) evidenceReviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	jobForReview := state.Job
 	jobForReview.ServiceAddress = ""
+	jobForReview.ServiceLocation = nil
+	jobForReview.Location = nil
 	review, err := s.ai.ReviewEvidence(ctx, jobForReview, files)
 	if err != nil {
 		http.Error(w, "SamenKlaar could not check these files right now. Please try again.", http.StatusBadGateway)

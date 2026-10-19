@@ -223,5 +223,5 @@ version in force.
 - **Push notifications** for an agent question are not wired (email and the in-app bell are).
 - **Intake** (describing the problem) is still a conversation the customer has with the assistant; the
   customer agent starts when the match list appears.
-- Agents act on the earliest matching time and the first match inside the limit. There is no ranking
-  by rating or distance yet.
+- Agents act on the earliest matching time and the first match inside the limit. Geographic profiles
+  are ranked by straight-line distance and availability. Rating and routed travel-time ranking are not implemented.

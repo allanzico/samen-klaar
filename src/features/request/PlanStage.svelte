@@ -1,9 +1,10 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
+  import LocationSearch from '../../ui/LocationSearch.svelte';
   import Pill from '../../ui/Pill.svelte';
   import Banner from '../../ui/Banner.svelte';
   import TimePicker from './TimePicker.svelte';
-  import type { AppActions, AppState, WorkspaceState } from '../../lib/types';
+  import type { AppActions, AppState, WorkspaceState, Location } from '../../lib/types';
   import type { RequestCode } from '../../lib/request-status';
   import { firstName } from '../../lib/status-ui';
   import { money, dayTime } from '../../lib/format';
@@ -22,32 +23,33 @@
   const assessment = $derived(job.intakeRoute === 'assessment');
 
   let address = $state('');
+  let addressLocation = $state<Location | null>(null);
   let addressFor = $state<string | null>(null);
   let dirty = $state(false);
   let editing = $state(false);
   let clarification = $state('');
   $effect(() => {
     if (workspace.workspaceId !== addressFor) { addressFor = workspace.workspaceId; address = job.serviceAddress ?? ''; dirty = false; editing = false; }
-    else if (!dirty) address = job.serviceAddress ?? '';
+    else if (!dirty && job.serviceAddress && !editing) address = job.serviceAddress ?? '';
   });
   const showAddressForm = $derived(!job.serviceAddress || editing);
   async function saveAddress(event: SubmitEvent) {
     event.preventDefault();
     const value = address.trim();
-    if (await actions.act('set-service-address', value)) { dirty = false; editing = false; address = value; }
+    if (await actions.act('set-service-address', value, addressLocation ?? undefined)) { dirty = false; editing = false; address = value; }
   }
   const lineTotal = $derived(job.quote.lines.reduce((sum, line) => sum + line.amountMinor, 0));
 </script>
 
 {#snippet addressForm()}
   <form class="address-form" onsubmit={saveAddress}>
-    <div class="field">
-      <label for="service-address">{t('Street, house number and postcode')}</label>
-      <textarea id="service-address" class="textarea" rows="2" required minlength="8" maxlength="250" autocomplete="street-address" bind:value={address} oninput={() => { dirty = true; }} aria-describedby="address-help"></textarea>
-      <p id="address-help" class="field-help">{t('Add access details if they help, like a floor or a door code.')}</p>
-    </div>
+    {#if job.location?.source === 'mapbox'}
+      <LocationSearch id="service-address" label={t('Full visit address')} purpose="address" bind:value={address} bind:selected={addressLocation} disabled={app.pending} help={t('We check that your address is inside this professional’s service area.')}/>
+    {:else}
+      <div class="field"><label for="service-address">{t('Street, house number and postcode')}</label><textarea id="service-address" class="textarea" rows="2" required minlength="8" maxlength="250" autocomplete="street-address" bind:value={address} oninput={() => { dirty = true; }}></textarea></div>
+    {/if}
     <div class="row-actions">
-      <button class="btn btn-outline btn-sm" disabled={app.pending || address.trim().length < 8}>{t('Save private address')}</button>
+      <button class="btn btn-outline btn-sm" disabled={app.pending || address.trim().length < 8 || (job.location?.source === 'mapbox' && !addressLocation)}>{t('Save private address')}</button>
       {#if editing}<button type="button" class="btn btn-quiet" onclick={() => { editing = false; dirty = false; }}>{t('Cancel')}</button>{/if}
     </div>
     {#if address.trim().length < 8}<p class="helper">{t('Enter at least 8 characters to save your address')}</p>{/if}

@@ -24,21 +24,26 @@ func randomID(prefix string) (string, error) {
 
 func scanProfile(row pgx.Row) (workflow.ProfessionalProfile, error) {
 	var profile workflow.ProfessionalProfile
-	var exclusions []byte
+	var exclusions, baseJSON []byte
 	err := row.Scan(&profile.ID, &profile.AccountID, &profile.DisplayName, &profile.Category, &profile.ServiceName, &profile.ServiceDescription,
 		&profile.ServiceArea, &profile.Latitude, &profile.Longitude, &profile.Currency, &profile.PriceMinor, &profile.CalloutMinor,
-		&profile.DurationMinutes, &profile.MaterialsPolicy, &exclusions, &profile.Status)
+		&profile.DurationMinutes, &profile.MaterialsPolicy, &exclusions, &profile.Status, &baseJSON, &profile.TravelRadiusKM)
 	if err != nil {
 		return workflow.ProfessionalProfile{}, err
 	}
 	if err := json.Unmarshal(exclusions, &profile.Exclusions); err != nil {
 		return workflow.ProfessionalProfile{}, err
 	}
+	if len(baseJSON) > 0 {
+		if err := json.Unmarshal(baseJSON, &profile.BaseLocation); err != nil {
+			return workflow.ProfessionalProfile{}, err
+		}
+	}
 	return profile, nil
 }
 
 const profileColumns = `id, account_id, display_name, category, service_name, service_description,
- service_area, latitude, longitude, currency, price_minor, callout_minor, duration_minutes, materials_policy, exclusions_json, status`
+ service_area, latitude, longitude, currency, price_minor, callout_minor, duration_minutes, materials_policy, exclusions_json, status, base_location, travel_radius_km`
 
 func qualifiedProfileColumns(alias string) string {
 	columns := strings.Split(profileColumns, ",")
@@ -57,6 +62,20 @@ func (s *Store) ProfessionalProfile(ctx context.Context, accountID string) (work
 }
 
 func (s *Store) SaveProfessionalProfile(ctx context.Context, accountID string, profile workflow.ProfessionalProfile) (workflow.ProfessionalProfile, error) {
+	var baseJSON []byte
+	if profile.BaseLocation != nil {
+		if !workflow.ValidGeocodedLocation(*profile.BaseLocation) || profile.TravelRadiusKM < 1 || profile.TravelRadiusKM > 100 {
+			return workflow.ProfessionalProfile{}, errors.New("invalid professional service coverage")
+		}
+		base := *profile.BaseLocation
+		base.Selection = ""
+		profile.BaseLocation = &base
+		profile.Latitude, profile.Longitude = base.Latitude, base.Longitude
+		profile.ServiceArea = base.Label
+		baseJSON, _ = json.Marshal(base)
+	} else {
+		profile.TravelRadiusKM = 0
+	}
 	profileID, err := randomID("prof_")
 	if err != nil {
 		return workflow.ProfessionalProfile{}, err
@@ -79,28 +98,28 @@ func (s *Store) SaveProfessionalProfile(ctx context.Context, accountID string, p
 	}
 	reviewChanged := previousErr == nil && previous.Status == "active" && (previous.DisplayName != profile.DisplayName || previous.Category != profile.Category ||
 		previous.ServiceName != profile.ServiceName || previous.ServiceDescription != profile.ServiceDescription ||
-		previous.ServiceArea != profile.ServiceArea || previous.Latitude != profile.Latitude || previous.Longitude != profile.Longitude ||
+		previous.TravelRadiusKM != profile.TravelRadiusKM || (previous.BaseLocation == nil) != (profile.BaseLocation == nil) || previous.BaseLocation != nil && profile.BaseLocation != nil && previous.BaseLocation.ID != profile.BaseLocation.ID || previous.ServiceArea != profile.ServiceArea || previous.Latitude != profile.Latitude || previous.Longitude != profile.Longitude ||
 		previous.DurationMinutes != profile.DurationMinutes || previous.MaterialsPolicy != profile.MaterialsPolicy ||
 		!slices.Equal(previous.Exclusions, profile.Exclusions))
 	saved, err := scanProfile(tx.QueryRow(ctx, `
 		INSERT INTO professional_profiles (
 			id, account_id, display_name, category, service_name, service_description, service_area,
-			latitude, longitude, currency, price_minor, callout_minor, duration_minutes, materials_policy, exclusions_json, status
+			latitude, longitude, currency, price_minor, callout_minor, duration_minutes, materials_policy, exclusions_json, status, base_location, travel_radius_km
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending', $17, $18)
 		ON CONFLICT (account_id) DO UPDATE SET
 			display_name = EXCLUDED.display_name, category = EXCLUDED.category, service_name = EXCLUDED.service_name,
 			service_description = EXCLUDED.service_description, service_area = EXCLUDED.service_area,
 			latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude, currency = EXCLUDED.currency,
 			price_minor = EXCLUDED.price_minor, callout_minor = EXCLUDED.callout_minor,
 			duration_minutes = EXCLUDED.duration_minutes, materials_policy = EXCLUDED.materials_policy,
-			exclusions_json = EXCLUDED.exclusions_json,
+			exclusions_json = EXCLUDED.exclusions_json, base_location=EXCLUDED.base_location,travel_radius_km=EXCLUDED.travel_radius_km,
 			status = CASE WHEN professional_profiles.status = 'active' AND NOT $16 THEN 'active' ELSE 'pending' END,
 			updated_at = now()
 		RETURNING `+profileColumns,
 		profileID, accountID, profile.DisplayName, profile.Category, profile.ServiceName, profile.ServiceDescription,
 		profile.ServiceArea, profile.Latitude, profile.Longitude, profile.Currency, profile.PriceMinor, profile.CalloutMinor,
-		profile.DurationMinutes, profile.MaterialsPolicy, exclusions, reviewChanged))
+		profile.DurationMinutes, profile.MaterialsPolicy, exclusions, reviewChanged, baseJSON, profile.TravelRadiusKM))
 	if err != nil {
 		return workflow.ProfessionalProfile{}, err
 	}
@@ -142,9 +161,9 @@ func (s *Store) ListProfessionalMatches(ctx context.Context, category string, lo
             WHERE a.professional_account_id = p.account_id AND `+bookableAvailabilitySQL("a", "p", "")+`
             ORDER BY a.starts_at, a.id LIMIT 1
         ) earliest ON true
-        WHERE p.status = 'active' AND m.status = 'active' AND p.category = $1 AND p.account_id <> $2
+        WHERE p.status = 'active' AND m.status = 'active' AND p.category = $1 AND p.account_id <> $2 AND `+locationCoverageSQL("$3")+`
         ORDER BY earliest.starts_at ASC NULLS LAST, p.display_name, p.id
-        LIMIT 50`, category, excludeAccountID)
+        LIMIT 50`, category, excludeAccountID, locationJSON([]workflow.Location{location}))
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +182,7 @@ func (s *Store) ListProfessionalMatches(ctx context.Context, category string, lo
 				StartUTC: start.UTC().Format(time.RFC3339), EndUTC: end.UTC().Format(time.RFC3339),
 				StartsAt: start.In(zone).Format("Mon, 2 Jan · 15:04") + "–" + end.In(zone).Format("15:04")}
 		}
-		if !serviceAreaCovers(match.Area, location.Label) {
+		if location.Source != "mapbox" && !serviceAreaCovers(match.Area, location.Label) {
 			continue
 		}
 		matches = append(matches, match)
@@ -181,7 +200,7 @@ func (s *Store) CatalogOffer(ctx context.Context, profileID string) (workflow.Ca
 		return workflow.CatalogOffer{}, err
 	}
 	return workflow.CatalogOffer{
-		ProfileID: profile.ID, AccountID: profile.AccountID, DisplayName: profile.DisplayName,
+		BaseLocation: profile.BaseLocation, TravelRadiusKM: profile.TravelRadiusKM, ProfileID: profile.ID, AccountID: profile.AccountID, DisplayName: profile.DisplayName,
 		Category: profile.Category, ServiceName: profile.ServiceName, ServiceDescription: profile.ServiceDescription,
 		ServiceArea: profile.ServiceArea, Currency: strings.TrimSpace(profile.Currency), PriceMinor: profile.PriceMinor,
 		CalloutMinor: profile.CalloutMinor, DurationMinutes: profile.DurationMinutes, MaterialsPolicy: profile.MaterialsPolicy,
@@ -317,16 +336,21 @@ func (s *Store) ListProfessionalApplications(ctx context.Context) ([]workflow.Pr
 	for rows.Next() {
 		var application workflow.ProfessionalApplication
 		var profile workflow.ProfessionalProfile
-		var exclusions []byte
+		var exclusions, baseJSON []byte
 		if err := rows.Scan(&profile.ID, &profile.AccountID, &profile.DisplayName, &profile.Category, &profile.ServiceName, &profile.ServiceDescription,
 			&profile.ServiceArea, &profile.Latitude, &profile.Longitude, &profile.Currency, &profile.PriceMinor, &profile.CalloutMinor,
-			&profile.DurationMinutes, &profile.MaterialsPolicy, &exclusions, &profile.Status, &application.Email,
+			&profile.DurationMinutes, &profile.MaterialsPolicy, &exclusions, &profile.Status, &baseJSON, &profile.TravelRadiusKM, &application.Email,
 			&application.Checks.IdentityBusiness, &application.Checks.PayPalOnboarding, &application.Checks.Qualification,
 			&application.Checks.Insurance, &application.Checks.QualificationReason, &application.Checks.InsuranceReason); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(exclusions, &profile.Exclusions); err != nil {
 			return nil, err
+		}
+		if len(baseJSON) > 0 {
+			if err := json.Unmarshal(baseJSON, &profile.BaseLocation); err != nil {
+				return nil, err
+			}
 		}
 		application.Profile = profile
 		applications = append(applications, application)

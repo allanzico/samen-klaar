@@ -15,6 +15,8 @@ export type ProfessionalProfile = {
   serviceName: string;
   serviceDescription: string;
   serviceArea: string;
+  baseLocation?: Location | null;
+  travelRadiusKm?: number;
   latitude: number;
   longitude: number;
   currency: string;
@@ -132,7 +134,7 @@ export type Job = {
   timeline: EventItem[];
 };
 
-export type Location = { label: string; latitude: number; longitude: number; source: string };
+export type Location = { label: string; latitude: number; longitude: number; source: string; id?: string; kind?: string; city?: string; postcode?: string; country?: string; neighborhood?: string; bounds?: number[]; address?: string; selection?: string };
 export type Intake = {
   locale?:string; optionIds?:string[];
   step: string;
@@ -146,7 +148,7 @@ export type Intake = {
   urgency: string;
   budget: string;
   location: Location | null;
-  matches: { serviceName: string; serviceDescription: string; fitReason: string; currency: string; totalMinor: number; durationMinutes: number; materialsPolicy: string; exclusions: string[]; id: string; name: string; category: string; distanceKm: number; area: string; earliestAppointment?: Appointment }[];
+  matches: { serviceName: string; serviceDescription: string; fitReason: string; currency: string; totalMinor: number; durationMinutes: number; materialsPolicy: string; exclusions: string[]; id: string; name: string; category: string; distanceKm: number; distanceKnown?: boolean; distanceApproximate?: boolean; area: string; earliestAppointment?: Appointment }[];
   needsReview: boolean;
   waitlisted?: boolean;
 };
@@ -188,6 +190,7 @@ export type WorkspaceSummary = {
 
 export type ProviderConfig = {
   appName: string;
+  locationSearchAvailable?: boolean;
   guidedReviewAvailable: boolean;
   evidenceUploadsAvailable: boolean;
   paymentsAvailable: boolean;

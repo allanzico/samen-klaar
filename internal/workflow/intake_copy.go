@@ -7,6 +7,7 @@ import (
 )
 
 var dutchIntakeCopy = map[string]string{
+	"Enter an address, postcode or city. Your exact address stays private until you choose a professional.":                     "Voer een adres, postcode of plaats in. Je volledige adres blijft privé totdat je een vakprofessional kiest.",
 	"Where is the problem, and what happens when you notice it?":                                                                "Waar is het probleem en wat merk je ervan?",
 	"Does water still come out of the tap, and where is it leaking?":                                                            "Komt er nog water uit de kraan en waar lekt het?",
 	"Is it one outlet or several parts of the property? Describe only what you've already noticed.":                             "Gaat het om één stopcontact of meerdere plekken in de woning? Beschrijf alleen wat je al hebt gemerkt.",

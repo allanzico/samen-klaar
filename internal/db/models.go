@@ -179,6 +179,8 @@ type ProfessionalProfile struct {
 	Status             string
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+	BaseLocation       []byte
+	TravelRadiusKm     int32
 }
 
 type ProfessionalReviewCheck struct {

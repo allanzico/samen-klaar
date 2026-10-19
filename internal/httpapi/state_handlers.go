@@ -89,7 +89,13 @@ func (s *Server) runAction(ctx context.Context, principal identity.Principal, in
 		input.Suggestion = &suggestion
 	}
 	if input.Action == "set-location" {
-		location, err := workflow.ResolveLocation(input.Location, input.Value)
+		var location workflow.Location
+		var err error
+		if s.locations != nil || input.Location != nil && input.Location.Source == "mapbox" {
+			location, err = s.selectedLocation(principal.User.ID, input.Location)
+		} else {
+			location, err = workflow.ResolveLocation(input.Location, input.Value)
+		}
 		if err != nil {
 			return State{}, http.StatusBadRequest, errors.New(err.Error())
 		}
@@ -137,6 +143,29 @@ func (s *Server) runAction(ctx context.Context, principal identity.Principal, in
 			input.Matches, input.SuggestedQuestion, err = matching.Find(ctx, s.directory, s.ai, category, current.Intake.Description+"\n"+detail, principal.User.ID, location)
 			if err != nil {
 				return State{}, http.StatusServiceUnavailable, errors.New("professional directory could not be searched")
+			}
+		}
+	}
+	if input.Action == "set-service-address" && principal.ActiveRole == identity.Customer {
+		current, err := s.currentState(ctx, principal.User.ID, string(principal.ActiveRole), input.WorkspaceID)
+		if err != nil {
+			return State{}, http.StatusConflict, errors.New("request could not be loaded")
+		}
+		if s.directory != nil && current.Job.ProfessionalProfileID != "" {
+			offer, err := s.directory.CatalogOffer(ctx, current.Job.ProfessionalProfileID)
+			if err != nil {
+				return State{}, http.StatusConflict, errors.New("the selected professional is no longer available")
+			}
+			if offer.BaseLocation != nil || current.Job.Location != nil && current.Job.Location.Source == "mapbox" {
+				location, err := s.resolveVisitAddress(ctx, principal.User.ID, input.Value, input.Location)
+				if err != nil {
+					return State{}, http.StatusBadRequest, err
+				}
+				if !workflow.OfferCoversLocation(offer, location) {
+					return State{}, http.StatusConflict, errors.New("This address is outside the professional’s service area. Choose another professional.")
+				}
+				input.Value = location.Address
+				input.Location = &location
 			}
 		}
 	}
@@ -259,8 +288,10 @@ func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
 		EvidenceUploadsAvailable bool   `json:"evidenceUploadsAvailable"`
 		PaymentsAvailable        bool   `json:"paymentsAvailable"`
 		TestPayments             bool   `json:"testPayments"`
+		LocationSearchAvailable  bool   `json:"locationSearchAvailable"`
 	}{
 		AppName:                  s.appName,
+		LocationSearchAvailable:  s.locations != nil,
 		GuidedReviewAvailable:    s.providers.AIProvider != "",
 		EvidenceUploadsAvailable: s.providers.EvidenceProvider != "",
 		PaymentsAvailable:        s.providers.PaymentProvider == "paypal_sandbox",

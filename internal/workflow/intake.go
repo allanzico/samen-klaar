@@ -30,10 +30,19 @@ type Message struct {
 	Params map[string]string `json:"params,omitempty"`
 }
 type Location struct {
-	Label     string  `json:"label"`
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-	Source    string  `json:"source"`
+	ID           string    `json:"id,omitempty"`
+	Kind         string    `json:"kind,omitempty"`
+	City         string    `json:"city,omitempty"`
+	Postcode     string    `json:"postcode,omitempty"`
+	Country      string    `json:"country,omitempty"`
+	Neighborhood string    `json:"neighborhood,omitempty"`
+	Bounds       []float64 `json:"bounds,omitempty"`
+	Address      string    `json:"address,omitempty"`
+	Selection    string    `json:"selection,omitempty"`
+	Label        string    `json:"label"`
+	Latitude     float64   `json:"latitude"`
+	Longitude    float64   `json:"longitude"`
+	Source       string    `json:"source"`
 }
 type Match struct {
 	ServiceName         string       `json:"serviceName"`
@@ -49,6 +58,8 @@ type Match struct {
 	ID                  string       `json:"id"`
 	Name                string       `json:"name"`
 	Category            string       `json:"category"`
+	DistanceKnown       bool         `json:"distanceKnown,omitempty"`
+	DistanceApproximate bool         `json:"distanceApproximate,omitempty"`
 	DistanceKM          float64      `json:"distanceKm"`
 	Area                string       `json:"area"`
 }
@@ -80,6 +91,14 @@ func OrderMatches(matches []Match, location *Location) {
 		return 0
 	}
 	sort.SliceStable(matches, func(i, j int) bool {
+		if location != nil && location.Source == "mapbox" {
+			if matches[i].DistanceKnown != matches[j].DistanceKnown {
+				return matches[i].DistanceKnown
+			}
+			if matches[i].DistanceKnown && matches[i].DistanceKM != matches[j].DistanceKM {
+				return matches[i].DistanceKM < matches[j].DistanceKM
+			}
+		}
 		left, right := areaScore(matches[i].Area), areaScore(matches[j].Area)
 		if left != right {
 			return left > right
@@ -99,22 +118,23 @@ func OrderMatches(matches []Match, location *Location) {
 }
 
 type Intake struct {
-	Locale      string    `json:"locale,omitempty"`
-	OptionIDs   []string  `json:"optionIds,omitempty"`
-	Step        string    `json:"step"`
-	Description string    `json:"description"`
-	Category    string    `json:"category"`
-	Route       string    `json:"route"`
-	Question    string    `json:"question"`
-	Options     []string  `json:"options"`
-	Messages    []Message `json:"messages"`
-	Detail      string    `json:"detail"`
-	Urgency     string    `json:"urgency"`
-	Budget      string    `json:"budget"`
-	Location    *Location `json:"location"`
-	Matches     []Match   `json:"matches"`
-	NeedsReview bool      `json:"needsReview"`
-	Waitlisted  bool      `json:"waitlisted"`
+	ServiceAddress string    `json:"serviceAddress,omitempty"`
+	Locale         string    `json:"locale,omitempty"`
+	OptionIDs      []string  `json:"optionIds,omitempty"`
+	Step           string    `json:"step"`
+	Description    string    `json:"description"`
+	Category       string    `json:"category"`
+	Route          string    `json:"route"`
+	Question       string    `json:"question"`
+	Options        []string  `json:"options"`
+	Messages       []Message `json:"messages"`
+	Detail         string    `json:"detail"`
+	Urgency        string    `json:"urgency"`
+	Budget         string    `json:"budget"`
+	Location       *Location `json:"location"`
+	Matches        []Match   `json:"matches"`
+	NeedsReview    bool      `json:"needsReview"`
+	Waitlisted     bool      `json:"waitlisted"`
 }
 
 func containsAny(s string, words ...string) bool {
@@ -273,6 +293,8 @@ func applyIntakeInput(state *State, input Action) error {
 		if err != nil {
 			return err
 		}
+		i.ServiceAddress = location.Address
+		location = DiscoveryLocation(location)
 		i.Location = &location
 		i.Waitlisted = false
 		i.Messages = append(i.Messages, Message{Role: "customer", Text: location.Label})
@@ -315,6 +337,9 @@ func applyIntakeInput(state *State, input Action) error {
 		if offer.Currency != strings.ToUpper(offer.Currency) {
 			return errors.New("the provider currency must be uppercase")
 		}
+		if i.Location != nil && i.Location.Source == "mapbox" && !OfferCoversLocation(*offer, *i.Location) {
+			return errors.New("this professional no longer covers this location; refresh the results")
+		}
 		total := offer.PriceMinor + offer.CalloutMinor
 		job := Job{
 			ID: "job_" + rand.Text(), ProfessionalProfileID: offer.ProfileID, ProfessionalAccountID: offer.AccountID,
@@ -330,6 +355,10 @@ func applyIntakeInput(state *State, input Action) error {
 				DurationMinutes: offer.DurationMinutes, Expires: time.Now().UTC().Add(7 * 24 * time.Hour).Format(time.RFC3339),
 			},
 			Evidence: []Evidence{}, Timeline: []Event{},
+		}
+		if i.Location != nil && i.Location.Kind == "address" && i.ServiceAddress != "" {
+			job.ServiceAddress = i.ServiceAddress
+			job.ServiceLocation = i.Location
 		}
 		job.CompletionRound = 1
 		for _, requirement := range offer.EvidenceRequirements {
@@ -404,7 +433,7 @@ func finishIntake(i *Intake, matches []Match, questions ...string) {
 		i.Matches = []Match{}
 		ask(i, "detail", "Where is the problem, and what happens when you notice it? A little more detail will help me find the right professional.", "I'll describe more")
 	} else if i.Location == nil {
-		ask(i, "location", "Which neighbourhood or postcode area in Amsterdam should the professional cover? Share a neighbourhood or postcode only; we’ll ask for the full address after you choose a professional.")
+		ask(i, "location", "Enter an address, postcode or city. Your exact address stays private until you choose a professional.")
 	} else if len(i.Matches) == 0 {
 		if len(questions) > 0 && questions[0] != "" && !strings.Contains(strings.ToLower(questions[0]), "area waitlist") {
 			i.Step = "detail"
@@ -459,6 +488,12 @@ func ValidSuggestion(s IntakeSuggestion) bool {
 
 func resolveLocation(location *Location, area string) (Location, error) {
 	if location != nil {
+		if location.Source == "mapbox" {
+			if !ValidGeocodedLocation(*location) {
+				return Location{}, errors.New("select a valid location from the suggestions")
+			}
+			return *location, nil
+		}
 		if location.Source != "area" || math.IsNaN(location.Latitude) || math.IsNaN(location.Longitude) || math.IsInf(location.Latitude, 0) || math.IsInf(location.Longitude, 0) || math.Abs(location.Latitude) > 90 || math.Abs(location.Longitude) > 180 {
 			return Location{}, errors.New("invalid service area")
 		}
