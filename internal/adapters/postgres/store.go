@@ -514,6 +514,11 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 	if err = workflow.Apply(&current, input); err != nil {
 		return workflow.State{}, err
 	}
+	if input.Action == "set-service-address" {
+		if err := validateVisitCoverageTx(ctx, tx, current.Job); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	state := current
 	if input.Action != "defer-payment-authorization" && previousTiming != state.Job.PaymentAuthorizationTiming {
 		if err := deferPaymentAuthorizationTx(ctx, tx, state); err != nil {
@@ -630,6 +635,9 @@ func reserveBooking(ctx context.Context, tx pgx.Tx, job workflow.Job, agreed ...
 	}
 	// Serialize overlap checks by professional. The lock and insert share the same transaction.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, professionalID); err != nil {
+		return err
+	}
+	if err := validateVisitCoverageTx(ctx, tx, job); err != nil {
 		return err
 	}
 	if len(agreed) == 0 || !agreed[0] {

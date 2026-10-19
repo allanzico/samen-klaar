@@ -59,6 +59,7 @@ type PaymentWebhookReceiver interface {
 }
 
 type Dependencies struct {
+	Locations     LocationSearch
 	AppName       string
 	WebDirectory  string
 	Store         workflow.StateStore
@@ -83,6 +84,8 @@ type Dependencies struct {
 }
 
 type Server struct {
+	locations       LocationSearch
+	locationKey     []byte
 	appName         string
 	webDirectory    string
 	store           workflow.StateStore
@@ -122,7 +125,7 @@ func New(deps Dependencies) *Server {
 	if sessions == nil && deps.Auth != nil {
 		sessions = deps.Auth
 	}
-	return &Server{appName: appName, webDirectory: deps.WebDirectory, store: deps.Store, auth: deps.Auth, sessions: sessions, appOrigin: origin, providers: deps.Providers, ai: deps.AI, r2: deps.Evidence, paypal: deps.Payments, refunds: deps.Refunds, marketplace: deps.Marketplace, webhook: deps.Webhook, professionals: deps.Professionals, directory: deps.Directory, operators: deps.Operators, agents: deps.Agents, readiness: deps.Readiness, limiter: newRateLimiter(), clientIPHeader: clientIPHeaderName(deps.ClientIPHeader)}
+	return &Server{locations: deps.Locations, locationKey: newLocationKey(), appName: appName, webDirectory: deps.WebDirectory, store: deps.Store, auth: deps.Auth, sessions: sessions, appOrigin: origin, providers: deps.Providers, ai: deps.AI, r2: deps.Evidence, paypal: deps.Payments, refunds: deps.Refunds, marketplace: deps.Marketplace, webhook: deps.Webhook, professionals: deps.Professionals, directory: deps.Directory, operators: deps.Operators, agents: deps.Agents, readiness: deps.Readiness, limiter: newRateLimiter(), clientIPHeader: clientIPHeaderName(deps.ClientIPHeader)}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -133,6 +136,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/health", s.readinessHandler)
 	mux.HandleFunc("/api/health/ready", s.readinessHandler)
 	mux.HandleFunc("/api/config", s.configHandler)
+	mux.Handle("/api/locations", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.locationSearchHandler)))
 	mux.Handle("/api/auth/login", s.limitByClientIP("auth-login", 0.1, 15, s.authHandler(func(w http.ResponseWriter, r *http.Request, auth *identity.Auth) { auth.Login(w, r) })))
 	mux.Handle("/api/auth/callback", s.limitByClientIP("auth-callback", 0.5, 20, s.authHandler(func(w http.ResponseWriter, r *http.Request, auth *identity.Auth) { auth.Callback(w, r) })))
 	mux.HandleFunc("/api/auth/session", s.sessionHandler)

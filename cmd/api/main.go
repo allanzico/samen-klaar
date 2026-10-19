@@ -14,6 +14,7 @@ import (
 
 	aiadapter "github.com/allanzico/samen-klaar/internal/adapters/ai"
 	emailadapter "github.com/allanzico/samen-klaar/internal/adapters/email"
+	mapboxadapter "github.com/allanzico/samen-klaar/internal/adapters/mapbox"
 	"github.com/allanzico/samen-klaar/internal/adapters/paypal"
 	"github.com/allanzico/samen-klaar/internal/adapters/postgres"
 	"github.com/allanzico/samen-klaar/internal/adapters/r2"
@@ -71,7 +72,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	coordinator, err := aiadapter.New(ctx, providers.AIProvider, os.Getenv("AI_PROVIDER_KEY"), providers.AIModel)
+	coordinator, err := aiadapter.New(ctx, providers.AIProvider, os.Getenv("AI_PROVIDER_KEY"), providers.AIModel, os.Getenv("AI_EFFORT"))
 	if err != nil {
 		return err
 	}
@@ -152,7 +153,7 @@ func run() error {
 		return errors.New("AUTH0_ISSUER_URL, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET and AUTH0_REDIRECT_URI are required when APP_ENV=production")
 	}
 
-	slog.Info("providers initialized", "ai", providers.AIProvider, "model", providers.AIModel, "evidence", providers.EvidenceProvider, "payments", providers.PaymentProvider)
+	slog.Info("providers initialized", "ai", providers.AIProvider, "model", providers.AIModel, "effort", strings.TrimSpace(os.Getenv("AI_EFFORT")), "evidence", providers.EvidenceProvider, "payments", providers.PaymentProvider)
 	var professionals httpapi.ProfessionalService
 	var directory httpapi.ProfessionalDirectory
 	var operators httpapi.OperatorService
@@ -175,7 +176,11 @@ func run() error {
 	if persistent != nil {
 		agents = persistent
 	}
-	app := httpapi.New(httpapi.Dependencies{AppName: appName, WebDirectory: webDirectory, Store: store, Auth: auth, AppBaseURL: appBaseURL, Providers: providers, AI: ai, Evidence: evidence, Payments: payments, Refunds: refunds, Marketplace: paypalService, Webhook: webhookReceiver, Professionals: professionals, Directory: directory, Operators: operators, Agents: agents, Readiness: readiness, ClientIPHeader: os.Getenv("CLIENT_IP_HEADER")})
+	var locationSearch httpapi.LocationSearch
+	if geocoder := mapboxadapter.New(os.Getenv("MAPBOX_ACCESS_TOKEN")); geocoder != nil {
+		locationSearch = geocoder
+	}
+	app := httpapi.New(httpapi.Dependencies{Locations: locationSearch, AppName: appName, WebDirectory: webDirectory, Store: store, Auth: auth, AppBaseURL: appBaseURL, Providers: providers, AI: ai, Evidence: evidence, Payments: payments, Refunds: refunds, Marketplace: paypalService, Webhook: webhookReceiver, Professionals: professionals, Directory: directory, Operators: operators, Agents: agents, Readiness: readiness, ClientIPHeader: os.Getenv("CLIENT_IP_HEADER")})
 	server := &http.Server{
 		Addr: address, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 20 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second,

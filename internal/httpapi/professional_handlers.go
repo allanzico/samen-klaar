@@ -71,6 +71,31 @@ func (s *Server) professionalProfileHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "invalid professional profile", http.StatusBadRequest)
 		return
 	}
+	if input.BaseLocation != nil {
+		if input.BaseLocation.Selection != "" {
+			location, err := s.selectedLocation(principal.User.ID, input.BaseLocation)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			input.BaseLocation = &location
+		} else {
+			previous, found, err := s.professionals.ProfessionalProfile(r.Context(), principal.User.ID)
+			if err != nil || !found || previous.BaseLocation == nil || previous.BaseLocation.ID != input.BaseLocation.ID {
+				http.Error(w, "Select your base location from the suggestions.", http.StatusBadRequest)
+				return
+			}
+			input.BaseLocation = previous.BaseLocation
+		}
+		input.Latitude, input.Longitude = input.BaseLocation.Latitude, input.BaseLocation.Longitude
+		input.ServiceArea = input.BaseLocation.Label
+	} else if s.locations != nil {
+		previous, found, err := s.professionals.ProfessionalProfile(r.Context(), principal.User.ID)
+		if err != nil || !found || previous.BaseLocation != nil {
+			http.Error(w, "Select your base location and travel radius.", http.StatusBadRequest)
+			return
+		}
+	}
 	if err := validateProfessionalProfile(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -109,10 +134,14 @@ func validateProfessionalProfile(profile *workflow.ProfessionalProfile) error {
 	if len(profile.ServiceArea) < 2 || len(profile.ServiceArea) > 120 {
 		return errors.New("list at least one Amsterdam neighbourhood or postcode area, up to 120 characters")
 	}
-	for _, area := range strings.FieldsFunc(profile.ServiceArea, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == '|' }) {
-		if !workflow.IsAmsterdamServiceArea(area) {
-			return errors.New("service areas must be in Amsterdam or use an Amsterdam 10xx postcode area")
+	if profile.BaseLocation == nil {
+		for _, area := range strings.FieldsFunc(profile.ServiceArea, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == '|' }) {
+			if !workflow.IsAmsterdamServiceArea(area) {
+				return errors.New("service areas must be in Amsterdam or use an Amsterdam 10xx postcode area")
+			}
 		}
+	} else if !workflow.ValidGeocodedLocation(*profile.BaseLocation) || profile.BaseLocation.Kind != "address" && profile.BaseLocation.Kind != "postcode" || profile.TravelRadiusKM < 1 || profile.TravelRadiusKM > 100 {
+		return errors.New("choose a base address or postcode and a travel radius from 1 to 100 km")
 	}
 	if len(profile.Currency) != 3 || profile.Currency != strings.ToUpper(profile.Currency) {
 		return errors.New("currency must be an uppercase three-letter code")

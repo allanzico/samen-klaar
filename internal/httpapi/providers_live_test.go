@@ -27,7 +27,7 @@ func TestLiveProviders(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	t.Run("AI", func(t *testing.T) {
-		ai, err := aiprovider.New(ctx, os.Getenv("AI_PROVIDER"), os.Getenv("AI_PROVIDER_KEY"), os.Getenv("AI_MODEL"))
+		ai, err := aiprovider.New(ctx, os.Getenv("AI_PROVIDER"), os.Getenv("AI_PROVIDER_KEY"), os.Getenv("AI_MODEL"), os.Getenv("AI_EFFORT"))
 		if err != nil {
 			t.Fatal("AI configuration failed")
 		}

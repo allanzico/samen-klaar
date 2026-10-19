@@ -31,22 +31,24 @@ type Appointment struct {
 }
 
 type ProfessionalProfile struct {
-	ID                 string   `json:"id"`
-	AccountID          string   `json:"-"`
-	DisplayName        string   `json:"displayName"`
-	Category           string   `json:"category"`
-	ServiceName        string   `json:"serviceName"`
-	ServiceDescription string   `json:"serviceDescription"`
-	ServiceArea        string   `json:"serviceArea"`
-	Latitude           float64  `json:"latitude"`
-	Longitude          float64  `json:"longitude"`
-	Currency           string   `json:"currency"`
-	PriceMinor         int64    `json:"priceMinor"`
-	CalloutMinor       int64    `json:"calloutMinor"`
-	DurationMinutes    int      `json:"durationMinutes"`
-	MaterialsPolicy    string   `json:"materialsPolicy"`
-	Exclusions         []string `json:"exclusions"`
-	Status             string   `json:"status"`
+	BaseLocation       *Location `json:"baseLocation,omitempty"`
+	TravelRadiusKM     int       `json:"travelRadiusKm,omitempty"`
+	ID                 string    `json:"id"`
+	AccountID          string    `json:"-"`
+	DisplayName        string    `json:"displayName"`
+	Category           string    `json:"category"`
+	ServiceName        string    `json:"serviceName"`
+	ServiceDescription string    `json:"serviceDescription"`
+	ServiceArea        string    `json:"serviceArea"`
+	Latitude           float64   `json:"latitude"`
+	Longitude          float64   `json:"longitude"`
+	Currency           string    `json:"currency"`
+	PriceMinor         int64     `json:"priceMinor"`
+	CalloutMinor       int64     `json:"calloutMinor"`
+	DurationMinutes    int       `json:"durationMinutes"`
+	MaterialsPolicy    string    `json:"materialsPolicy"`
+	Exclusions         []string  `json:"exclusions"`
+	Status             string    `json:"status"`
 }
 
 type AvailabilitySlot struct {
@@ -139,6 +141,8 @@ type NotificationDeliveryHealth struct {
 }
 
 type CatalogOffer struct {
+	BaseLocation         *Location
+	TravelRadiusKM       int
 	EvidenceRequirements []EvidenceRequirement
 	ProfileID            string
 	AccountID            string
@@ -264,6 +268,7 @@ type DateProposal struct {
 }
 
 type Job struct {
+	ServiceLocation            *Location                `json:"serviceLocation,omitempty"`
 	PolicyRequirements         []PolicyRequirement      `json:"policyRequirements,omitempty"`
 	PolicyAcknowledgments      []PolicyAcknowledgment   `json:"policyAcknowledgments,omitempty"`
 	WorkItems                  []WorkItem               `json:"workItems,omitempty"`

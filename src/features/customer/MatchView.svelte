@@ -44,6 +44,7 @@
 </script>
 
 {#snippet facts(match: Match)}
+  {#if match.distanceKnown && intake.location?.kind !== 'place'}<p class="meta">{t('About {distance} km away (straight-line)', { distance: new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(match.distanceKm) })}</p>{/if}
   <dl class="facts">
     <div><dt>{t('Price')}</dt><dd>{money(match.totalMinor, match.currency)}</dd><span>{t('incl. call-out')}</span></div>
     <div><dt>{t('Takes')}</dt><dd>{t('{minutes} min', { minutes: match.durationMinutes })}</dd><span>{t('on site')}</span></div>
@@ -62,6 +63,7 @@
 
 <div class="match-layout">
   <div class="match-main">
+    {#if intake.location?.source === 'mapbox' && intake.location?.kind !== 'address'}<p class="helper">{t('Results are approximate until we confirm your full visit address.')}</p>{/if}
     {#if comparing}
       <button type="button" class="btn btn-quiet back" onclick={() => { comparing = false; }}><Icon name="chevron-left"/>{t('Back to best match')}</button>
       <h1 class="match-title">{t('Compare {trade}', { trade: tradeName(trade, true) })}</h1>

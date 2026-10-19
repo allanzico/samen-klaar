@@ -16,7 +16,7 @@ import (
 	"google.golang.org/genai"
 )
 
-type constructor func(context.Context, string, string) (core.ModelClient, error)
+type constructor func(ctx context.Context, key, model, effort string) (core.ModelClient, error)
 
 var providers = map[string]constructor{
 	"gemini":    newGemini,
@@ -25,7 +25,11 @@ var providers = map[string]constructor{
 	"claude":    newAnthropic,
 }
 
-func New(ctx context.Context, provider, key, model string) (*core.Coordinator, error) {
+// claudeEfforts are the effort levels the Messages API accepts.
+var claudeEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
+
+// New builds the coordinator. effort is optional; when empty the provider's default applies.
+func New(ctx context.Context, provider, key, model, effort string) (*core.Coordinator, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" {
 		provider = "gemini"
@@ -42,7 +46,16 @@ func New(ctx context.Context, provider, key, model string) (*core.Coordinator, e
 	if !ok {
 		return nil, fmt.Errorf("unsupported AI_PROVIDER %q; supported providers are gemini, openai, claude, and anthropic", provider)
 	}
-	client, err := create(ctx, key, model)
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	if effort != "" {
+		if provider != "claude" && provider != "anthropic" {
+			return nil, errors.New("AI_EFFORT is only supported with AI_PROVIDER=claude")
+		}
+		if !claudeEfforts[effort] {
+			return nil, fmt.Errorf("unsupported AI_EFFORT %q; use low, medium, high, xhigh, or max", effort)
+		}
+	}
+	client, err := create(ctx, key, model, effort)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +67,7 @@ type geminiModel struct {
 	model  string
 }
 
-func newGemini(ctx context.Context, key, model string) (core.ModelClient, error) {
+func newGemini(ctx context.Context, key, model, _ string) (core.ModelClient, error) {
 	return newGeminiWithHTTPClient(ctx, key, model, nil)
 }
 
@@ -107,7 +120,7 @@ type openAIModel struct {
 	client *http.Client
 }
 
-func newOpenAI(_ context.Context, key, model string) (core.ModelClient, error) {
+func newOpenAI(_ context.Context, key, model, _ string) (core.ModelClient, error) {
 	return &openAIModel{key: key, model: model, client: &http.Client{Timeout: 75 * time.Second}}, nil
 }
 
@@ -162,11 +175,12 @@ func (o *openAIModel) GenerateJSON(ctx context.Context, request core.GenerationR
 type anthropicModel struct {
 	key    string
 	model  string
+	effort string
 	client *http.Client
 }
 
-func newAnthropic(_ context.Context, key, model string) (core.ModelClient, error) {
-	return &anthropicModel{key: key, model: model, client: &http.Client{Timeout: 75 * time.Second}}, nil
+func newAnthropic(_ context.Context, key, model, effort string) (core.ModelClient, error) {
+	return &anthropicModel{key: key, model: model, effort: effort, client: &http.Client{Timeout: 75 * time.Second}}, nil
 }
 
 func (a *anthropicModel) GenerateJSON(ctx context.Context, request core.GenerationRequest) ([]byte, error) {
@@ -181,12 +195,16 @@ func (a *anthropicModel) GenerateJSON(ctx context.Context, request core.Generati
 			content = append(content, map[string]any{"type": "image", "source": source})
 		}
 	}
+	outputConfig := map[string]any{"format": map[string]any{"type": "json_schema", "schema": request.Schema}}
+	if a.effort != "" {
+		outputConfig["effort"] = a.effort
+	}
 	payload := map[string]any{
 		"model":         a.model,
 		"max_tokens":    request.MaxOutputTokens,
 		"system":        request.System,
 		"messages":      []map[string]any{{"role": "user", "content": content}},
-		"output_config": map[string]any{"format": map[string]any{"type": "json_schema", "schema": request.Schema}},
+		"output_config": outputConfig,
 	}
 	data, err := postJSON(ctx, a.client, "https://api.anthropic.com/v1/messages", a.key, "anthropic-version", "2023-06-01", payload)
 	if err != nil {

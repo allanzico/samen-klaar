@@ -92,7 +92,7 @@ esac
         source = self.root / ".env"
         source.write_text(
             "AUTH0_ISSUER_URL=https://tenant.test/\nAUTH0_CLIENT_ID=imported-client\n"
-            "AUTH0_CLIENT_SECRET=dummy-local-secret\nDATABASE_URL=wrong-database\n"
+            "AUTH0_CLIENT_SECRET=dummy-local-secret\nMAPBOX_ACCESS_TOKEN=test-mapbox-token\nDATABASE_URL=wrong-database\n"
             "APP_BASE_URL=http://wrong-origin\nAUTH0_REDIRECT_URI=http://wrong-callback\n"
         )
         result = subprocess.run(
@@ -107,6 +107,8 @@ esac
         self.assertEqual(settings["DATABASE_URL"], "postgres://samenklaar@db/samenklaar")
         self.assertEqual(settings["APP_BASE_URL"], "http://localhost:8090")
         self.assertEqual(settings["AUTH0_REDIRECT_URI"], "http://localhost:8090/api/auth/callback")
+        self.assertEqual(settings["MAPBOX_ACCESS_TOKEN"], "test-mapbox-token")
+        self.assertNotIn("test-mapbox-token", result.stdout + result.stderr)
         self.assertNotIn("dummy-local-secret", result.stdout + result.stderr)
         # An empty import file must not erase the active configuration.
         before = active.read_text()

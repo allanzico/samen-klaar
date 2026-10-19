@@ -36,17 +36,14 @@ func areaCoverageSQL(parameter string) string {
 // Group identical scopes before AI selection: matching cost depends on catalog
 // variety, not on how many professionals publish each service. Limit model input.
 func (s *Store) ServiceCatalog(ctx context.Context, category, description, exclude string, locations ...workflow.Location) ([]matching.Service, error) {
-	area := ""
-	if len(locations) > 0 {
-		area = locations[0].Label
-	}
+	location := locationJSON(locations)
 	rows, err := s.pool.Query(ctx, `SELECT p.service_name, p.service_description, p.materials_policy, p.exclusions_json
  FROM professional_profiles p JOIN account_memberships m ON m.account_id=p.account_id AND m.role='professional'
  WHERE p.status='active' AND m.status='active' AND p.category=$1 AND p.account_id<>$2
- AND `+areaCoverageSQL("$4")+`
+ AND `+locationCoverageSQL("$4")+`
  GROUP BY p.service_name, p.service_description, p.materials_policy, p.exclusions_json
  ORDER BY ts_rank(to_tsvector('english',p.service_name || ' ' || p.service_description), plainto_tsquery('english',$3)) DESC,
- p.service_name,p.service_description,p.materials_policy,p.exclusions_json LIMIT 200`, category, exclude, description, area)
+ p.service_name,p.service_description,p.materials_policy,p.exclusions_json LIMIT 200`, category, exclude, description, location)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +68,10 @@ func (s *Store) ServiceMatches(ctx context.Context, category, exclude string, se
 	if err != nil {
 		return nil, err
 	}
-	area := ""
-	if len(locations) > 0 {
-		area = locations[0].Label
-	}
+	location := locationJSON(locations)
 	rows, err := s.pool.Query(ctx, `SELECT p.id,p.account_id,p.display_name,p.category,p.service_name,p.service_description,p.service_area,
  p.currency,p.price_minor+p.callout_minor,p.duration_minutes,p.materials_policy,p.exclusions_json,
- earliest.id,earliest.starts_at,earliest.ends_at,earliest.timezone
+ earliest.id,earliest.starts_at,earliest.ends_at,earliest.timezone, `+matchDistanceSQL("$7")+` AS distance_km
  FROM professional_profiles p JOIN account_memberships m ON m.account_id=p.account_id AND m.role='professional'
  LEFT JOIN LATERAL (
  SELECT a.id,a.starts_at,a.ends_at,a.timezone FROM professional_availability_slots a
@@ -85,8 +79,8 @@ func (s *Store) ServiceMatches(ctx context.Context, category, exclude string, se
  ORDER BY a.starts_at,a.id LIMIT 1) earliest ON true
  WHERE p.status='active' AND m.status='active' AND p.category=$1 AND p.account_id<>$2
  AND p.service_name=$3 AND p.service_description=$4 AND p.materials_policy=$5 AND p.exclusions_json=$6::jsonb
-	 AND `+areaCoverageSQL("$7")+`
-	 ORDER BY earliest.starts_at NULLS LAST,p.id LIMIT 200`, category, exclude, service.Name, service.Description, service.Materials, exclusions, area)
+	 AND `+locationCoverageSQL("$7")+`
+	 ORDER BY distance_km NULLS LAST,earliest.starts_at NULLS LAST,p.id LIMIT 200`, category, exclude, service.Name, service.Description, service.Materials, exclusions, location)
 	if err != nil {
 		return nil, err
 	}
@@ -97,12 +91,15 @@ func (s *Store) ServiceMatches(ctx context.Context, category, exclude string, se
 		var slot, zone *string
 		var start, end *time.Time
 		var exclusions []byte
+		var distance *float64
 		if err := rows.Scan(&match.ID, &match.AccountID, &match.Name, &match.Category, &match.ServiceName, &match.ServiceDescription, &match.Area,
-			&match.Currency, &match.TotalMinor, &match.DurationMinutes, &match.MaterialsPolicy, &exclusions, &slot, &start, &end, &zone); err != nil {
+			&match.Currency, &match.TotalMinor, &match.DurationMinutes, &match.MaterialsPolicy, &exclusions, &slot, &start, &end, &zone, &distance); err != nil {
 			return nil, err
 		}
-		if !serviceAreaCovers(match.Area, area) {
-			continue
+		if distance != nil {
+			match.DistanceKnown = true
+			match.DistanceKM = *distance
+			match.DistanceApproximate = len(locations) > 0 && locations[0].Kind != "address"
 		}
 		if err := json.Unmarshal(exclusions, &match.Exclusions); err != nil {
 			return nil, err
@@ -115,64 +112,6 @@ func (s *Store) ServiceMatches(ctx context.Context, category, exclude string, se
 	return matches, rows.Err()
 }
 
-// Provider areas are comma, semicolon, or newline separated neighbourhoods
-// and postcode prefixes. Matching uses these published labels; it does not
-// claim geocoding or travel-time precision.
 func serviceAreaCovers(providerAreas, requestedArea string) bool {
-	requested := normalizeArea(requestedArea)
-	if requested == "" {
-		return true
-	}
-	if !workflow.IsAmsterdamServiceArea(requestedArea) {
-		return false
-	}
-	requestedPostcode := workflow.PostcodePrefix(requestedArea)
-	requestedAmsterdam := strings.HasPrefix(requested, "amsterdam ") || strings.HasPrefix(requested, "amsterdam-") || strings.HasPrefix(requested, "amsterdam/")
-	requestedNeighborhood := stripAmsterdam(requested)
-	for _, raw := range strings.FieldsFunc(providerAreas, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == '|' }) {
-		provider := normalizeArea(raw)
-		if provider == "" {
-			continue
-		}
-		providerPostcode := workflow.PostcodePrefix(raw)
-		if requestedPostcode != "" {
-			if providerPostcode != "" && providerPostcode == requestedPostcode {
-				return true
-			}
-			if provider == "amsterdam" && strings.HasPrefix(requestedPostcode, "10") {
-				return true
-			}
-			continue
-		}
-		if provider == "amsterdam" && (requestedAmsterdam || isKnownAmsterdamArea(requestedNeighborhood)) {
-			return true
-		}
-		if stripAmsterdam(provider) == requestedNeighborhood {
-			return true
-		}
-	}
-	return false
-}
-
-func isKnownAmsterdamArea(value string) bool {
-	switch value {
-	case "centrum", "noord", "zuid", "oost", "west", "nieuw-west", "zuidoost", "de pijp", "jordaan", "oud-west", "oud-zuid", "ijburg", "watergraafsmeer", "bos en lommer", "slotervaart", "zeeburg", "indische buurt", "osdorp":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeArea(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.NewReplacer("’", "'", "–", "-", "—", "-").Replace(value)
-	return strings.Join(strings.Fields(value), " ")
-}
-
-func stripAmsterdam(value string) string {
-	value = normalizeArea(value)
-	value = strings.TrimPrefix(value, "amsterdam ")
-	value = strings.TrimPrefix(value, "amsterdam-")
-	value = strings.TrimPrefix(value, "amsterdam/")
-	return strings.TrimSpace(value)
+	return workflow.PublishedAreaCovers(providerAreas, requestedArea)
 }

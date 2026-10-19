@@ -10,8 +10,9 @@ Requirements: Docker with Compose, Make, OpenSSL, curl, and credentials for an A
 
 1. `make init-local` generates the database password and local configuration.
 2. Fill in the credentials in `.secrets/local/app.env`. Empty settings are also filled from a root `.env` (see [.env.example](.env.example)).
-3. In Auth0 create a Regular Web Application with callback `http://localhost:8090/api/auth/callback` and logout URL `http://localhost:8090`.
-4. `make deploy-local` builds and starts the stack at [http://localhost:8090](http://localhost:8090).
+3. Set `MAPBOX_ACCESS_TOKEN` for address, postcode and city search. Enable billing for Mapbox permanent geocoding. The token stays on the server; `python3 scripts/probe-mapbox.py` checks it with public examples.
+4. In Auth0 create a Regular Web Application with callback `http://localhost:8090/api/auth/callback` and logout URL `http://localhost:8090`.
+5. `make deploy-local` builds and starts the stack at [http://localhost:8090](http://localhost:8090).
 
 `make stop-local` stops it and keeps the data; rerun `make deploy-local` after changing code or credentials.
 

@@ -51,7 +51,20 @@ func Apply(state *State, input Action) error {
 		if !customer || job.ID == "" || job.WorkStarted || job.Paid || job.Appointment != nil || len(address) < 8 || len(address) > 250 {
 			return errors.New("save a full service address after selecting a professional and before a visit is booked")
 		}
+		if job.Location != nil && job.Location.Source == "mapbox" && (input.Location == nil || input.Location.Kind != "address" || !ValidGeocodedLocation(*input.Location)) {
+			return errors.New("confirm the full visit address before booking")
+		}
 		job.ServiceAddress = address
+		job.ServiceLocation = nil
+		if input.Location != nil && input.Location.Source == "mapbox" {
+			location := DiscoveryLocation(*input.Location)
+			job.ServiceLocation = &location
+			job.Location = &location
+			if state.Intake != nil {
+				state.Intake.Location = &location
+				state.Intake.ServiceAddress = address
+			}
+		}
 		addEvent(job, "Customer saved the private service address for the assigned professional", "done")
 	case "cancel-request":
 		return cancelRequest(state, input)
