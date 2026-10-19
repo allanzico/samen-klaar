@@ -26,6 +26,7 @@ func ConversationForRole(state State, role string) State {
 	}
 	state.Intake = &intake
 	if role == "professional" {
+		intake.ServiceAddress = ""
 		state.AgentDialog = nil
 	} else {
 		state.ProDialog = nil

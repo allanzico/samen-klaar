@@ -174,6 +174,8 @@ Disabled buttons turn grey (`--sk-surface-2`) and say why in a `.reason` line wh
 
 `.field` groups a label (14 px, 600), a control and optional `.field-help` (12 px) or `.field-error`. Controls: `.input`, `.textarea`, `.select` (40 px, 1.5 px `--sk-field` border, 14 px radius), `.money-input` (a `€` prefix cell and a tabular input), `.radio-card` (a card that is a radio), checkboxes (`accent-color: ink`) and a switch pattern (44 × 26 track). **One border only**; focus darkens it to `--sk-ink`. Invalid fields set `aria-invalid` and show a red border plus a message. Required rules and limits are stated in help text before the error.
 
+`LocationSearch.svelte` extends the field pattern with a keyboard-accessible combobox: debounced suggestions, loading/error/empty states, explicit selection, and Mapbox attribution. It is shared by customer intake, professional base selection and the full visit address. Address/postcode/city discovery is broad; professional bases accept address/postcode only, and a visit requires a full address. Help copy explains address privacy and service-radius checks.
+
 ### 4.3 Chips, segmented control, filter tabs
 
 - `.chip` (32 px pill, 1 px border): a short choice or quick reply. `.chip-row` wraps them.

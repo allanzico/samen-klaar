@@ -18,6 +18,7 @@ function post<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  locations: (query: string, language: string, purpose: string, signal: AbortSignal) => request<{ locations: Location[]; attribution: string }>(`/api/locations?${new URLSearchParams({ q: query, language, purpose })}`, { signal }),
   config: () => request<ProviderConfig>('/api/config', { signal: AbortSignal.timeout(5000) }),
   session: () => request<AuthSession>('/api/auth/session', { signal: AbortSignal.timeout(5000) }),
   workspaces: (cursor = '') => request<{ workspaces: WorkspaceSummary[]; nextCursor?: string }>(`/api/workspaces${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),

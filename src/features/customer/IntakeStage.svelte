@@ -1,20 +1,22 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
+  import LocationSearch from '../../ui/LocationSearch.svelte';
   import Banner from '../../ui/Banner.svelte';
-  import type { AppActions, AppState, Intake } from '../../lib/types';
+  import type { AppActions, AppState, Intake, Location } from '../../lib/types';
   import { tradeName, tradeOf } from '../../lib/trade';
   import { t } from '../../lib/i18n.svelte';
 
   // B04–B06, B09, B10: answer chips, the area card, finding professionals and the waitlist.
   let { app, actions, intake }: { app: AppState; actions: AppActions; intake: Intake } = $props();
   let area = $state('');
+  let selected = $state<Location | null>(null);
   let searching = $state(false);
   $effect(() => { if (intake.location?.label && !area) area = intake.location.label; });
   const trade = $derived(tradeOf(intake.category));
   async function setArea(event: SubmitEvent) {
     event.preventDefault();
     searching = true;
-    try { await actions.act('set-location', area.trim()); } finally { searching = false; }
+    try { await actions.act('set-location', area.trim(), selected ?? undefined); } finally { searching = false; }
   }
 </script>
 
@@ -41,12 +43,8 @@
   </section>
 {:else if intake.step === 'location'}
   <form class="box area" onsubmit={setArea}>
-    <div class="field">
-      <label for="service-area">{t('Neighbourhood or postcode area')}</label>
-      <input id="service-area" class="input" bind:value={area} required minlength="2" maxlength="80" autocomplete="off" placeholder={t('For example De Pijp or 1072')} aria-describedby="area-help"/>
-      <p id="area-help" class="field-help lock"><Icon name="lock" size={14}/>{t('Address stays private until you choose.')}</p>
-    </div>
-    <button class="btn btn-primary" disabled={app.pending || area.trim().length < 2}>{t('Find professionals')}</button>
+    <LocationSearch id="service-area" label={t('Address, postcode or city')} bind:value={area} bind:selected disabled={app.pending} help={t('Your exact address is shared only with the professional you choose.')}/>
+    <button class="btn btn-primary" disabled={app.pending || !selected}>{t('Find professionals')}</button>
   </form>
 {:else if intake.step === 'waitlist'}
   <section class="box waitlist" aria-labelledby="waitlist-title">
@@ -59,8 +57,8 @@
       <button type="button" class="btn btn-primary" disabled={app.pending} onclick={() => actions.act('join-waitlist')}>{t('Save to the waitlist')}</button>
     {/if}
     <form class="retry" onsubmit={setArea}>
-      <div class="field"><label for="change-area">{t('Try a different area')}</label><input id="change-area" class="input" bind:value={area} required minlength="2" maxlength="80" autocomplete="off"/></div>
-      <button class="btn btn-outline" disabled={app.pending || area.trim().length < 2}>{t('Search this area')}</button>
+      <LocationSearch id="change-area" label={t('Try a different area')} bind:value={area} bind:selected disabled={app.pending}/>
+      <button class="btn btn-outline" disabled={app.pending || !selected}>{t('Search this area')}</button>
     </form>
   </section>
 {/if}
@@ -68,7 +66,6 @@
 <style>
   .chips { display: flex; flex-wrap: wrap; gap: 8px; max-width: 820px; width: 100%; margin: -6px auto 0; padding-left: 48px; }
   .area { display: grid; gap: 14px; max-width: 560px; width: 100%; margin: 0 auto 0 48px; padding: 20px; }
-  .lock { display: flex; align-items: center; gap: 6px; }
   .finding { display: grid; gap: 14px; max-width: 720px; width: 100%; margin: 0 auto; }
   .job-card { display: grid; gap: 8px; padding: 18px 20px; }
   .facts { display: flex; flex-wrap: wrap; gap: 8px; }
