@@ -222,7 +222,9 @@ type sellerIntegration struct {
 func (p *Service) fetchSellerIntegration(ctx context.Context, merchantID, trackingID string) (sellerIntegration, error) {
 	data, err := p.apiWithHeaders(ctx, http.MethodGet,
 		"/v1/customer/partners/"+url.PathEscape(p.platformMerchantID)+"/merchant-integrations/"+url.PathEscape(merchantID),
-		nil, "", p.marketplaceHeaders(merchantID))
+		// This is a platform management request. Impersonating the seller here
+		// makes PayPal reject the platform's onboarding-status query with 401.
+		nil, "", p.marketplaceHeaders(""))
 	if err != nil {
 		return sellerIntegration{}, err
 	}

@@ -73,3 +73,36 @@ func TestSellerVerificationRetriesWithoutTrustingReturnFlags(t *testing.T) {
 		t.Fatalf("verification retry did not persist the verified seller: %+v %v", status, err)
 	}
 }
+
+func TestSellerStatusUsesPlatformCredentialsWithoutSellerImpersonation(t *testing.T) {
+	store := &sellerStoreStub{found: true, record: SellerAccount{AccountID: "professional-1", TrackingID: "track-1", Status: "pending"}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/oauth2/token" {
+			_, _ = fmt.Fprint(w, `{"access_token":"platform-token","expires_in":3600}`)
+			return
+		}
+		if r.URL.Path != "/v1/customer/partners/platform-merchant/merchant-integrations/returned-seller" {
+			http.NotFound(w, r)
+			return
+		}
+		// This partner management endpoint rejects a request made as the seller.
+		if r.Header.Get("PayPal-Auth-Assertion") != "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = fmt.Fprint(w, `{"name":"AUTHORIZATION_ERROR"}`)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer platform-token" || r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-TEST-CODE" {
+			t.Error("seller status must use the platform token and attribution")
+		}
+		_, _ = fmt.Fprint(w, `{"merchant_id":"returned-seller","tracking_id":"track-1","payments_receivable":true,"primary_email_confirmed":false,"oauth_integrations":[{"integration_type":"OAUTH_THIRD_PARTY","integration_method":"PAYPAL","oauth_third_party":[{"partner_client_id":"test-platform-client","scopes":["https://uri.paypal.com/services/payments/payment/authcapture","https://uri.paypal.com/services/payments/refund"]}]}]}`)
+	}))
+	defer server.Close()
+	service := newTestMarketplaceService(server, store)
+	status, err := service.SellerOnboardingStatus(context.Background(), "professional-1", "returned-seller")
+	if err != nil {
+		t.Fatalf("platform seller-status verification failed: %v", err)
+	}
+	if status.Connected || status.Status != "pending" || !status.PaymentsReceivable || status.PrimaryEmailConfirmed || store.record.MerchantID != "returned-seller" {
+		t.Fatalf("email confirmation must remain pending after a successful check: %+v", status)
+	}
+}

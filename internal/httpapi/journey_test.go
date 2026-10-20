@@ -117,7 +117,7 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			map[string]string{"rel": "action_url", "href": "https://www.sandbox.paypal.com/bizsignup/partner/entry?token=referral-1"},
 		}}
 	case r.URL.Path == "/v1/customer/partners/platform-merchant/merchant-integrations/seller-merchant" && r.Method == "GET":
-		if p.trackingID == "" || r.Header.Get("PayPal-Auth-Assertion") == "" {
+		if p.trackingID == "" || r.Header.Get("PayPal-Auth-Assertion") != "" {
 			return nil, fmt.Errorf("seller eligibility check is missing tracking or platform authorization")
 		}
 		result = map[string]any{
@@ -989,6 +989,11 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		askFirst["autoAcceptDates"] = true
 		request("professional", "PUT", "/api/agent/mandate", askFirst, 200)
 		newDay := earliestStart.Add(10 * 24 * time.Hour).In(mustLoadJourneyZone(t))
+		// The new customer uses the default Monday–Saturday mandate.
+		// Keep this reschedule inside it regardless of the day the suite runs.
+		if newDay.Weekday() == time.Sunday {
+			newDay = newDay.AddDate(0, 0, 1)
+		}
 		newStart := time.Date(newDay.Year(), newDay.Month(), newDay.Day(), 10, 0, 0, 0, newDay.Location())
 		customerAction(chatID, "agent-reply", fmt.Sprintf("Can we do %d %s 10-12 instead?", newDay.Day(), strings.ToLower(newDay.Month().String()[:3])), "")
 		asked := awaitQuestion("Shall I ask ")
