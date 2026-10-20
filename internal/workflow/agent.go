@@ -50,9 +50,10 @@ type AgentMandate struct {
 	BookWithoutAsking bool `json:"bookWithoutAsking,omitempty"`
 
 	// Professional agent.
-	FloorPercent      int  `json:"floorPercent,omitempty"`
-	AutoConfirmVisits bool `json:"autoConfirmVisits,omitempty"`
-	AutoAcceptDates   bool `json:"autoAcceptDates,omitempty"`
+	FloorPercent       int  `json:"floorPercent,omitempty"`
+	AutoConfirmVisits  bool `json:"autoConfirmVisits,omitempty"`
+	AutoAcceptDates    bool `json:"autoAcceptDates,omitempty"`
+	AcceptOutsideHours bool `json:"acceptOutsideHours,omitempty"`
 }
 
 // DefaultMandate is the authority an agent has before its person changes anything: it is on from the
@@ -184,12 +185,13 @@ func (m *AgentMandate) Normalize(role string) error {
 
 // AgentContext is everything DecideAgent may consider.
 type AgentContext struct {
-	State    State
-	Role     string
-	Locale   string // the language of the person this agent acts for: "en" or "nl"
-	Mandate  AgentMandate
-	Now      time.Time
-	Counters int // price counter-offers this agent already sent on this request
+	ProfessionalSchedule *ProfessionalScheduleView
+	State                State
+	Role                 string
+	Locale               string // the language of the person this agent acts for: "en" or "nl"
+	Mandate              AgentMandate
+	Now                  time.Time
+	Counters             int // price counter-offers this agent already sent on this request
 	// Visit times this agent already proposed on this request. Like price, one proposal each, then people decide.
 	DateProposals int
 	// Avoid lists professional profiles a customer agent must not pick again on this request, because
@@ -458,7 +460,10 @@ func decideProfessional(c AgentContext) AgentDecision {
 	switch code {
 	case "confirm_visit":
 		appt := job.Appointment
-		outside := appt != nil && !m.InVisitWindow(*appt, c.Now)
+		if appt == nil {
+			return wait()
+		}
+		outside := !c.professionalVisitAllowed(*appt)
 		if m.AutoConfirmVisits && !outside {
 			return act("confirm-visit", Action{Action: "confirm-appointment"}, map[string]string{"start": appt.StartUTC, "end": appt.EndUTC})
 		}
@@ -576,7 +581,7 @@ func nearestVisit(c AgentContext, asked Appointment) (Appointment, bool) {
 	var gap time.Duration
 	for _, slot := range c.State.AvailableSlots {
 		start, err := time.Parse(time.RFC3339, slot.StartUTC)
-		if err != nil || !m.InVisitWindow(slot, c.Now) {
+		if err != nil || !c.professionalVisitAllowed(slot) {
 			continue
 		}
 		if d := start.Sub(want).Abs(); best == nil || d < gap {
@@ -586,6 +591,11 @@ func nearestVisit(c AgentContext, asked Appointment) (Appointment, bool) {
 	}
 	if best != nil {
 		return *best, true
+	}
+	// A saved weekly schedule is the source of free times. Do not invent a
+	// counter from the old assistant-hours fields when none are published.
+	if c.ProfessionalSchedule != nil && c.ProfessionalSchedule.Schedule != nil {
+		return Appointment{}, false
 	}
 	zone, err := time.LoadLocation(m.Timezone)
 	if err != nil {
@@ -635,10 +645,59 @@ func visitChangeBlocker(c AgentContext, proposed Appointment) (string, map[strin
 			return "late_change_needs_you", map[string]string{"start": job.Appointment.StartUTC, "proposed": proposed.StartUTC}
 		}
 	}
-	if !c.Mandate.InVisitWindow(proposed, c.Now) {
+	allowed := c.Mandate.InVisitWindow(proposed, c.Now)
+	if c.Role == "professional" {
+		allowed = c.professionalVisitAllowed(proposed)
+	}
+	if !allowed {
 		return "visit_outside_window", map[string]string{"start": proposed.StartUTC}
 	}
 	return "", nil
+}
+
+// Outside-hours permission changes only the professional's calendar window.
+// Workflow booking checks still enforce duration, conflicts and payment/review gates.
+func (c AgentContext) professionalVisitAllowed(visit Appointment) bool {
+	start, err := time.Parse(time.RFC3339, visit.StartUTC)
+	end, endErr := time.Parse(time.RFC3339, visit.EndUTC)
+	if err != nil || endErr != nil || !start.After(c.Now) || !end.After(start) {
+		return false
+	}
+	view := c.ProfessionalSchedule
+	if view == nil || view.Schedule == nil {
+		return c.Mandate.AcceptOutsideHours || c.Mandate.InVisitWindow(visit, c.Now)
+	}
+	zone, err := time.LoadLocation(view.Schedule.Timezone)
+	if err != nil {
+		return false
+	}
+	local, localEnd := start.In(zone), end.In(zone)
+	date, endDate := local.Format("2006-01-02"), localEnd.Add(-time.Nanosecond).Format("2006-01-02")
+	for _, off := range view.DaysOff {
+		if date <= off.LastDay && endDate >= off.FirstDay {
+			return false
+		}
+	}
+	if c.Mandate.AcceptOutsideHours {
+		return true
+	}
+	weekday := int(local.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	for _, work := range view.Schedule.Week {
+		if weekday != work.Weekday {
+			continue
+		}
+		from, ok1 := scheduleMinute(work.Start)
+		to, ok2 := scheduleMinute(work.End)
+		first := time.Date(local.Year(), local.Month(), local.Day(), from/60, from%60, 0, 0, zone)
+		last := time.Date(local.Year(), local.Month(), local.Day(), to/60, to%60, 0, 0, zone)
+		if ok1 && ok2 && !start.Before(first) && !end.After(last) {
+			return true
+		}
+	}
+	return false
 }
 
 // requestStatusCode maps the shared request status to the client vocabulary the agent reasons in.

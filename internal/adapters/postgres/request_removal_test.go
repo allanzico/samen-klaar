@@ -224,3 +224,30 @@ func TestSplitJobsCountTowardsOpenRequestLimit(t *testing.T) {
 		t.Fatalf("open count = %d, %v", count, err)
 	}
 }
+
+func TestWaitlistedRequestCanBeDeletedWithoutAProfessional(t *testing.T) {
+	ctx, store := accountTestStore(t)
+	customer := accountFixture(t, ctx, store)
+	state, err := store.CreateWorkspace(ctx, customer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Intake = &workflow.Intake{Step: "waitlist", Waitlisted: true, Description: "Disposable waiting request", Location: &workflow.Location{Label: "Fixture area"}}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.pool.Exec(ctx, `UPDATE account_workspaces SET state_json=$2 WHERE id=$1`, state.WorkspaceID, raw); err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.ListWorkspaces(ctx, customer, "customer")
+	if err != nil || len(items) != 1 || !items[0].CanDelete {
+		t.Fatalf("waitlist cannot be deleted: %+v %v", items, err)
+	}
+	if status, err := store.RemoveRequest(ctx, customer, "customer", state.WorkspaceID); err != nil || status != "deleted" {
+		t.Fatalf("delete waitlist: %s %v", status, err)
+	}
+	if items, err := store.ListWorkspaces(ctx, customer, "customer"); err != nil || len(items) != 0 {
+		t.Fatalf("deleted waitlist returned: %+v %v", items, err)
+	}
+}

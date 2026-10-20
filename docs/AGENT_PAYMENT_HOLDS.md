@@ -1,8 +1,7 @@
 # Agent payment holds ("hold and pay with limits")
 
 Status: design and blocker analysis, 18 October 2026. **Not implemented**: PayPal has not enabled
-vaulting on our sandbox platform app (see [Probe result](#probe-result)). Nothing in the codebase
-changed except the probe script.
+vaulting on our sandbox platform app (see [Probe result](#probe-result)). The agent-hold flow is not implemented; customer profile details are implemented separately.
 
 Goal: a customer's agent books a visit with `at_booking` payment timing, so the professional sees a
 funded hold before confirming, without the customer approving in a PayPal window each time. The person
@@ -75,6 +74,8 @@ Sandbox, using the platform app already in the local ignored `.env`. The app's t
 So the first blocker is account enablement, not code. [scripts/probe-paypal-vault.sh](../scripts/probe-paypal-vault.sh)
 repeats these two calls (sandbox only, reads the local `.env`, prints no secrets). Run it after PayPal
 confirms enablement; it should return `201`/`PAYER_ACTION_REQUIRED` for the setup token.
+
+A fresh platform setup-token probe on **20 October 2026**, using the ignored production settings, again returned HTTP 403 `NOT_ENABLED_TO_VAULT_PAYMENT_SOURCE`. This also blocks the customer profile’s requested PayPal attachment; profile details and ordinary checkout do not depend on vaulting. No wallet is marked connected and no payment token is stored. [PayPal’s platform guide](https://developer.paypal.com/platforms/checkout/save-payment-methods/purchase-later/payment-tokens-api/paypal/) requires billing-agreement/reference-transaction approval through the account manager.
 
 A sandbox buyer approval also needs someone to sign in to the sandbox buyer account in a browser; the
 rest of the proof can be scripted.

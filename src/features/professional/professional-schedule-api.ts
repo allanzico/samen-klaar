@@ -20,7 +20,5 @@ export const scheduleApi = {
   window: (from: string, days = 7) => request<AvailabilityWindow>(`availability?from=${encodeURIComponent(from)}&days=${days}`),
   previewDaysOff: (firstDay: string, lastDay: string) => request<DaysOffPreview>('days-off/preview', 'POST', { firstDay, lastDay }),
   addDaysOff: (firstDay: string, lastDay: string, note: string) => request<{ dayOff: ProfessionalDayOff; removed: number }>('days-off', 'POST', { firstDay, lastDay, note }),
-  removeDaysOff: (id: string) => request<{ added: number }>(`days-off/${encodeURIComponent(id)}`, 'DELETE'),
-  removeSlot: (id: string) => request<void>(`availability/${encodeURIComponent(id)}`, 'DELETE'),
-  restoreSlot: (startUtc: string) => request<{ status: string }>('availability/restore', 'POST', { startUtc })
+  removeDaysOff: (id: string) => request<{ added: number }>(`days-off/${encodeURIComponent(id)}`, 'DELETE')
 };

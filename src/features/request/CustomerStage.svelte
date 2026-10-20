@@ -61,7 +61,6 @@
 {:else if code === 'payment'}
   <div class="stack">
     <AgreedLedger {job}/>
-    {#if app.providerConfig?.testPayments}<Banner kind="info" title={t('Test mode · PayPal sandbox')} text={t('No real money moves in this environment.')}/>{/if}
     {#if job.evidence.length}<details class="disclosure box history"><summary>{t('Job history and photos')}</summary><EvidenceRecord {job} workspaceId={app.workspaceId} title={t('Completion record')} viewer="customer"/></details>{/if}
   </div>
 {:else if code === 'paid' || code === 'refund_pending' || code === 'refunded'}

@@ -73,7 +73,7 @@
       </div>
       {#if assessment}<Banner kind="info" title={t('A starting price')} text={t('{name}’s starting offer. Agree scope and price first.', { name: pro })}/>{/if}
       <dl class="ledger">
-        {#each job.quote.lines as line (line.label)}<div><dt>{t(line.label)}</dt><dd>{money(line.amountMinor, job.quote.currency)}</dd></div>{/each}
+        {#each job.quote.lines as line}<div><dt>{t(line.label)}</dt><dd>{money(line.amountMinor, job.quote.currency)}</dd></div>{/each}
         {#if job.quote.exclusions?.length}<div class="ledger-muted"><dt>{t('Not included')}</dt><dd>{job.quote.exclusions.join(', ')}</dd></div>{/if}
         <div class="ledger-total"><dt>{t('Total')}</dt><dd>{money(lineTotal || job.quote.totalMinor, job.quote.currency)}</dd></div>
       </dl>

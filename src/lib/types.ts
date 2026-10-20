@@ -200,7 +200,7 @@ export type ProviderConfig = {
 };
 
 export type AppState = {
-  customerPage: 'home' | 'requests' | 'detail';
+  customerPage: 'home' | 'requests' | 'detail' | 'profile';
   serverState: WorkspaceState | null;
   workspaces: WorkspaceSummary[];
   workspaceCursor: string | null;
@@ -232,6 +232,7 @@ export type AppActions = {
   initialize: () => Promise<void>;
   showHome: () => void;
   showRequests: () => void;
+  showProfile: () => void;
   showJobs: () => void;
   restoreLocation: () => Promise<void>;
   startRequest: (description: string) => Promise<void>;
@@ -280,7 +281,9 @@ export type ServiceEvidencePolicy = { profileId: string; requirements: EvidenceR
 export type AgentMandate = {
   enabled: boolean; version?: number; weekdays: number[]; startHour: number; endHour: number; preferredHour?: number; timezone?: string;
   maxTotalMinor?: number; maxDaysAhead?: number; serviceAddress?: string; autoApproveExtraMinor?: number; counterPercent?: number;
-  floorPercent?: number; autoConfirmVisits?: boolean; autoAcceptDates?: boolean; autoApproveWork?: boolean; bookWithoutAsking?: boolean;
+  floorPercent?: number; autoConfirmVisits?: boolean; autoAcceptDates?: boolean; acceptOutsideHours?: boolean; autoApproveWork?: boolean; bookWithoutAsking?: boolean;
 };
 export type AgentActivity = { id: number; role: string; code: string; action?: string; params?: Record<string, string>; outcome: 'applied' | 'rejected'; error?: string; createdAt: string };
 export type AgentEscalation = { id: number; workspaceId: string; role: string; code: string; params?: Record<string, string>; createdAt: string };
+
+export type CustomerProfile = { displayName: string; email: string; phone: string; location?: Location | null };

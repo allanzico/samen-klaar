@@ -13,7 +13,7 @@
   const job = $derived(workspace.job);
   const canCancel = $derived(!!job.id && canCancelRequest(workspace));
   const canWithdraw = $derived(app.role === 'customer' && !!job.id && !workspace.cancelled && workspace.cancellationReview?.status !== 'pending');
-  const canDelete = $derived(!!app.workspaces.find((item) => item.id === app.workspaceId)?.canDelete);
+  const canDelete = $derived(app.workspaces.find((item) => item.id === app.workspaceId)?.canDelete ?? (app.role === 'customer' && !job.id));
   const canReport = $derived(app.role === 'customer' && job.workStarted && !job.paid && !job.dispute);
 
   function run(fn: () => unknown) { open = false; void fn(); }

@@ -44,7 +44,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     window.scrollTo?.(0, 0);
   }
   function restoreDraft() { app.draft = readDraft(currentDraftKey()); app.draftRestored = !!app.draft; app.draftSaved = true; }
-  function setCustomerPage(page: 'home' | 'requests', navigate = true) {
+  function setCustomerPage(page: 'home' | 'requests' | 'profile', navigate = true) {
     if (app.role !== 'customer') return;
     stateGeneration++;
     persistDraft();
@@ -56,11 +56,12 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     app.loading = false;
     app.error = '';
     restoreDraft();
-    if (navigate) window.history.pushState({}, '', page === 'home' ? '/' : '/requests');
+    if (navigate) window.history.pushState({}, '', page === 'home' ? '/' : page === 'profile' ? '/profile' : '/requests');
     window.scrollTo?.(0, 0);
   }
   function showHome() { if (!app.pending) setCustomerPage('home'); }
   function showRequests() { if (!app.pending) setCustomerPage('requests'); }
+  function showProfile() { if (!app.pending) setCustomerPage('profile'); }
   async function restoreLocation() {
     if (app.role === 'professional') {
       const id = new URL(window.location.href).searchParams.get('workspaceId');
@@ -72,7 +73,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     const url = new URL(window.location.href);
     const id = requestedWorkspace(url);
     if (id && (id !== app.workspaceId || app.customerPage !== 'detail')) await selectRequest(id, true);
-    else if (!id) setCustomerPage(url.pathname === '/requests' ? 'requests' : 'home', false);
+    else if (!id) setCustomerPage(url.pathname === '/requests' ? 'requests' : url.pathname === '/profile' ? 'profile' : 'home', false);
   }
   async function initialize() {
     await Promise.all([
@@ -120,7 +121,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
         if (app.role === 'customer') {
           if (requestedID) await selectRequest(requestedID, true);
           else {
-            app.customerPage = url.pathname === '/requests' ? 'requests' : 'home';
+            app.customerPage = url.pathname === '/requests' ? 'requests' : url.pathname === '/profile' ? 'profile' : 'home';
             app.workspaceId = null;
             app.serverState = null;
             restoreDraft();
@@ -573,6 +574,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     initialize,
     showHome,
     showRequests,
+    showProfile,
     showJobs: () => showJobs(),
     restoreLocation,
     startRequest,

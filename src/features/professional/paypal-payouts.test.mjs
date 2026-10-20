@@ -59,3 +59,14 @@ test('PayPal API errors use known public codes while hiding arbitrary provider b
   globalThis.fetch = async () => new Response(JSON.stringify({ code: 'UNKNOWN', error: 'private-provider-detail' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
   await assert.rejects(api.paypalSellerStatus(), (err) => !err.message.includes('private-provider-detail') && err.message.includes('temporarily unavailable'));
 });
+
+test('request timeouts offer recovery and requests have a finite default deadline', async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async (_url, init) => {
+    assert.ok(init.signal instanceof AbortSignal);
+    throw new DOMException('internal timeout details', 'TimeoutError');
+  };
+  await assert.rejects(api.state('fixture'), /The request took too long. Please try again./);
+  await assert.rejects(api.paypalSellerStatus(), /The request took too long. Please try again./);
+});
