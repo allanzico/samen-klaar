@@ -122,7 +122,7 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 		case "/v1/oauth2/token":
 			_, _ = fmt.Fprint(w, `{"access_token":"test-token","expires_in":3600}`)
 		case "/v1/customer/partners/platform-merchant/merchant-integrations/seller-merchant":
-			if r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-TEST-CODE" || !validSellerAssertion(r.Header.Get("PayPal-Auth-Assertion"), "test-platform-client", "seller-merchant") {
+			if r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-TEST-CODE" || r.Header.Get("PayPal-Auth-Assertion") != "" {
 				t.Errorf("seller status request did not carry marketplace headers: %v", r.Header)
 			}
 			_, _ = fmt.Fprint(w, `{"merchant_id":"seller-merchant","tracking_id":"track-1","payments_receivable":true,"primary_email_confirmed":true,"oauth_integrations":[{"integration_type":"OAUTH_THIRD_PARTY","integration_method":"PAYPAL","oauth_third_party":[{"partner_client_id":"test-platform-client","scopes":["https://uri.paypal.com/services/payments/payment/authcapture","https://uri.paypal.com/services/payments/refund"]}]}]}`)

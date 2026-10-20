@@ -1,6 +1,9 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Confirm email": "E-mailadres bevestigen",
+  "Confirm your PayPal email": "Bevestig je PayPal-e-mailadres",
+  "PayPal still needs you to confirm your email address. Confirm it in PayPal, then choose Check status.": "PayPal vraagt je nog om je e-mailadres te bevestigen. Bevestig het in PayPal en kies daarna Status controleren.",
   "Identity and eligibility check": "Controle van identiteit en geschiktheid",
   "Use the email and password of a sandbox account from the PayPal Developer Dashboard. Your regular PayPal login does not work here. No real money moves.": "Gebruik het e-mailadres en wachtwoord van een sandboxaccount uit het PayPal Developer Dashboard. Je gewone PayPal-inloggegevens werken hier niet. Er wordt geen echt geld verplaatst.",
   "This connects an account to receive payment for your work. Customers use their own PayPal account at checkout and do not need this setup.": "Hier koppel je een account om betalingen voor je werk te ontvangen. Klanten gebruiken hun eigen PayPal-account bij het afrekenen en hoeven dit niet in te stellen.",
