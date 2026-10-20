@@ -4,6 +4,7 @@
   import Banner from '../../ui/Banner.svelte';
   import type { AppActions, AppState, Intake, Location } from '../../lib/types';
   import { tradeName, tradeOf } from '../../lib/trade';
+  import { requestUi } from '../../lib/request-ui.svelte';
   import { t } from '../../lib/i18n.svelte';
 
   // B04–B06, B09, B10: answer chips, the area card, finding professionals and the waitlist.
@@ -56,6 +57,7 @@
     {:else}
       <button type="button" class="btn btn-primary" disabled={app.pending} onclick={() => actions.act('join-waitlist')}>{t('Save to the waitlist')}</button>
     {/if}
+    <button type="button" class="btn btn-danger-link" disabled={app.pending} onclick={() => { app.error = ''; requestUi.deleting = true; }}>{t('Delete request')}</button>
     <form class="retry" onsubmit={setArea}>
       <LocationSearch id="change-area" label={t('Try a different area')} bind:value={area} bind:selected disabled={app.pending}/>
       <button class="btn btn-outline" disabled={app.pending || !selected}>{t('Search this area')}</button>

@@ -1,8 +1,19 @@
-import type { AgentActivity, AgentEscalation, AgentMandate, AuthSession, CaseNote, ConsumerPolicy, CoordinationTask, EvidenceRequirement, OperatorCaseDetail, ServiceEvidencePolicy, AvailabilitySlot, Location, NegotiationInput, NotificationDeliveryHealth, OperatorCase, PayPalPayoutSetupStatus, ProfessionalApplication, ProfessionalProfile, ProfessionalProfileInput, ProfessionalReviewChecks, ProviderConfig, UserNotification, WorkspaceRole, WorkspaceState, WorkspaceSummary } from './types';
+import type { CustomerProfile, AgentActivity, AgentEscalation, AgentMandate, AuthSession, CaseNote, ConsumerPolicy, CoordinationTask, EvidenceRequirement, OperatorCaseDetail, ServiceEvidencePolicy, AvailabilitySlot, Location, NegotiationInput, NotificationDeliveryHealth, OperatorCase, PayPalPayoutSetupStatus, ProfessionalApplication, ProfessionalProfile, ProfessionalProfileInput, ProfessionalReviewChecks, ProviderConfig, UserNotification, WorkspaceRole, WorkspaceState, WorkspaceSummary } from './types';
 import type { AdminLocationPage, AdminUserAction, AdminUserDetail, AdminUserFilter, AdminUserPage } from './operator-admin';
 
+async function fetchResponse(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(15000) });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error('The request took too long. Please try again.');
+    }
+    throw error;
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetchResponse(url, init);
   if (!response.ok) {
     if (response.status >= 500) throw new Error('SamenKlaar is temporarily unavailable. Please try again.');
     throw new Error(await response.text());
@@ -28,7 +39,7 @@ const payoutErrors: Record<string, string> = {
 };
 
 async function payoutRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetchResponse(url, init);
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { code?: unknown } | null;
     const message = typeof body?.code === 'string' && Object.prototype.hasOwnProperty.call(payoutErrors, body.code) ? payoutErrors[body.code] : undefined;
@@ -53,13 +64,13 @@ export const api = {
   switchWorkspace: (role: WorkspaceRole) => post<{ path: string }>('/api/auth/role', { role }),
   beginProfessional: () => post<{ path: string }>('/api/professional/onboarding', {}),
   logout: () => post<{ logoutUrl: string }>('/api/auth/logout', {}),
+  customerProfile: () => request<CustomerProfile>('/api/customer/profile'),
+  saveCustomerProfile: (profile: Omit<CustomerProfile, 'email'>) => request<CustomerProfile>('/api/customer/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profile) }),
   professionalProfile: () => request<{ profile: ProfessionalProfile | null }>('/api/professional/profile'),
   saveProfessionalProfile: (profile: ProfessionalProfileInput) => post<{ profile: ProfessionalProfile }>('/api/professional/profile', profile),
   beginPayPalSellerOnboarding: () => payoutRequest<{ actionUrl: string }>('/api/professional/paypal/onboarding', { method: 'POST' }),
   paypalSellerStatus: (merchantIdInPayPal?: string) => payoutRequest<PayPalPayoutSetupStatus>(`/api/professional/paypal/status${merchantIdInPayPal ? `?merchantIdInPayPal=${encodeURIComponent(merchantIdInPayPal)}` : ''}`),
   professionalAvailability: () => request<{ slots: AvailabilitySlot[] }>('/api/professional/availability'),
-  addProfessionalAvailability: (slot: { startUtc: string; endUtc: string; timezone: string }) =>
-    post<{ id: string; status: string }>('/api/professional/availability', slot),
   operatorQueue: () => request<{ cases: OperatorCase[]; professionalApplications: ProfessionalApplication[]; notificationDelivery: NotificationDeliveryHealth }>('/api/operator/queue'),
   operatorUsers: (filter: AdminUserFilter) => request<AdminUserPage>(`/api/operator/users?${new URLSearchParams(filter)}`),
   operatorUser: (id: string) => request<AdminUserDetail>(`/api/operator/users/${encodeURIComponent(id)}`),

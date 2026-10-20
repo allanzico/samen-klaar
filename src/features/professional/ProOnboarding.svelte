@@ -13,7 +13,7 @@
   import { t } from '../../lib/i18n.svelte';
 
   // E01–E05. Every save is the same profile API call as before; the steps are presentation only.
-  let { actions, testPayments = false }: { actions: AppActions; testPayments?: boolean } = $props();
+  let { actions }: { actions: AppActions } = $props();
 
   type Form = { displayName: string; category: string; serviceName: string; serviceDescription: string; serviceArea: string; latitude: string; longitude: string; currency: string; price: string; callout: string; durationMinutes: number; materialsPolicy: string; exclusions: string };
   let profile = $state<ProfessionalProfile | null>(null);
@@ -122,7 +122,7 @@
               <button type="button" class="btn btn-outline btn-sm" onclick={() => { step = 3; }}>{t('Add free times')}</button>
             </div>
           </section>
-          <PayPalPayouts {testPayments}/>
+          <PayPalPayouts/>
         </div>
         {@render preview()}
       </div>

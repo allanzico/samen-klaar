@@ -382,6 +382,11 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		}
 		return s
 	}
+	if options.generatedTime {
+		request("professional", "POST", "/api/professional/availability", map[string]any{}, http.StatusMethodNotAllowed)
+		request("professional", "POST", "/api/professional/availability/restore", map[string]any{}, http.StatusMethodNotAllowed)
+		request("professional", "DELETE", "/api/professional/availability/old-time", nil, http.StatusMethodNotAllowed)
+	}
 	// One customer identity can start professional onboarding and return to its
 	// customer pane, but neither a role parameter nor onboarding grants operator access.
 	request("outsider", "POST", "/api/auth/role", map[string]string{"role": "professional"}, 403)
@@ -536,7 +541,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		published.ID = window.Slots[0].SlotID
 		earliestStart = mustParseJourneyTime(t, window.Slots[0].StartUTC)
 	} else {
-		json.Unmarshal(request("professional", "POST", "/api/professional/availability", workflow.Appointment{StartUTC: earliestStart.Format(time.RFC3339), EndUTC: earliestStart.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}, 200), &published)
+		json.Unmarshal(publishJourneyTime(t, store, accounts["professional"], workflow.Appointment{StartUTC: earliestStart.Format(time.RFC3339), EndUTC: earliestStart.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}), &published)
 	}
 	if options.agents {
 		wide := map[string]any{"enabled": true, "weekdays": []int{1, 2, 3, 4, 5, 6, 7}, "startHour": 0, "endHour": 24}
@@ -552,7 +557,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 			proMandate[k] = v
 		}
 		later := earliestStart.Add(26 * time.Hour)
-		request("professional", "POST", "/api/professional/availability", workflow.Appointment{StartUTC: later.Format(time.RFC3339), EndUTC: later.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}, 200)
+		publishJourneyTime(t, store, accounts["professional"], workflow.Appointment{StartUTC: later.Format(time.RFC3339), EndUTC: later.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"})
 		request("professional", "PUT", "/api/agent/mandate", proMandate, 200)
 		request("customer", "PUT", "/api/agent/mandate", map[string]any{"enabled": true, "maxTotalMinor": 99999999}, 400)
 		request("customer", "PUT", "/api/agent/mandate", customerMandate(20000), 200)
@@ -638,7 +643,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		// Slightly under the price: the customer agent counters at its limit and the professional agent,
 		// whose floor is 90 percent, accepts. Then the customer agent books the agreed price.
 		third := earliestStart.Add(50 * time.Hour)
-		request("professional", "POST", "/api/professional/availability", workflow.Appointment{StartUTC: third.Format(time.RFC3339), EndUTC: third.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}, 200)
+		publishJourneyTime(t, store, accounts["professional"], workflow.Appointment{StartUTC: third.Format(time.RFC3339), EndUTC: third.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"})
 		request("customer", "PUT", "/api/agent/mandate", customerMandate(12000), 200)
 		negotiated := waitFor(runIntake(), func(s workflow.State) bool {
 			return s.Job.AppointmentConfirmation != nil && s.Job.AppointmentConfirmation.Status == "confirmed"
@@ -667,7 +672,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		actor = "customer2"
 		for _, offset := range []time.Duration{100, 110, 120, 130} {
 			at := earliestStart.Add(offset * time.Hour)
-			request("professional", "POST", "/api/professional/availability", workflow.Appointment{StartUTC: at.Format(time.RFC3339), EndUTC: at.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}, 200)
+			publishJourneyTime(t, store, accounts["professional"], workflow.Appointment{StartUTC: at.Format(time.RFC3339), EndUTC: at.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"})
 		}
 		proMandateWith := func(autoConfirm, autoAccept bool) map[string]any {
 			m := map[string]any{"autoConfirmVisits": autoConfirm, "autoAcceptDates": autoAccept}
@@ -818,7 +823,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 			time.Date(baseDay.Year(), baseDay.Month(), baseDay.Day(), 10, 0, 0, 0, localZone),
 			time.Date(baseDay.Year(), baseDay.Month(), baseDay.Day()+1, 14, 0, 0, 0, localZone),
 		} {
-			request("professional", "POST", "/api/professional/availability", workflow.Appointment{StartUTC: at.Format(time.RFC3339), EndUTC: at.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}, 200)
+			publishJourneyTime(t, store, accounts["professional"], workflow.Appointment{StartUTC: at.Format(time.RFC3339), EndUTC: at.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"})
 		}
 		// This professional wants to be asked before confirming a visit.
 		askFirst := map[string]any{}
@@ -1169,7 +1174,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		t.Fatal("combined customer approval did not reserve the actual earliest visit")
 	}
 	if options.generatedTime {
-		request("professional", "DELETE", "/api/professional/availability/"+published.ID, nil, 409)
+		request("professional", "DELETE", "/api/professional/availability/"+published.ID, nil, http.StatusMethodNotAllowed)
 		confirmed := decodeState(request("professional", "POST", "/api/actions", map[string]string{"workspaceId": urgent.WorkspaceID, "action": "confirm-appointment"}, 200))
 		restored, err := store.LoadWorkspace(ctx, accounts["customer"], "customer", urgent.WorkspaceID)
 		if err != nil || restored.Job.Appointment == nil || restored.Job.Appointment.SlotID != published.ID || confirmed.Job.AppointmentConfirmation.Status != "confirmed" {
@@ -1702,4 +1707,18 @@ func exerciseRequestPhoto(t *testing.T, client *http.Client, base, workspaceID s
 	if get("outsider") == http.StatusOK {
 		t.Fatal("an unrelated account read another customer's request photo")
 	}
+}
+
+// Imported legacy slots are fixture data. New public availability comes from working hours.
+func publishJourneyTime(t *testing.T, store *postgres.Store, professional string, slot workflow.Appointment) []byte {
+	t.Helper()
+	id, err := store.AddProfessionalAvailability(context.Background(), professional, slot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]string{"id": id, "status": "available"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

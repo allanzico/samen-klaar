@@ -248,3 +248,16 @@ test('the server limit message reaches the customer when starting a request', as
   assert.match(app.error, /3 open requests/);
   assert.equal(app.draft, 'A leaking kitchen sink');
 });
+
+test('customer profile has its own URL and preserves the saved request when returning', async () => {
+  const { app, actions } = setup(async (url) => {
+    if (url === '/api/state?workspaceId=A') return response({ workspaceId: 'A', job: { id: 'job-A', quote: { totalMinor: 8000 } } });
+    throw new Error(`unexpected ${url}`);
+  });
+  actions.showProfile();
+  assert.equal(app.customerPage, 'profile');
+  assert.equal(window.location.pathname, '/profile');
+  await actions.selectRequest('A');
+  assert.equal(app.serverState.job.quote.totalMinor, 8000);
+  assert.equal(window.location.pathname, '/requests/A');
+});

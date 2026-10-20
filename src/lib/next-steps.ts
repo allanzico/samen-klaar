@@ -175,7 +175,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
     }
     case 'payment': {
       const expired = app.paypalStatus === 'expired';
-      const banner = expired ? { kind: 'warn' as const, title: t('Your PayPal hold expired'), text: t('Nothing was charged. Approve a new hold for the same amount and professional to pay.') } : app.providerConfig?.testPayments ? { kind: 'info' as const, text: t('Test mode · PayPal sandbox') } : undefined;
+      const banner = expired ? { kind: 'warn' as const, title: t('Your PayPal hold expired'), text: t('Nothing was charged. Approve a new hold for the same amount and professional to pay.') } : undefined;
       if (!app.providerConfig?.paymentsAvailable) {
         return job.paymentApprovedVersion !== job.scopeVersion
           ? { kind: 'your-turn', tag: yourTurn, title: t('Pay {name}', { name: pro }), amount: total, primary: { label: t('Approve {amount}', { amount: total }), run: () => actions.act('approve-payment') } }

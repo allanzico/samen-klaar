@@ -10,7 +10,7 @@
 <section class="box agreed" aria-label={t(title)}>
   <h2 class="small-title">{t(title)}</h2>
   <dl class="ledger">
-    {#each job.quote.lines as line (line.label)}<div><dt>{t(line.label)}</dt><dd>{money(line.amountMinor, job.quote.currency)}</dd></div>{/each}
+    {#each job.quote.lines as line}<div><dt>{t(line.label)}</dt><dd>{money(line.amountMinor, job.quote.currency)}</dd></div>{/each}
     <div class="ledger-total"><dt>{t('Total')}</dt><dd>{money(job.quote.totalMinor, job.quote.currency)}</dd></div>
   </dl>
 </section>

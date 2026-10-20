@@ -30,6 +30,7 @@
   let floor = $state(90);
   let autoConfirm = $state(true);
   let autoDates = $state(false);
+  let outsideHours = $state(false);
 
   const euros = (minor?: number) => (minor ? String(minor / 100) : '');
   const toMinor = (value: string) => Math.round(Number(value.replace(',', '.')) * 100) || 0;
@@ -42,6 +43,7 @@
       startHour = m.startHour ?? 8; endHour = m.endHour ?? 18; preferredHour = m.preferredHour ?? m.startHour ?? 8;
       limit = euros(m.maxTotalMinor); extra = euros(m.autoApproveExtraMinor) || '0'; horizon = m.maxDaysAhead || 14; address = m.serviceAddress ?? '';
       floor = m.floorPercent || 90; autoConfirm = m.version ? !!m.autoConfirmVisits : true; autoDates = m.version ? !!m.autoAcceptDates : true;
+      outsideHours = !!m.acceptOutsideHours;
       loaded = true;
     }).catch((e) => { error = e instanceof Error ? e.message.trim() : t('Could not load your agent settings'); });
   });
@@ -53,7 +55,7 @@
     error = '';
     const mandate: AgentMandate = { enabled: !paused, weekdays, startHour: Number(startHour), endHour: Number(endHour) };
     if (!pro) mandate.preferredHour = Number(preferredHour);
-    if (pro) Object.assign(mandate, { floorPercent: Number(floor), autoConfirmVisits: autoConfirm, autoAcceptDates: autoDates });
+    if (pro) Object.assign(mandate, { floorPercent: Number(floor), autoConfirmVisits: autoConfirm, autoAcceptDates: autoDates, acceptOutsideHours: outsideHours });
     else Object.assign(mandate, { autoApproveWork: autoWork, bookWithoutAsking: bookAlone, maxTotalMinor: toMinor(limit), autoApproveExtraMinor: toMinor(extra), maxDaysAhead: Number(horizon), serviceAddress: address.trim() });
     try {
       await api.saveAgentMandate(mandate);
@@ -80,6 +82,8 @@
             <p class="field-help">{t('Offers at or above this are accepted. Below it, your agent counters once at this price, then asks you.')}</p></div>
           <label class="check"><input type="checkbox" bind:checked={autoConfirm}/>{t('Confirm reserved visits that fall inside my days and hours')}</label>
           <label class="check"><input type="checkbox" bind:checked={autoDates}/>{t('Accept a visit time the customer proposes inside my days and hours')}</label>
+          <label class="check"><input type="checkbox" bind:checked={outsideHours}/>{t('Also accept proposed visits outside my working hours')}</label>
+          <p class="field-help">{t('Only proposed appointments can use this permission. Your published working hours stay the same. Days off, conflicting visits and late changes still need review.')}</p>
         {:else}
           <div class="field"><label for="agent-limit">{t('Never agree to more than (optional)')}</label>
             <div class="money-input narrow"><span aria-hidden="true">€</span><input id="agent-limit" inputmode="decimal" bind:value={limit} placeholder="150"/></div>
@@ -93,6 +97,7 @@
           <div class="field"><label for="agent-horizon">{t('Book visits up to this many days ahead')}</label>
             <input id="agent-horizon" class="input narrow" type="number" min="1" max="90" bind:value={horizon}/></div>
         {/if}
+        {#if !pro}
         <div class="field"><span class="field-label" id="agent-days">{t('Visit days')}</span>
           <div class="days" role="group" aria-labelledby="agent-days">
             {#each days as [day, name]}<label class="chip-check"><input type="checkbox" checked={weekdays.includes(day)} onchange={(event) => toggleDay(day, event.currentTarget.checked)}/><span>{t(name)}</span></label>{/each}
@@ -101,7 +106,6 @@
           <div class="field"><label for="agent-from">{t('From')}</label><select id="agent-from" class="select" bind:value={startHour}>{#each Array.from({ length: 24 }, (_, i) => i) as hour}<option value={hour}>{String(hour).padStart(2, '0')}:00</option>{/each}</select></div>
           <div class="field"><label for="agent-to">{t('Until')}</label><select id="agent-to" class="select" bind:value={endHour}>{#each Array.from({ length: 24 }, (_, i) => i + 1) as hour}<option value={hour}>{String(hour).padStart(2, '0')}:00</option>{/each}</select></div>
         </div>
-        {#if !pro}
           <div class="field"><label for="agent-preferred">{t('When none of the listed times fit, propose a visit at')}</label>
             <select id="agent-preferred" class="select narrow" bind:value={preferredHour}>{#each Array.from({ length: endHour - startHour }, (_, i) => startHour + i) as hour}<option value={hour}>{String(hour).padStart(2, '0')}:00</option>{/each}</select>
             <p class="field-help">{t('Your agent proposes this hour on the first allowed day. The professional’s agent can accept it or suggest the closest time that suits them, once.')}</p></div>

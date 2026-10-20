@@ -11,7 +11,6 @@ import ServiceEvidenceEditor from './ServiceEvidenceEditor.svelte';
   import { initials } from '../../lib/trade';
   import { t } from '../../lib/i18n.svelte';
 
-  let { testPayments = false }: { testPayments?: boolean } = $props();
   let profile = $state<ProfessionalProfile | null>(null);
   let loading = $state(true);
   let error = $state('');
@@ -51,7 +50,7 @@ import ServiceEvidenceEditor from './ServiceEvidenceEditor.svelte';
           <ServiceEvidenceEditor/>
         </section>
       </div>
-      <div class="col"><PayPalPayouts {testPayments} onStatus={(s) => { paypal = s; }}/></div>
+      <div class="col"><PayPalPayouts onStatus={(s) => { paypal = s; }}/></div>
     </div>
   {:else}
     <div class="empty"><h2>{t('No service profile yet')}</h2><p>{t('Your service profile could not be found. Refresh the page or contact our team.')}</p></div>

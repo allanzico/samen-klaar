@@ -28,6 +28,7 @@ func TestRequestLifecycleMapping(t *testing.T) {
 	}{
 		{"empty draft", lifecycleState(func(*State) {}), true, true, false},
 		{"describing", lifecycleState(func(s *State) { s.Intake = &Intake{Step: "detail", Description: "Leaking sink"} }), true, true, false},
+		{"waitlisted without a professional", lifecycleState(func(s *State) { s.Intake = &Intake{Step: "waitlist", Waitlisted: true, Description: "Leaking sink"} }), true, true, false},
 		{"matching", lifecycleState(func(s *State) { s.Intake = &Intake{Step: "matches", Description: "Leaking sink"} }), true, true, false},
 		{"plan awaiting approval", lifecycleState(assignedJob), true, true, true},
 		{"price under negotiation", lifecycleState(func(s *State) {

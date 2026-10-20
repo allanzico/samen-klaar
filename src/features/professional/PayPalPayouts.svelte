@@ -9,7 +9,7 @@
   import { t } from '../../lib/i18n.svelte';
 
   // I01–I08: the PayPal payouts card, rendered from the seller status the API reports.
-  let { layout = 'card', testPayments = false, onStatus }: { layout?: 'card' | 'page'; testPayments?: boolean; onStatus?: (status: PayPalPayoutSetupStatus | null) => void } = $props();
+  let { layout = 'card', onStatus }: { layout?: 'card' | 'page'; onStatus?: (status: PayPalPayoutSetupStatus | null) => void } = $props();
   let status = $state<PayPalPayoutSetupStatus | null>(null);
   let loading = $state(true);
   let starting = $state(false);
@@ -84,16 +84,12 @@
       {#if loading}<Pill variant="neutral" label={t('Checking')}/>{:else}<Pill variant={card.tag} label={card.label}/>{/if}
     </div>
     {#if layout === 'card' && !loading}<p class="secondary-text">{card.text}</p>{/if}
-    {#if testPayments}
-      <Banner kind="info" title={t('Test mode · PayPal sandbox')} text={t('Use the email and password of a sandbox account from the PayPal Developer Dashboard. Your regular PayPal login does not work here. No real money moves.')}/>
-    {/if}
     {#if !loading && !status?.connected}
       <p class="secondary-text">{t('This connects an account to receive payment for your work. Customers use their own PayPal account at checkout and do not need this setup.')}</p>
       <details class="disclosure">
         <summary>{t('Which PayPal account should I use?')}</summary>
         <p>{t('Already have PayPal? Choose Log in on the PayPal page to connect your existing account.')}</p>
         <p>{t('Eligible individual sellers in the Netherlands can use a personal PayPal account. Businesses can use a business account. If PayPal asks you to create a company account or upgrade, contact our team before continuing.')}</p>
-        {#if testPayments}<p>{t('Use separate sandbox accounts for the customer paying and the professional receiving payment. The Developer Dashboard login is separate from each sandbox account’s login.')}</p>{/if}
       </details>
     {/if}
     {#if starting}<Banner kind="info" text={t('Opening PayPal. You’ll finish on PayPal, then come back here.')}/>{/if}

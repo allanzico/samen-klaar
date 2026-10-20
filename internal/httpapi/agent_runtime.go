@@ -101,6 +101,15 @@ func (s *Server) agentStep(ctx context.Context, workspaceID, role string, who wo
 		}
 	}
 	agentCtx := workflow.AgentContext{State: state, Role: role, Locale: who.Locale, Mandate: mandate, Now: time.Now(), Counters: counters, DateProposals: visitProposals, Avoid: avoid}
+	if role == "professional" {
+		if scheduleService, ok := s.professionals.(ProfessionalScheduleService); ok {
+			view, err := scheduleService.ProfessionalSchedule(ctx, who.AccountID)
+			if err != nil {
+				return false, err
+			}
+			agentCtx.ProfessionalSchedule = &view
+		}
+	}
 	s.interpretReply(ctx, &agentCtx, workspaceID, who.AccountID)
 	decision := workflow.DecideAgent(agentCtx)
 	switch decision.Kind {
