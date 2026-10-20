@@ -45,6 +45,7 @@
     <RoleSwitch {app} {actions} tone="light"/>
   {/if}
   <div class="rows-wrap">
+    {#if app.role === 'customer'}<button type="button" class="menu-row" onclick={() => { close(false); sheetOpen = false; actions.showProfile(); }}><Icon name="user"/>{t('Your profile')}</button>{/if}
     {#if app.role === 'customer' || app.role === 'professional'}<button type="button" class="menu-row" onclick={() => { close(false); sheetOpen = false; agentUi.settingsOpen = true; }}><Icon name="bot"/>{t('Assistant preferences')}</button>{/if}
     {#if canBecomePro}<button type="button" class="menu-row" disabled={app.pending} onclick={actions.beginProfessional}><Icon name="briefcase"/>{t('Become a professional')}</button>{/if}
     <button type="button" class="menu-row" onclick={actions.logout}><Icon name="sign-out"/>{t('Sign out')}</button>

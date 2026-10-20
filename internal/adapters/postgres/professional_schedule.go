@@ -133,6 +133,14 @@ func (s *Store) SaveProfessionalSchedule(ctx context.Context, accountID string, 
 			return workflow.ProfessionalScheduleView{}, err
 		}
 	}
+	// Saving working hours replaces unbooked one-off offers from older releases.
+	// The same professional lock protects reservations and schedule generation.
+	if _, err = tx.Exec(ctx, `DELETE FROM professional_slot_exclusions WHERE professional_account_id=$1`, accountID); err != nil {
+		return workflow.ProfessionalScheduleView{}, err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM professional_availability_slots a WHERE a.professional_account_id=$1 AND a.source='manual' AND a.status='available' AND NOT EXISTS (SELECT 1 FROM booking_reservations b WHERE b.slot_id=a.id AND b.status='booked')`, accountID); err != nil {
+		return workflow.ProfessionalScheduleView{}, err
+	}
 	added, removed, err := s.materializeSchedule(ctx, tx, accountID, time.Now())
 	if err != nil {
 		return workflow.ProfessionalScheduleView{}, err

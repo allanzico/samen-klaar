@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY index.html svelte.config.js tsconfig.json vite.config.ts ./
 COPY src ./src
+COPY tests/browser ./tests/browser
 COPY public ./public
 RUN npm run test:controller && npm run test:names && npm run test:i18n && npm run test:payouts && npm run check && npm run build
 

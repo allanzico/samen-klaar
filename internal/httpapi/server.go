@@ -183,6 +183,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/policies", s.protect(false, identity.Customer, identity.Professional, identity.Operator)(http.HandlerFunc(s.consumerPoliciesHandler)))
 	mux.Handle("/api/operator/policies", s.protect(true, identity.Operator)(http.HandlerFunc(s.operatorPolicyPublishHandler)))
 	mux.Handle("/api/support/messages", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.participantSupportHandler)))
+	mux.Handle("/api/customer/profile", s.protect(false, identity.Customer)(http.HandlerFunc(s.customerProfileHandler)))
 	mux.Handle("/api/account/locale", s.protect(false, identity.Customer, identity.Professional, identity.Operator)(http.HandlerFunc(s.accountLocaleHandler)))
 	mux.Handle("/api/operator/queue", s.protect(false, identity.Operator)(http.HandlerFunc(s.operatorQueueHandler)))
 	mux.Handle("/api/operator/users", s.protect(true, identity.Operator)(http.HandlerFunc(s.operatorUsersHandler)))

@@ -5,6 +5,7 @@
   import Landing from './features/public/Landing.svelte';
   import OperatorGate from './features/public/OperatorGate.svelte';
   import OperatorDashboard from './features/operator/OperatorDashboard.svelte';
+  import CustomerProfile from './features/customer/CustomerProfile.svelte';
   import CustomerHome from './features/customer/CustomerHome.svelte';
   import CustomerRequests from './features/customer/CustomerRequests.svelte';
   import RequestPage from './features/request/RequestPage.svelte';
@@ -50,7 +51,7 @@
 
   const customerNav = $derived<NavItem[]>([
     { label: t('Home'), icon: 'home', current: app.customerPage === 'home', onclick: actions.showHome },
-    { label: t('Requests'), icon: 'list', current: app.customerPage !== 'home', onclick: actions.showRequests, phoneIcon: true }
+    { label: t('Requests'), icon: 'list', current: app.customerPage === 'requests' || app.customerPage === 'detail', onclick: actions.showRequests, phoneIcon: true }
   ]);
   const proNav = $derived<NavItem[]>([
     { label: t('Jobs'), icon: 'briefcase', current: proView === 'jobs', onclick: () => { proView = 'jobs'; actions.showJobs(); } },
@@ -71,6 +72,17 @@
     return () => { window.clearInterval(timer); window.removeEventListener('popstate', onLocationChange); };
   });
 </script>
+
+{#snippet requestDetail()}
+  {#if app.serverState}
+    <svelte:boundary>
+      {#key app.workspaceId}<RequestPage {app} {actions} workspace={app.serverState} onBack={backToList}/>{/key}
+      {#snippet failed(_error, reset)}
+        <section class="failed"><div class="empty"><h1>{t('We couldn’t display this request')}</h1><p>{t('Your request is saved. Reload it or return to your list.')}</p><div class="row"><button type="button" class="btn btn-primary" onclick={() => { void actions.loadState().then(reset); }}>{t('Try again')}</button><button type="button" class="btn btn-outline" onclick={backToList}>{t('Back to your requests')}</button></div></div></section>
+      {/snippet}
+    </svelte:boundary>
+  {/if}
+{/snippet}
 
 <svelte:head><title>{operatorRoute ? `${t('Operator dashboard')} — ${app.brandName}` : `${app.brandName} — ${t('Home repairs in Amsterdam')}`}</title></svelte:head>
 
@@ -100,11 +112,12 @@
       {#if app.loading && !onRequestPage}
         <p class="loading" role="status"><span class="spinner" aria-hidden="true"></span>{t('Loading…')}</p>
       {:else if pendingPro}
-        <ProOnboarding {actions} testPayments={app.providerConfig?.testPayments ?? false}/>
+        <ProOnboarding {actions}/>
       {:else if app.role === 'customer'}
         {#if app.customerPage === 'home'}<CustomerHome {app} {actions}/>
         {:else if app.customerPage === 'requests'}<CustomerRequests {app} {actions}/>
-        {:else if app.serverState}{#key app.workspaceId}<RequestPage {app} {actions} workspace={app.serverState} onBack={backToList}/>{/key}
+        {:else if app.customerPage === 'profile'}<CustomerProfile {app}/>
+        {:else if app.serverState}{@render requestDetail()}
         {:else}
           <div class="failed">
             <div class="empty"><span class="icon-tile icon-tile-48" aria-hidden="true"><Icon name="alert"/></span><h1>{t('We couldn’t load this request')}</h1><p>{t('Check your connection and try again.')}</p>
@@ -113,8 +126,8 @@
         {/if}
       {:else if app.role === 'professional'}
         {#if proView === 'times'}<FreeTimes/>
-        {:else if proView === 'profile'}<ProfileServices testPayments={app.providerConfig?.testPayments ?? false}/>
-        {:else if app.serverState && app.workspaceId}{#key app.workspaceId}<RequestPage {app} {actions} workspace={app.serverState} onBack={backToList}/>{/key}
+        {:else if proView === 'profile'}<ProfileServices/>
+        {:else if app.serverState && app.workspaceId}{@render requestDetail()}
         {:else}<ProJobs {app} {actions} onSetTimes={() => { proView = 'times'; }} onProfile={() => { proView = 'profile'; }}/>{/if}
       {/if}
     </main>

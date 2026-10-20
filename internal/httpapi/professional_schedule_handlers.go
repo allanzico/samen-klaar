@@ -18,8 +18,6 @@ type ProfessionalScheduleService interface {
 	PreviewProfessionalDaysOff(context.Context, string, workflow.ProfessionalDayOff) (workflow.DaysOffPreview, error)
 	AddProfessionalDaysOff(context.Context, string, workflow.ProfessionalDayOff) (workflow.ProfessionalDayOff, int, error)
 	RemoveProfessionalDaysOff(context.Context, string, string) (int, error)
-	RemoveProfessionalAvailability(context.Context, string, string) error
-	RestoreProfessionalAvailability(context.Context, string, string) error
 }
 
 func (s *Server) scheduleService(w http.ResponseWriter) (ProfessionalScheduleService, bool) {
@@ -160,43 +158,5 @@ func (s *Server) professionalDaysOffHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) professionalAvailabilityMaintenanceHandler(w http.ResponseWriter, r *http.Request) {
-	service, ok := s.scheduleService(w)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	accountID := principalForRequest(r).User.ID
-	if r.URL.Path == "/api/professional/availability/restore" {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var input struct {
-			StartUTC string `json:"startUtc"`
-		}
-		if !decodeScheduleInput(w, r, &input) {
-			return
-		}
-		if err := service.RestoreProfessionalAvailability(ctx, accountID, input.StartUTC); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		writeJSON(w, map[string]string{"status": "restored"})
-		return
-	}
-	if r.Method != http.MethodDelete {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	id := strings.TrimPrefix(r.URL.Path, "/api/professional/availability/")
-	if id == "" || id == r.URL.Path || strings.Contains(id, "/") {
-		http.NotFound(w, r)
-		return
-	}
-	if err := service.RemoveProfessionalAvailability(ctx, accountID, id); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	http.Error(w, "Set weekly working hours and days off to publish availability.", http.StatusMethodNotAllowed)
 }

@@ -70,8 +70,8 @@ func TestProfessionalScheduleMaintenancePreservesBookedVisits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(window.Removed) != 1 || window.Removed[0].StartUTC != free.StartUTC {
-		t.Fatalf("single-time exclusion did not survive regeneration: %+v", window.Removed)
+	if len(window.Removed) != 0 {
+		t.Fatalf("saving weekly hours retained a legacy single-time exclusion: %+v", window.Removed)
 	}
 	if err := store.RestoreProfessionalAvailability(ctx, professional, free.StartUTC); err != nil {
 		t.Fatal(err)
@@ -106,8 +106,35 @@ func TestProfessionalScheduleMaintenancePreservesBookedVisits(t *testing.T) {
 		manualFound = manualFound || slot.SlotID == manual
 		bookedFound = bookedFound || slot.SlotID == booked.Job.Appointment.SlotID && slot.Status == "booked"
 	}
-	if !manualFound || !bookedFound {
-		t.Fatalf("schedule edit lost manual/booked time: %+v", slots)
+	if manualFound || !bookedFound {
+		t.Fatalf("schedule edit retained a one-off time or lost the booking: %+v", slots)
+	}
+}
+
+func TestWeeklyAvailabilityMigrationPreservesBookedVisits(t *testing.T) {
+	ctx, store := accountTestStore(t)
+	store.stopBackgroundLoops()
+	_, professional, booked := bookedCancellationFixture(t, ctx, store)
+	start := time.Now().Add(7 * 24 * time.Hour).UTC()
+	manual, err := store.AddProfessionalAvailability(ctx, professional, workflow.Appointment{StartUTC: start.Format(time.RFC3339), EndUTC: start.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	script, err := migrationFiles.ReadFile("migrations/029_weekly_availability.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(script)); err != nil {
+		t.Fatal(err)
+	}
+	var freeFound, bookedFound bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM professional_availability_slots WHERE id=$1),EXISTS(SELECT 1 FROM professional_availability_slots WHERE id=$2 AND status='booked')`, manual, booked.Job.Appointment.SlotID).Scan(&freeFound, &bookedFound); err != nil || freeFound || !bookedFound {
+		t.Fatalf("migration retained a one-off offer or removed a booking: free=%v booked=%v err=%v", freeFound, bookedFound, err)
 	}
 }
 

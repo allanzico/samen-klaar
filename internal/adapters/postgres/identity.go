@@ -31,7 +31,7 @@ func (s *Store) UpsertIdentity(ctx context.Context, issuer, subject, email, disp
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (issuer, subject) DO UPDATE
 		SET email = CASE WHEN EXCLUDED.email = '' THEN accounts.email ELSE EXCLUDED.email END,
-		    display_name = CASE WHEN EXCLUDED.display_name = '' THEN accounts.display_name ELSE EXCLUDED.display_name END,
+		    display_name = CASE WHEN accounts.display_name_custom OR EXCLUDED.display_name = '' THEN accounts.display_name ELSE EXCLUDED.display_name END,
 		    updated_at = now()
 		RETURNING id, email, display_name, locale`, id, issuer, subject, email, displayName).Scan(&user.ID, &user.Email, &user.DisplayName, &user.Locale)
 	return user, err

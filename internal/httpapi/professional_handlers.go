@@ -24,7 +24,6 @@ type ProfessionalDirectory interface {
 type ProfessionalService interface {
 	ProfessionalProfile(context.Context, string) (workflow.ProfessionalProfile, bool, error)
 	SaveProfessionalProfile(context.Context, string, workflow.ProfessionalProfile) (workflow.ProfessionalProfile, error)
-	AddProfessionalAvailability(context.Context, string, workflow.Appointment) (string, error)
 	ListProfessionalAvailability(context.Context, string) ([]workflow.AvailabilitySlot, error)
 }
 
@@ -217,45 +216,8 @@ func (s *Server) professionalAvailabilityHandler(w http.ResponseWriter, r *http.
 		writeJSON(w, map[string]any{"slots": slots})
 		return
 	}
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var input struct {
-		StartUTC string `json:"startUtc"`
-		EndUTC   string `json:"endUtc"`
-		Timezone string `json:"timezone"`
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 2048)
-	if json.NewDecoder(r.Body).Decode(&input) != nil {
-		http.Error(w, "invalid availability slot", http.StatusBadRequest)
-		return
-	}
-	start, startErr := time.Parse(time.RFC3339, input.StartUTC)
-	end, endErr := time.Parse(time.RFC3339, input.EndUTC)
-	zone, zoneErr := time.LoadLocation(input.Timezone)
-	if startErr != nil || endErr != nil || zoneErr != nil || end.Sub(start) < 15*time.Minute || end.Sub(start) > 6*time.Hour || start.Before(time.Now().Add(15*time.Minute)) || start.After(time.Now().AddDate(1, 0, 0)) {
-		http.Error(w, "choose a future time window of 15 minutes to 6 hours within the next year, with a valid timezone", http.StatusBadRequest)
-		return
-	}
-	slot := workflow.Appointment{StartUTC: start.UTC().Format(time.RFC3339), EndUTC: end.UTC().Format(time.RFC3339), Timezone: zone.String()}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	profile, found, err := s.professionals.ProfessionalProfile(ctx, principal.User.ID)
-	if err != nil || !found {
-		http.Error(w, "load your service profile before adding availability", http.StatusConflict)
-		return
-	}
-	if end.Sub(start) < time.Duration(profile.DurationMinutes)*time.Minute {
-		http.Error(w, "allow the full published service duration", http.StatusBadRequest)
-		return
-	}
-	id, err := s.professionals.AddProfessionalAvailability(ctx, principal.User.ID, slot)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	writeJSON(w, map[string]string{"id": id, "status": "available"})
+	w.Header().Set("Allow", http.MethodGet)
+	http.Error(w, "Set weekly working hours and days off to publish availability.", http.StatusMethodNotAllowed)
 }
 
 func (s *Server) operatorQueueHandler(w http.ResponseWriter, r *http.Request) {

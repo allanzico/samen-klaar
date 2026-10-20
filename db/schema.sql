@@ -56,6 +56,7 @@ CREATE INDEX notification_outbox_pending_idx ON notification_outbox (status, cre
     WHERE status IN ('queued', 'failed', 'adapter_unconfigured');
 
 CREATE TABLE accounts (
+    display_name_custom boolean NOT NULL DEFAULT false,
     id text PRIMARY KEY,
     issuer text NOT NULL,
     subject text NOT NULL,
@@ -428,3 +429,10 @@ CREATE TABLE operator_admin_events (
 CREATE INDEX operator_admin_events_account_idx ON operator_admin_events(account_id, id DESC);
 CREATE INDEX accounts_directory_created_idx ON accounts(created_at DESC, id);
 CREATE INDEX accounts_directory_email_idx ON accounts(lower(btrim(email)));
+
+CREATE TABLE customer_profiles (
+ account_id text PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+ phone text NOT NULL DEFAULT '' CHECK (char_length(phone) <= 30),
+ location jsonb,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);

@@ -547,17 +547,25 @@ func TestAssistantAsksForAvailabilityAndOffersWhatFits(t *testing.T) {
 }
 
 func TestAssistantOffersChoicesAndAsksTheProWhenNothingFits(t *testing.T) {
+	now := time.Now()
+	zone, _ := time.LoadLocation("Europe/Amsterdam")
+	thursday := now.In(zone).AddDate(0, 0, 2)
+	for thursday.Weekday() != time.Thursday {
+		thursday = thursday.AddDate(0, 0, 1)
+	}
+	thursday = time.Date(thursday.Year(), thursday.Month(), thursday.Day(), 10, 0, 0, 0, zone)
+	friday := thursday.AddDate(0, 0, 1)
 	state := quotedState(9000)
 	state.Job.Customer, state.Job.Professional, state.Job.ProfessionalProfileID, state.Job.ServiceAddress = "Alex", "Marieke", "prof_1", "Damrak 1, Amsterdam"
 	state.Job.Quote.DurationMinutes = 60
 	state.Intake = &Intake{Locale: "nl", Budget: "150 euro", Location: &Location{}, Messages: []Message{{Role: "customer", Text: "lek"}}}
-	state.AvailableSlots = []Appointment{agentSlot("thu", "2026-10-22T08:00:00Z", "2026-10-22T09:00:00Z"), agentSlot("fri", "2026-10-23T08:00:00Z", "2026-10-23T09:00:00Z")}
-	c := &converse{t: t, state: state, m: DefaultMandate("customer")}
+	state.AvailableSlots = []Appointment{agentSlot("thu", thursday.UTC().Format(time.RFC3339), thursday.Add(time.Hour).UTC().Format(time.RFC3339)), agentSlot("fri", friday.UTC().Format(time.RFC3339), friday.Add(time.Hour).UTC().Format(time.RFC3339))}
+	c := &converse{t: t, state: state, m: DefaultMandate("customer"), at: now}
 	c.settle()
 	c.reply("dinsdagavond", "")
 	c.settle()
 	offer := c.lastAssistant()
-	if !contains(offer.Text, "Geen van de open tijden") || !contains(offer.Text, "do 22 okt, 10:00–11:00") {
+	if !contains(offer.Text, "Geen van de open tijden") || !contains(offer.Text, "10:00–11:00") {
 		t.Fatalf("expected a Dutch offer of the next times, got %q", offer.Text)
 	}
 	if last := c.state.AgentDialog.Choices[len(c.state.AgentDialog.Choices)-1]; last.ID != "ask-pro" {
@@ -836,5 +844,28 @@ func TestMissingDocumentationQuotesTheFileCheckWhenItFlaggedTheWork(t *testing.T
 	err := ValidateCompletionEvidence(job, true)
 	if err == nil || !contains(err.Error(), "the file check says: The submitted image depicts a large building and does not show a kitchen sink") || contains(err.Error(), "work-1") {
 		t.Fatalf("expected what the check saw, got %v", err)
+	}
+}
+
+func TestProfessionalOutsideHoursPermissionKeepsDaysOffAndPaymentGates(t *testing.T) {
+	state := bookedState("customer", "2026-10-24T19:00:00Z", "2026-10-24T21:00:00Z")
+	mandate := professionalMandate()
+	view := &ProfessionalScheduleView{Schedule: &ProfessionalSchedule{Timezone: "Europe/Amsterdam", Week: []WorkingRange{{Weekday: 6, Start: "09:00", End: "17:00"}}}}
+	ctx := AgentContext{State: state, Role: "professional", Mandate: mandate, Now: agentNow, ProfessionalSchedule: view}
+	if d := DecideAgent(ctx); d.Code != "visit_outside_window" {
+		t.Fatalf("outside hours accepted without permission: %+v", d)
+	}
+	ctx.Mandate.AcceptOutsideHours = true
+	if d := DecideAgent(ctx); d.Kind != AgentAct || d.Action.Action != "accept-date" {
+		t.Fatalf("explicit outside-hours permission ignored: %+v", d)
+	}
+	ctx.ProfessionalSchedule.DaysOff = []ProfessionalDayOff{{FirstDay: "2026-10-24", LastDay: "2026-10-24"}}
+	if d := DecideAgent(ctx); d.Code != "visit_outside_window" {
+		t.Fatalf("permission bypassed a day off: %+v", d)
+	}
+	ctx.ProfessionalSchedule.DaysOff = nil
+	ctx.State.Job.PaymentAuthorizationTiming = PaymentAuthorizationAtBooking
+	if d := DecideAgent(ctx); d.Code != "visit_change_involves_payment" {
+		t.Fatalf("permission bypassed payment gate: %+v", d)
 	}
 }
