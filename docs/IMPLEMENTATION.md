@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 19 October 2026.
+Last updated: 20 October 2026.
 
 ## Where we are (19 October 2026)
 
@@ -55,6 +55,22 @@ Browser inspection used the real frontend, handlers and disposable PostgreSQL wi
 A reproduced frontend bug discarded `merchantIdInPayPal` after a failed return verification. Check status then retried without the reference, leaving a seller pending if the first request had not saved it. The component now retains the reference across retries/reloads and removes callback parameters only after a successful status response. Connection-start and verification failures use public error codes and specific EN/NL messages. Backend logs contain a safe operation/stage plus bounded provider status/code/issue/debug identifiers, without raw provider errors, tokens, referral links or seller identifiers.
 
 Regression tests exercise the component's actual event logic, public-code decoding, the authenticated handlers, safe provider diagnostics and a failed-then-successful provider verification. They do not substitute for a browser PayPal wallet journey. A credential-safe probe with the ignored production settings file obtained HTTP 200 for OAuth and HTTP 201 for a sandbox partner referral. This checks link creation with those local settings, not deployed runtime settings or the reported production connection failure. The developer confirmed that failure occurs after returning from PayPal / Check status, matching the reproduced retry path. Browser access became disabled in Work settings before PayPal retesting; the initial verification failure still needs a deployed retest and its diagnostic identifiers.
+
+## PayPal account guidance (20 October 2026)
+
+Professional onboarding and profile settings now receive the existing `testPayments` flag and display sandbox login guidance. The receiving-account card distinguishes professionals receiving payment from customers paying at checkout, explains connecting an existing account, and identifies eligible Dutch personal sellers without promising that PayPal skips identity checks. The professional review heading says identity and eligibility; its existing server checks and operator approval remain in place. Copy includes Dutch drafts.
+
+PayPal's current country table supports casual sellers with personal accounts in the Netherlands for before-payment PayPal Checkout. The required platform app setting is seller Intent **Mixed**, configured in the PayPal Developer Dashboard. The adapter already requests `EXPRESS_CHECKOUT` and does not filter on company/account type. Browser inspection confirmed the matching sandbox app was set to Business, with Mixed disabled by Expanded Checkout. Disabling that unused account-level sandbox feature unlocked Mixed. The change was saved and its persistence verified after reload. Live settings and credentials were unchanged. The provided test account was confirmed as Dutch Personal; its zero Apps count is not a failure indicator. Continuing the existing professional referral reached PayPal's identity/tax-details form; no details or consent were submitted, so a personal-seller connection has not been verified end to end. Details and sources: [PAYMENTS.md](PAYMENTS.md#personal-accounts-business-accounts-and-sandbox-logins-20-october-2026).
+
+Validation for these UI/copy changes: Svelte diagnostics reported zero errors/warnings; payout recovery, controller and operator translation tests passed; the production frontend build passed. Authenticated browser validation of the new guidance and sandbox personal-seller onboarding remain unverified.
+
+## PayPal seller-status authorization fix (20 October 2026)
+
+The completed personal-account return reproduced HTTP 401 `AUTHORIZATION_ERROR` through the real sandbox adapter. A controlled retry removing only `PayPal-Auth-Assertion` returned HTTP 200 with matching merchant/tracking references and the required payment/refund permissions. Partner seller-status queries now use the platform token without seller impersonation; payment operations retain their seller assertions. A local regression was red on the original header and passes with the fix, and the original real-provider probe also passes without its temporary override.
+
+The original seller's email was unconfirmed. The payout card now names that step and offers Open PayPal / Check status. The developer reopened an authenticated sandbox dashboard after an earlier redirect to live sign-in was blocked. Inspection established that the original seller was a separate account from the default Personal test account, so its mail was absent from this dashboard. At the developer's request, a fresh NL Personal sandbox account was created through the dashboard; its generated login succeeded. The personal-account receiving path requested no company details and, after the user's explicit approval of the full permissions, reached PayPal's casual-seller completion screen. A read-only check through the corrected adapter returned `connected=true` with matching merchant/tracking references, confirmed email and payment/refund permissions. No app database was accessed by that diagnostic. The deployed app still showed the old verification error after return; deployment followed by Check status and a reload to verify persistence remain outstanding. No private provider bodies or credentials are committed. See [PAYMENTS.md](PAYMENTS.md) for evidence.
+
+Validation: PayPal adapter regressions, the full Go suite against disposable native PostgreSQL, Go vet/API build, Svelte diagnostics, payout recovery tests and the frontend production build passed. Docker was unresponsive, so the container-based `make check-flow` gate could not finish; its started process was stopped without touching app containers. The full suite exposed a pre-existing date-dependent assistant journey fixture that chose Sunday outside the customer's Monday–Saturday default; the fixture now moves that target to Monday. Temporary diagnostic source, scripts and private callback references were removed after verification.
 
 ## Location integration (19 October 2026)
 
