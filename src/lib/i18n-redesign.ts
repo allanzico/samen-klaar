@@ -1,6 +1,13 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Identity and eligibility check": "Controle van identiteit en geschiktheid",
+  "Use the email and password of a sandbox account from the PayPal Developer Dashboard. Your regular PayPal login does not work here. No real money moves.": "Gebruik het e-mailadres en wachtwoord van een sandboxaccount uit het PayPal Developer Dashboard. Je gewone PayPal-inloggegevens werken hier niet. Er wordt geen echt geld verplaatst.",
+  "This connects an account to receive payment for your work. Customers use their own PayPal account at checkout and do not need this setup.": "Hier koppel je een account om betalingen voor je werk te ontvangen. Klanten gebruiken hun eigen PayPal-account bij het afrekenen en hoeven dit niet in te stellen.",
+  "Which PayPal account should I use?": "Welk PayPal-account moet ik gebruiken?",
+  "Already have PayPal? Choose Log in on the PayPal page to connect your existing account.": "Heb je al PayPal? Kies Inloggen op de PayPal-pagina om je bestaande account te koppelen.",
+  "Eligible individual sellers in the Netherlands can use a personal PayPal account. Businesses can use a business account. If PayPal asks you to create a company account or upgrade, contact our team before continuing.": "Particuliere verkopers in Nederland die aan de voorwaarden voldoen, kunnen een persoonlijk PayPal-account gebruiken. Bedrijven kunnen een zakelijk account gebruiken. Vraagt PayPal je om een zakelijk account aan te maken of je account om te zetten, neem dan contact op met ons team voordat je verdergaat.",
+  "Use separate sandbox accounts for the customer paying and the professional receiving payment. The Developer Dashboard login is separate from each sandbox account’s login.": "Gebruik aparte sandboxaccounts voor de betalende klant en de vakprofessional die de betaling ontvangt. De inloggegevens van het Developer Dashboard staan los van die van elk sandboxaccount.",
   "PayPal payouts are not available yet. Please contact our team.": "PayPal-uitbetalingen zijn nog niet beschikbaar. Neem contact op met ons team.",
   "We couldn’t open PayPal. Please try again. If this continues, contact our team.": "PayPal kon niet worden geopend. Probeer het opnieuw. Blijft dit gebeuren, neem dan contact op met ons team.",
   "We couldn’t verify your PayPal connection. Choose Check status to try again. If this continues, contact our team.": "Je PayPal-koppeling kon niet worden gecontroleerd. Kies Status controleren om het opnieuw te proberen. Blijft dit gebeuren, neem dan contact op met ons team.",
