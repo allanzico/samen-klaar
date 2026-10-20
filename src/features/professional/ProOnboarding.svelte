@@ -13,7 +13,7 @@
   import { t } from '../../lib/i18n.svelte';
 
   // E01–E05. Every save is the same profile API call as before; the steps are presentation only.
-  let { actions }: { actions: AppActions } = $props();
+  let { actions, testPayments = false }: { actions: AppActions; testPayments?: boolean } = $props();
 
   type Form = { displayName: string; category: string; serviceName: string; serviceDescription: string; serviceArea: string; latitude: string; longitude: string; currency: string; price: string; callout: string; durationMinutes: number; materialsPolicy: string; exclusions: string };
   let profile = $state<ProfessionalProfile | null>(null);
@@ -114,7 +114,7 @@
             <h2 id="checklist-title" class="small-title">{t('Your review')}</h2>
             <ol class="checks">
               <li class="done"><span class="mark" aria-hidden="true"><Icon name="check" size={13}/></span><span><b>{t('Profile sent')}</b><small>{profile ? `${profile.serviceName} · ${t(profile.category)}` : ''}</small></span></li>
-              <li><span class="mark" aria-hidden="true"><Icon name="clock" size={13}/></span><span><b>{t('Identity and business check')}</b><small>{t('Our team does this. No action needed.')}</small></span></li>
+              <li><span class="mark" aria-hidden="true"><Icon name="clock" size={13}/></span><span><b>{t('Identity and eligibility check')}</b><small>{t('Our team does this. No action needed.')}</small></span></li>
               <li><span class="mark" aria-hidden="true">3</span><span><b>{t('Payout account')}</b><small>{t('Connect PayPal below.')}</small></span></li>
             </ol>
             <div class="row">
@@ -122,7 +122,7 @@
               <button type="button" class="btn btn-outline btn-sm" onclick={() => { step = 3; }}>{t('Add free times')}</button>
             </div>
           </section>
-          <PayPalPayouts/>
+          <PayPalPayouts {testPayments}/>
         </div>
         {@render preview()}
       </div>

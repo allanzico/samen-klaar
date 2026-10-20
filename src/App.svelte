@@ -100,7 +100,7 @@
       {#if app.loading && !onRequestPage}
         <p class="loading" role="status"><span class="spinner" aria-hidden="true"></span>{t('Loading…')}</p>
       {:else if pendingPro}
-        <ProOnboarding {actions}/>
+        <ProOnboarding {actions} testPayments={app.providerConfig?.testPayments ?? false}/>
       {:else if app.role === 'customer'}
         {#if app.customerPage === 'home'}<CustomerHome {app} {actions}/>
         {:else if app.customerPage === 'requests'}<CustomerRequests {app} {actions}/>
@@ -113,7 +113,7 @@
         {/if}
       {:else if app.role === 'professional'}
         {#if proView === 'times'}<FreeTimes/>
-        {:else if proView === 'profile'}<ProfileServices/>
+        {:else if proView === 'profile'}<ProfileServices testPayments={app.providerConfig?.testPayments ?? false}/>
         {:else if app.serverState && app.workspaceId}{#key app.workspaceId}<RequestPage {app} {actions} workspace={app.serverState} onBack={backToList}/>{/key}
         {:else}<ProJobs {app} {actions} onSetTimes={() => { proView = 'times'; }} onProfile={() => { proView = 'profile'; }}/>{/if}
       {/if}
