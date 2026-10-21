@@ -51,7 +51,7 @@ func (c AgentContext) proConfirm(kind, id, key string, params map[string]string)
 			case "confirm-appointment":
 				return act("confirm-visit", Action{Action: "confirm-appointment"}, params)
 			case "accept-price":
-				return act("accept-price", Action{Action: "accept-price", ProposalID: id}, params)
+				return act("accept-price", Action{Action: "accept-price", ProposalID: id}, amountParams(params, c.State.Job.PriceProposal.AmountMinor))
 			default:
 				return act("accept-visit", Action{Action: "accept-date", ProposalID: id}, params)
 			}

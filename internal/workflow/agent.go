@@ -221,6 +221,16 @@ func act(code string, action Action, params map[string]string) AgentDecision {
 
 func euros(minor int64) string { return fmt.Sprintf("%.2f", float64(minor)/100) }
 
+// Decision parameters are machine values; message text is formatted separately.
+func amountParams(params map[string]string, minor int64) map[string]string {
+	result := make(map[string]string, len(params)+1)
+	for key, value := range params {
+		result[key] = value
+	}
+	result["amount"] = euros(minor)
+	return result
+}
+
 // PublishedTotal is the professional's published price for this job, before any negotiation.
 func PublishedTotal(job Job) int64 {
 	if len(job.ScopeHistory) > 0 && job.ScopeHistory[0].TotalMinor > 0 {

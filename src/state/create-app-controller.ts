@@ -181,7 +181,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       try { await refreshWorkspaces(); } catch { app.error = 'Your change was saved, but the request list could not be refreshed.'; }
       if (app.providerConfig?.paymentsAvailable) void loadPayPalStatus();
       // The assistant answers a moment later, on the server; look again soon instead of waiting for the next poll.
-      if (action === 'agent-reply') for (const delay of [1200, 3000, 6000, 10000]) window.setTimeout(() => void refresh(), delay);
+      if (action === 'agent-reply' || action === 'set-service-address') for (const delay of [1200, 3000, 6000, 10000]) window.setTimeout(() => void refresh(), delay);
       try { await scrollToCurrent(true, action === 'select-match' ? 'current-plan' : app.serverState?.intake?.step === 'matches' ? 'recommended-service' : undefined); }
       catch { /* The server action has already succeeded. */ }
       return true;

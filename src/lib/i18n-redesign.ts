@@ -1,6 +1,10 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Plan and conversation": "Plan en gesprek",
+  "Confirm address": "Adres bevestigen",
+  "Price breakdown": "Prijsopbouw",
+  "Choose your street and house number from the suggestions. Your address stays private.": "Kies je straat en huisnummer uit de suggesties. Je adres blijft privé.",
   "Your profile": "Je profiel",
   "Your contact details and usual location.": "Je contactgegevens en gebruikelijke locatie.",
   "Your details": "Je gegevens",

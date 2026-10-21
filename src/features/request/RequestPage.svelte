@@ -6,6 +6,7 @@
   import RequestRail from '../shell/RequestRail.svelte';
   import NextStep from './NextStep.svelte';
   import Agreement from './Agreement.svelte';
+  import AgreedLedger from './AgreedLedger.svelte';
   import AfterThis from './AfterThis.svelte';
   import Thread from './Thread.svelte';
 import EvidenceRequirements from './EvidenceRequirements.svelte';
@@ -26,6 +27,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   import JobSoFar from '../customer/JobSoFar.svelte';
   import type { AppActions, AppState, WorkspaceState } from '../../lib/types';
   import { requestStatus } from '../../lib/request-status';
+  import { requestInteraction, requestReplyKey } from '../../lib/request-interaction';
   import { canCancelRequest, firstName, statusUi } from '../../lib/status-ui';
   import { customerStep, proStep, showTimingChoice } from '../../lib/next-steps';
   import { effectiveSlot, requestUi, resetRequestUi } from '../../lib/request-ui.svelte';
@@ -44,8 +46,19 @@ import RelatedJobs from './RelatedJobs.svelte';
   const code = $derived(requestStatus(workspace, role));
   const other = $derived(firstName(pro ? job.customer : job.professional));
   const ui = $derived(statusUi(code, role, other));
-  // While the assistant is asking something it is handling this step; the buttons below stay available.
-  const assistantAsking = $derived(!!(app.role === 'professional' ? workspace.proDialog : workspace.agentDialog)?.awaiting);
+  const interaction = $derived(requestInteraction(workspace, role));
+  const assistantAsking = $derived(!!interaction);
+  const replyKey = $derived(requestReplyKey(workspace, role));
+  let replyExpired = $state(false);
+  $effect(() => {
+    replyExpired = false;
+    if (!replyKey) return;
+    const timer = window.setTimeout(() => { replyExpired = true; }, 25000);
+    return () => window.clearTimeout(timer);
+  });
+  const assistantBusy = $derived(!assistantAsking && !!replyKey && !replyExpired);
+  const guided = $derived(assistantAsking || assistantBusy);
+  const compactHistory = $derived(guided || ['booked', 'waiting_visit_confirmation', 'confirm_visit', 'waiting_price', 'waiting_date'].includes(code));
   const hasJob = $derived(!!job.id);
   const matching = $derived(!hasJob && intake?.step === 'matches' && !!intake.matches.length);
   const welcome = $derived(!hasJob && !intake && !workspace.cancelled);
@@ -73,7 +86,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   const customerPages = ['quote', 'booking', 'choose_visit', 'review', 'payment', 'paid', 'refunded', 'refund_pending', 'dispute_review', 'cancellation_review'];
   const proPages = ['in_progress', 'note_requested', 'review', 'payment', 'paid', 'dispute_review'];
   const stagePage = $derived(hasJob && (pro ? proPages : customerPages).includes(code) && !(code === 'booking' && !!job.appointment));
-  const showComposer = $derived(pro ? hasJob : intake?.step !== 'location' && (!workspace.cancelled || hasJob));
+  const showComposer = $derived(!guided && (pro ? hasJob : intake?.step !== 'location' && (!workspace.cancelled || hasJob)));
   const canCancel = $derived(hasJob && canCancelRequest(workspace));
   let historyOpen = $state(false);
 
@@ -93,7 +106,7 @@ import RelatedJobs from './RelatedJobs.svelte';
     lastAsked = dialog.asked;
     void tick().then(() => document.getElementById('request-thread')?.scrollTo({ top: 0, behavior: 'smooth' }));
   });
-  function focusNextStep() { [...document.querySelectorAll<HTMLElement>('.next-step .btn')].find((button) => button.offsetParent !== null)?.focus(); }
+  function focusNextStep() { [...document.querySelectorAll<HTMLElement>('.ask-slot input, .ask-slot textarea, .ask-slot button, .next-step .btn')].find((button) => button.offsetParent !== null)?.focus(); }
 </script>
 
 {#snippet timing(placement: string)}
@@ -107,7 +120,7 @@ import RelatedJobs from './RelatedJobs.svelte';
 {/snippet}
 
 {#snippet asideContent()}
-  {#if view}<NextStep {view} pending={app.pending} placement="aside" extra={timing} demoted={assistantAsking}/>{/if}
+  {#if view}<NextStep {view} pending={app.pending} placement="aside" extra={timing}/>{/if}
   {#if !hasJob && !workspace.cancelled}
     <JobSoFar {intake} busy={app.pending} onEdit={actions.focusComposer}/>
   {:else if hasJob && !stagePage && !workspace.cancelled}
@@ -117,7 +130,20 @@ import RelatedJobs from './RelatedJobs.svelte';
   {#if canCancel}<button type="button" class="btn btn-danger-link cancel" onclick={() => { requestUi.cancelling = true; }}>{pro ? t('Cancel job') : job.appointment ? t('Cancel visit') : t('Cancel request')}</button>{/if}
 {/snippet}
 
-<div class="request-page" class:with-aside={!matching}>
+{#snippet conversation()}
+  {#if hasJob}<EvidenceRequirements {app} {actions} {job}/><AgentPanel {app} {workspace}/><CoordinationPanel {app} {workspace}/><SupportNotes {workspace}/>{/if}
+  {#if !pro}<RelatedJobs {app} {actions}/>{/if}
+  {#if welcome}
+    <div class="welcome"><h2 class="section-title">{t('What needs fixing?')}</h2><p class="secondary-text">{t('Say it in your own words. We’ll ask what the pro needs to know.')}</p></div>
+  {:else}
+    <RequestPhotos {app} {actions} {workspace}/>
+    {#if stagePage && hasJob}<h2 class="conversation-title small-title">{t('Conversation')}</h2>{/if}
+    <Thread {app} job={hasJob ? job : undefined} {intake} onAnswer={focusNextStep}/>
+    {#if intake && !hasJob}<IntakeStage {app} {actions} {intake}/>{/if}
+  {/if}
+{/snippet}
+
+<div class="request-page" class:with-aside={!matching && !guided}>
   <div class="rail-col">
     <RequestRail items={app.workspaces} currentID={app.workspaceId} {role} busy={app.pending || app.loading} canLoadMore={!!app.workspaceCursor}
       onSelect={(id) => actions.selectRequest(id)} onCreate={pro ? undefined : actions.createRequest} onLoadMore={actions.loadMoreWorkspaces}/>
@@ -154,25 +180,27 @@ import RelatedJobs from './RelatedJobs.svelte';
 
     <div id="request-thread" class="scroll" data-chat={!stagePage && !matching ? 'true' : undefined}>
       {#if app.error}<div class="content-pad"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
-      <div class="ask-slot content-pad"><AssistantAsk {app} {actions} {workspace}/></div>
-      {#if view && !matching && !assistantAsking}<div class="dock-step content-pad"><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
+      <div class="ask-slot content-pad">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>
+      {#if view && !matching && !guided}<div class="dock-step content-pad"><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
       {#if matching && intake}
         <div class="content-pad"><AgentPanel {app} {workspace}/></div>
         <MatchView {app} {actions} {intake}/>
       {:else}
         <div class="content-pad content">
+          {#if compactHistory}
+            <details class="disclosure supporting">
+              <summary>{t('Plan and conversation')}</summary>
+              <div class="supporting-content">
+                {#if hasJob}<Agreement {job} {role} variant="rows"/><AgreedLedger {job} title={job.quoteApproved ? 'What you agreed' : 'Price breakdown'}/>{/if}
+                {@render conversation()}
+                {#if canCancel}<button type="button" class="btn btn-danger-link cancel" onclick={() => { requestUi.cancelling = true; }}>{pro ? t('Cancel job') : job.appointment ? t('Cancel visit') : t('Cancel request')}</button>{/if}
+              </div>
+            </details>
+          {:else}
           {#if hasJob}
             {#if pro}<ProStage {app} {actions} {workspace} {intake} {code} {work}/>{:else}<CustomerStage {app} {actions} {workspace} {code}/>{/if}
           {/if}
-          {#if hasJob}<EvidenceRequirements {app} {actions} {job}/><AgentPanel {app} {workspace}/><CoordinationPanel {app} {workspace}/><SupportNotes {workspace}/>{/if}
-          {#if !pro}<RelatedJobs {app} {actions}/>{/if}
-          {#if welcome}
-            <div class="welcome"><h2 class="section-title">{t('What needs fixing?')}</h2><p class="secondary-text">{t('Say it in your own words. We’ll ask what the pro needs to know.')}</p></div>
-          {:else}
-            <RequestPhotos {app} {actions} {workspace}/>
-            {#if stagePage && hasJob}<h2 class="conversation-title small-title">{t('Conversation')}</h2>{/if}
-            <Thread {app} job={hasJob ? job : undefined} {intake} onAnswer={focusNextStep}/>
-            {#if intake && !hasJob}<IntakeStage {app} {actions} {intake}/>{/if}
+          {@render conversation()}
           {/if}
           {#if app.pending && !hasJob}<p class="thinking" role="status"><span class="spinner" aria-hidden="true"></span>{t('{brand} is working on that…', { brand: app.brandName })}</p>{/if}
           {#if pro && [work.note, work.changeDescription, work.changePrice].some(Boolean)}<p class="helper" role="status">{t(workSaved ? 'Unsent work notes saved in this browser tab.' : 'Draft storage is unavailable. Keep this tab open.')}</p>{/if}
@@ -185,7 +213,7 @@ import RelatedJobs from './RelatedJobs.svelte';
     {/if}
   </div>
 
-  {#if !matching}<aside class="aside-col" aria-label={t('Your next step')}>{@render asideContent()}</aside>{/if}
+  {#if !matching && !guided}<aside class="aside-col" aria-label={t('Your next step')}>{@render asideContent()}</aside>{/if}
 </div>
 
 <RequestDialogs {app} {actions} {workspace} {work} bind:historyOpen/>
@@ -215,7 +243,10 @@ import RelatedJobs from './RelatedJobs.svelte';
   .dock-step { display: none; padding-top: 16px; }
   .ask-slot { padding-top: 16px; }
   .ask-slot:empty { display: none; }
+  .replying { display: flex; align-items: center; gap: 10px; max-width: 820px; margin: 0 auto; padding: 16px 0; color: var(--sk-muted); }
   .conversation-title { margin-top: 8px; }
+  .supporting { width: 100%; max-width: 820px; margin: 0 auto; }
+  .supporting-content { display: grid; gap: 24px; padding-top: 16px; }
   .welcome { display: grid; gap: 6px; max-width: 820px; margin: 12vh auto 0; text-align: center; }
   .thinking { display: flex; align-items: center; gap: 10px; color: var(--sk-muted); font-size: 13px; max-width: 820px; width: 100%; margin: 0 auto; }
   .main-col.page .composer-row { padding-bottom: 16px; }

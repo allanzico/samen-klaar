@@ -115,6 +115,51 @@ func TestCustomerDeletesUnapprovedRequestAndKeepsAudit(t *testing.T) {
 	}
 }
 
+func TestCustomerDeletesWaitlistedRequestAfterOperatorFollowup(t *testing.T) {
+	ctx, store := accountTestStore(t)
+	customer, operator := accountFixture(t, ctx, store), accountFixture(t, ctx, store)
+	if _, err := store.pool.Exec(ctx, `INSERT INTO account_memberships(account_id,role,status) VALUES($1,'operator','active')`, operator); err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.CreateWorkspace(ctx, customer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Intake = &workflow.Intake{Step: "waitlist", Waitlisted: true, Description: "My kitchen sink is leaking", Category: "Plumbing", Location: &workflow.Location{Label: "Amsterdam"}}
+	raw, _ := json.Marshal(state)
+	if _, err := store.pool.Exec(ctx, `UPDATE account_workspaces SET state_json=$2 WHERE id=$1`, state.WorkspaceID, raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateOperatorCase(ctx, operator, state.WorkspaceID, "area-waitlist", "wait", "", "Waiting until a professional covers the customer's area.", ""); err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.ListWorkspaces(ctx, customer, "customer")
+	if err != nil || len(items) != 1 || !items[0].CanDelete {
+		t.Fatalf("the unbooked request should offer deletion: %+v %v", items, err)
+	}
+	if status, err := store.RemoveRequest(ctx, customer, "customer", state.WorkspaceID); err != nil || status != "deleted" {
+		t.Fatalf("delete unbooked waitlist request after support follow-up: %q %v", status, err)
+	}
+	var work, notes, audits int
+	if err := store.pool.QueryRow(ctx, `SELECT
+	 (SELECT count(*) FROM operator_case_work WHERE workspace_id=$1),
+	 (SELECT count(*) FROM operator_case_notes WHERE workspace_id=$1),
+	 (SELECT count(*) FROM audit_events WHERE workspace_id=$1 AND action='delete-request')`, state.WorkspaceID).Scan(&work, &notes, &audits); err != nil || work != 0 || notes != 0 || audits != 1 {
+		t.Fatalf("deleted request kept case work=%d notes=%d; deletion audits=%d: %v", work, notes, audits, err)
+	}
+}
+
+func TestCustomerCannotDeleteUnapprovedRequestWithWorkCaseHistory(t *testing.T) {
+	ctx, store := accountTestStore(t)
+	customer, _, state := unapprovedJobFixture(t, ctx, store)
+	if _, err := store.pool.Exec(ctx, `INSERT INTO operator_case_work(workspace_id,kind) VALUES($1,'coordination')`, state.WorkspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RemoveRequest(ctx, customer, "customer", state.WorkspaceID); !errors.Is(err, workflow.ErrRequestNotDeletable) {
+		t.Fatalf("work case history must be preserved: %v", err)
+	}
+}
+
 func TestApprovedAndBookedRequestsCannotBeDeleted(t *testing.T) {
 	ctx, store := accountTestStore(t)
 	customer, professional, booked := bookedCancellationFixture(t, ctx, store)

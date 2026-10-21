@@ -9,6 +9,8 @@
     "test:controller": "node --test src/state/create-app-controller.test.mjs",
     "test:i18n": "node --test src/lib/i18n-coverage.test.mjs",
     "test:names": "node --test src/lib/agent-names.test.mjs",
+    "test:format": "node --test src/lib/format.test.mjs",
+    "test:interaction": "node --test src/lib/request-interaction.test.mjs",
     "test:payouts": "node --test src/features/professional/paypal-payouts.test.mjs"
   },
   "dependencies": {
