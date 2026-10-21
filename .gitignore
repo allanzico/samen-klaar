@@ -11,4 +11,5 @@ coverage/
 .backups/
 .agents/skills/
 .impersonate/
+.claude/worktrees/
 .impeccable/

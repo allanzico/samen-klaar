@@ -12,4 +12,7 @@ coverage
 .backups
 .agents
 .codex
+.claude
 .aws
+.impersonate
+.impeccable

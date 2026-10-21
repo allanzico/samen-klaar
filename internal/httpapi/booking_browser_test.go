@@ -25,6 +25,7 @@ func (s bookingBrowserSession) Principal(*http.Request) (identity.Principal, boo
 	return s.principal, true
 }
 
+// Use fictional or public locations; never copy personal data from a bug report.
 type bookingBrowserLocations struct{}
 
 func (bookingBrowserLocations) Search(_ context.Context, query, _ string, _ bool) ([]workflow.Location, error) {
