@@ -74,7 +74,7 @@
             <div class="person"><span class="avatar avatar-44" aria-hidden="true">{initials(match.name)}</span><div><h2 id="compare-{match.id}">{match.name}</h2><p class="secondary-text">{match.serviceName || t(match.category)}</p></div></div>
             {@render facts(match)}
             {@render included(match)}
-            <button type="button" class="btn {index === 0 ? 'btn-primary' : 'btn-outline'} btn-block push" disabled={app.pending} onclick={() => select(match)}>{t('Review {name}’s plan', { name: firstName(match.name) })}</button>
+            <button type="button" class="btn {index === 0 ? 'btn-primary' : 'btn-outline'} btn-block push" disabled={app.pending} onclick={() => select(match)}>{t('Choose {name} and continue', { name: firstName(match.name) })}</button>
           </article>
         {/each}
       </div>
@@ -88,8 +88,8 @@
         <p class="service"><Icon name="check-circle"/><span><b>{best.serviceName}</b>{#if best.fitReason}<small>{best.fitReason}</small>{/if}</span></p>
         {@render facts(best)}
         {@render included(best)}
-        <button type="button" class="btn btn-primary btn-block btn-strong" disabled={app.pending} onclick={() => select(best)}>{t('Review {name}’s plan', { name: firstName(best.name) })}</button>
-        <p class="helper center">{t('Next: price, time and address. No payment yet.')}</p>
+        <button type="button" class="btn btn-primary btn-block btn-strong" disabled={app.pending} onclick={() => select(best)}>{t('Choose {name} and continue', { name: firstName(best.name) })}</button>
+        <p class="helper center">{t('You choose the professional. Your assistant then helps with the plan and visit.')}</p>
       </article>
     {/if}
   </div>
@@ -108,7 +108,7 @@
           <li>
             <span class="avatar" aria-hidden="true">{initials(match.name)}</span>
             <span class="alt-text"><b>{match.name}</b><small>{money(match.totalMinor, match.currency)} · {t('{minutes} min', { minutes: match.durationMinutes })} · {match.earliestAppointment ? dayTime(match.earliestAppointment.startUtc, match.earliestAppointment.timezone) : t('time in chat')}</small></span>
-            <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} onclick={() => select(match)}>{t('Review')}</button>
+            <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} onclick={() => select(match)}>{t('Choose {name}', { name: firstName(match.name) })}</button>
           </li>
         {/each}
       </ul>

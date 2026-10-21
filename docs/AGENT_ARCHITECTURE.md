@@ -15,7 +15,7 @@ see "Known limits" at the end.
 
 | Agent | Acts alone when | Stops and asks when |
 | --- | --- | --- |
-| Customer | a match is inside the price limit; the service address is saved; the price is inside the limit, then books the earliest time inside the allowed days and hours; accepts an offer at or under the limit; approves extra work up to the allowed amount | price is above the limit after one counter-offer; no published free time fits and its one visit proposal was not met; address missing; a clarification question; finished work (it asks in the chat and approves only on a yes, unless the person delegated approval); payment (always: PayPal approval is the person's) |
+| Customer | the customer has chosen a professional; the service address is saved; the price is inside the limit, then books the earliest time inside the allowed days and hours; accepts an offer at or under the limit; approves extra work up to the allowed amount | a professional has not been chosen by the customer; price is above the limit after one counter-offer; no published free time fits and its one visit proposal was not met; address missing; a clarification question; finished work (it asks in the chat and approves only on a yes, unless the person delegated approval); payment (always: PayPal approval is the person's) |
 | Professional | a price offer is at or above the floor (a percentage of the listed price); a reserved visit is inside the allowed days and hours (if auto-confirm is on); a proposed time is inside the hours (if auto-accept is on); a proposed time outside the hours gets one counter at the closest time inside them (a free published slot first) | an offer is below the floor after one counter-offer; a visit is outside the hours; anything about work, disputes or money |
 
 ### Reschedules, declines and cancellations
@@ -24,7 +24,7 @@ see "Known limits" at the end.
 | --- | --- | --- |
 | The other side proposes a new time for a booked visit | accepts when the new time is inside its days, hours and horizon | accepts when auto-accept is on and the new time is inside its days and hours |
 | The professional declines a reserved visit (or the reservation lapses) | books another free time inside its window, never the declined one; asks its person when none fits | n/a |
-| The professional cancels the request | goes back to the matches, picks another professional inside the limits and never the one who cancelled; asks its person when nobody fits | n/a |
+| The professional cancels the request | goes back to the matches and recommends another professional inside the limits, skipping the one who cancelled; waits for the customer to choose | n/a |
 | The customer cancels more than 24 hours ahead | n/a (cancellation is immediate and final) | nothing to decide; any open question is closed |
 
 When the customer asks their assistant for a move or cancellation the assistant sends the same
@@ -59,7 +59,7 @@ account menu lets them tighten or widen it, pause the agent entirely, or hand ov
 - **Customer defaults:** visits Monday to Saturday, 08:00 to 20:00, up to 14 days out, proposing 10:00
   when none of the professional's listed times fit. The price limit comes from the budget named in the
   chat (`workflow.BudgetMinor` reads "My budget is EUR 120"), capped by an optional ceiling in the
-  preferences. With no budget, the agent still chooses a professional and negotiates, but the person
+  preferences. With no budget, the agent still recommends professionals and negotiates after the customer chooses one, but the person
   approves the price (`approve_price`). The service address is the one thing only the person has, so the
   agent asks for it (`address_needed`).
 - **Professional defaults:** auto-confirm and auto-accept on, a 90 percent price floor, and days and hours
@@ -71,7 +71,7 @@ account menu lets them tighten or widen it, pause the agent entirely, or hand ov
 
 ## The assistant talks (scheduling dialogue)
 
-The customer's agent is a chat partner. After a professional is chosen it carries on in the same thread,
+The customer's agent is a chat partner. Finding matches leaves the request on the results page. The customer reviews the service, price and alternatives, then presses **Choose {name} and continue**. Before plan approval, **Request options → Choose another professional** returns to the results and closes the previous professional’s active questions. The UI also ignores old saved questions when there is no assigned job. The workflow rejects assistant-originated `select-match` actions, even with `bookWithoutAsking` enabled: that preference delegates visit-time booking, not the choice of professional. Refreshes, agent sweeps and saved mandate changes cannot cross this boundary. After the customer chooses a professional it carries on in the same thread,
 in the customer's language (English or Dutch), and only the customer sees these messages:
 
 1. **Address.** "What is the full address where Marieke should come?" The reply is saved as the service address.

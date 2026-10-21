@@ -43,6 +43,51 @@ func TestCustomerAgentBooksInsideMandate(t *testing.T) {
 	}
 }
 
+func TestCustomerReviewsProfessionalBeforeAssistantCanContinue(t *testing.T) {
+	for _, bookAlone := range []bool{false, true} {
+		state := NewState()
+		state.Intake = &Intake{Step: "matches", Budget: "EUR 120", Matches: testMatches("noor")}
+		mandate := customerMandate()
+		mandate.BookWithoutAsking = bookAlone
+		d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: mandate, Now: agentNow})
+		if d.Kind != AgentEscalate || d.Code != "choose_professional" || d.Action != nil {
+			t.Fatalf("assistant chose a professional before customer confirmation (automatic visits=%v): %+v action=%+v", bookAlone, d, d.Action)
+		}
+	}
+}
+
+func TestProfessionalSelectionRequiresTheCustomersOwnAction(t *testing.T) {
+	state := NewState()
+	state.Intake = &Intake{Step: "matches", Category: "Plumbing", Location: &Location{Label: "Amsterdam"}, Matches: testMatches("noor")}
+	input := Action{Actor: "customer", Action: "select-match", Value: "noor", ByAgent: true, SelectedOffer: testOffer("noor", "Plumbing"), CustomerName: "Test customer"}
+	if err := Apply(&state, input); err == nil || state.Job.ID != "" {
+		t.Fatal("assistant assigned a professional without a customer action")
+	}
+	input.ByAgent = false
+	if err := Apply(&state, input); err != nil {
+		t.Fatalf("customer could not choose a professional: %v", err)
+	}
+	if state.Job.ProfessionalProfileID != "noor" {
+		t.Fatal("customer choice was not saved")
+	}
+}
+
+func TestReturningToResultsClosesThePreviousProfessionalsAssistantQuestions(t *testing.T) {
+	state := NewState()
+	state.Intake = &Intake{Step: "matches", Category: "Plumbing", Location: &Location{Label: "Amsterdam"}, Matches: testMatches("noor")}
+	if err := Apply(&state, Action{Actor: "customer", Action: "select-match", Value: "noor", SelectedOffer: testOffer("noor", "Plumbing")}); err != nil {
+		t.Fatal(err)
+	}
+	state.AgentDialog = &AgentDialog{Stage: "address", Awaiting: true, Asked: 1}
+	state.ProDialog = &AgentDialog{Stage: "confirm", Awaiting: true, Asked: 1}
+	if err := Apply(&state, Action{Actor: "customer", Action: "return-to-matches", Matches: testMatches("noor")}); err != nil {
+		t.Fatal(err)
+	}
+	if state.Job.ID != "" || state.AgentDialog != nil || state.ProDialog != nil {
+		t.Fatal("previous assistant questions survived the return to professional review")
+	}
+}
+
 func TestCustomerAgentCountersThenEscalates(t *testing.T) {
 	m := customerMandate()
 	state := quotedState(11000) // above the 100.00 limit, limit is 91% of the 90.00... published
@@ -288,8 +333,8 @@ func TestCustomerAgentFindsAnotherAfterProfessionalCancels(t *testing.T) {
 func TestCustomerAgentSkipsProfessionalWhoCancelled(t *testing.T) {
 	state := State{Intake: &Intake{Step: "matches", Matches: []Match{{ID: "pro_1", Name: "Flow plumber", TotalMinor: 9000}, {ID: "pro_2", Name: "Other", TotalMinor: 9500}}}}
 	d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: customerMandate(), Now: agentNow, Avoid: []string{"pro_1"}})
-	if d.Kind != AgentAct || d.Action.Value != "pro_2" {
-		t.Fatalf("expected the second professional, got %+v", d)
+	if d.Kind != AgentEscalate || d.Code != "choose_professional" || d.Params["profileId"] != "pro_2" || d.Action != nil {
+		t.Fatalf("expected the customer to review the second professional, got %+v", d)
 	}
 	state.Intake.Matches = state.Intake.Matches[:1]
 	if d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: customerMandate(), Now: agentNow, Avoid: []string{"pro_1"}}); d.Code != "no_match_within_limits" {

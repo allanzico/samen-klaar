@@ -1,6 +1,10 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Choose {name} and continue": "Kies {name} en ga verder",
+  "Choose {name}": "Kies {name}",
+  "You choose the professional. Your assistant then helps with the plan and visit.": "Jij kiest de vakpersoon. Daarna helpt je assistent met het plan en de afspraak.",
+  "Review the professionals and choose who you want to continue with.": "Bekijk de vakpersonen en kies met wie je verder wilt.",
   "Expand current question": "Huidige vraag uitklappen",
   "Minimize current question": "Huidige vraag inklappen",
   "Reconnecting to updates… Your saved changes are safe.": "Opnieuw verbinden voor updates… Je opgeslagen wijzigingen zijn veilig.",

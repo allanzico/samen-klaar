@@ -253,6 +253,7 @@ func applyIntakeInput(state *State, input Action) error {
 			state.Cancelled = false
 			state.CancelledBy = ""
 			state.Job = NewState().Job
+			state.AgentDialog, state.ProDialog = nil, nil
 			state.AvailableSlots = []Appointment{}
 			finishIntake(i, input.Matches, input.SuggestedQuestion)
 			return nil
@@ -264,6 +265,7 @@ func applyIntakeInput(state *State, input Action) error {
 			return errors.New("describe the corrected job in 5 to 500 characters")
 		}
 		state.Job = NewState().Job
+		state.AgentDialog, state.ProDialog = nil, nil
 		state.AvailableSlots = []Appointment{}
 		if input.Action == "return-to-matches" {
 			finishIntake(i, input.Matches, input.SuggestedQuestion)
@@ -313,6 +315,9 @@ func applyIntakeInput(state *State, input Action) error {
 		return nil
 	}
 	if input.Action == "select-match" {
+		if input.ByAgent {
+			return errors.New("the customer must choose a professional before the assistant can continue")
+		}
 		if i.Step != "matches" || i.NeedsReview {
 			return errors.New("finish the conversation before choosing a professional")
 		}

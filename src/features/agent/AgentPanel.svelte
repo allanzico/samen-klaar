@@ -15,7 +15,7 @@
   let showAll = $state(false);
   const question = $derived(agentUi.escalations.find((item) => item.workspaceId === workspace.workspaceId));
   // "Waiting for your answer" entries repeat the assistant's own question; only real steps belong in the log.
-  const steps = $derived(items.filter((item) => !(item.code === 'awaiting_reply' && !item.action)));
+  const steps = $derived(items.filter((item) => !(['awaiting_reply', 'choose_professional'].includes(item.code) && !item.action)));
   const shown = $derived(showAll ? steps : steps.slice(0, 4));
   const settingsCodes = ['address_needed', 'no_match_within_limits', 'no_time_in_window', 'price_above_limit', 'visit_outside_window'];
   // The panel carries my assistant's name once it has said something.

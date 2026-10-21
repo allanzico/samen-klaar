@@ -576,7 +576,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		request("customer", "PUT", "/api/agent/mandate", map[string]any{"enabled": true, "maxTotalMinor": 99999999}, 400)
 		request("customer", "PUT", "/api/agent/mandate", customerMandate(20000), 200)
 		actor := "customer" // the customer account whose intake and state the helpers below use
-		runIntake := func() string {
+		runIntake := func(choose ...bool) string {
 			var created struct {
 				Workspace workflow.State `json:"workspace"`
 			}
@@ -584,6 +584,23 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 			id := created.Workspace.WorkspaceID
 			for _, step := range []struct{ action, value string }{{"start-intake", "My kitchen sink is leaking underneath"}, {"answer-intake", "Water runs but the pipe drips underneath"}, {"answer-intake", "This is an emergency"}, {"answer-intake", "My budget is EUR 120"}, {"set-location", "Amsterdam"}} {
 				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": step.action, "value": step.value}, 200)
+			}
+			// Run the real background loop repeatedly: finding matches must not assign a professional,
+			// share a saved full address or open the post-selection assistant dialogue.
+			for range 2 {
+				if err := server.RunAgents(ctx, id, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			unselected := decodeState(request(actor, "GET", "/api/state?workspaceId="+id, nil, 200))
+			if unselected.Job.ID != "" || unselected.AgentDialog != nil || unselected.Job.ServiceAddress != "" || unselected.Job.QuoteApproved || unselected.Job.Appointment != nil {
+				t.Fatal("assistant advanced past matching without customer selection")
+			}
+			if len(choose) == 0 || choose[0] {
+				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": "select-match", "value": profile.Profile.ID}, 200)
+				if err := server.RunAgents(ctx, id, true); err != nil {
+					t.Fatal(err)
+				}
 			}
 			return id
 		}
@@ -616,7 +633,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		for _, item := range activity {
 			codes[item.Code] = item.Outcome == "applied"
 		}
-		if !codes["select-match"] || !codes["set-address"] || !codes["book-visit"] {
+		if codes["select-match"] || !codes["choose_professional"] || !codes["set-address"] || !codes["book-visit"] {
 			t.Fatalf("customer agent activity is missing steps: %+v", activity)
 		}
 		json.Unmarshal(request("professional", "GET", "/api/agent/activity?workspaceId="+booked.WorkspaceID, nil, 200), &activity)
@@ -632,7 +649,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		request("outsider", "GET", "/api/agent/activity?workspaceId="+booked.WorkspaceID, nil, 404)
 		// A tighter mandate means the agent may not book: it stops and asks its person.
 		request("customer", "PUT", "/api/agent/mandate", customerMandate(5000), 200)
-		blockedID := runIntake()
+		blockedID := runIntake(false)
 		var escalations []workflow.AgentEscalation
 		for i := 0; i < 80 && len(escalations) == 0; i++ {
 			json.Unmarshal(request("customer", "GET", "/api/agent/escalations", nil, 200), &escalations)
@@ -645,8 +662,16 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		if stopped.Job.Appointment != nil || stopped.Job.QuoteApproved {
 			t.Fatal("an agent booked outside its mandate")
 		}
-		// Raising the limit is the person's decision; the agent then finishes the booking.
+		// Raising the limit does not select a professional. The customer makes that choice first.
 		request("customer", "PUT", "/api/agent/mandate", customerMandate(20000), 200)
+		if err := server.RunAgents(ctx, blockedID, true); err != nil {
+			t.Fatal(err)
+		}
+		unselected := decodeState(request("customer", "GET", "/api/state?workspaceId="+blockedID, nil, 200))
+		if unselected.Job.ID != "" {
+			t.Fatal("saving agent preferences chose a professional")
+		}
+		request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "select-match", "value": profile.Profile.ID}, 200)
 		waitFor(blockedID, func(s workflow.State) bool {
 			return s.Job.AppointmentConfirmation != nil && s.Job.AppointmentConfirmation.Status == "confirmed"
 		})
@@ -781,13 +806,14 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		// The professional cancels: the customer's agent goes back to the matches, does not pick the same
 		// professional again, and tells its person by email and in the app that nobody else fits.
 		cancelled := waitFor(runIntake(), confirmed)
+		previousNotices := agentNotices(cancelled.WorkspaceID, "customer")
 		request("professional", "POST", "/api/actions", map[string]string{"workspaceId": cancelled.WorkspaceID, "action": "cancel-request", "value": "I cannot take this job after all."}, 200)
 		waitQuestion(actor, cancelled.WorkspaceID, "no_match_within_limits")
 		back := decodeState(request(actor, "GET", "/api/state?workspaceId="+cancelled.WorkspaceID, nil, 200))
 		if back.Cancelled || back.Job.ID != "" || back.Intake == nil || back.Intake.Step != "matches" {
 			t.Fatalf("the customer's agent did not return to the matches: cancelled=%v job=%q", back.Cancelled, back.Job.ID)
 		}
-		if agentNotices(cancelled.WorkspaceID, "customer") != 1 {
+		if agentNotices(cancelled.WorkspaceID, "customer") != previousNotices+1 {
 			t.Fatal("the customer was not notified that their agent needs them")
 		}
 

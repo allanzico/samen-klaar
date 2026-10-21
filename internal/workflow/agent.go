@@ -305,7 +305,7 @@ func decideCustomer(c AgentContext) AgentDecision {
 		if state.Intake == nil || state.Intake.Step != "matches" || len(state.Intake.Matches) == 0 {
 			return wait()
 		}
-		return chooseMatch(c)
+		return recommendMatch(c)
 	}
 	limit := agentLimit(c)
 	published := PublishedTotal(job)
@@ -434,7 +434,9 @@ func decideCustomer(c AgentContext) AgentDecision {
 	return wait()
 }
 
-func chooseMatch(c AgentContext) AgentDecision {
+// Recommending a professional does not assign them. The customer must choose who comes,
+// including when they have delegated visit-time booking within their preferences.
+func recommendMatch(c AgentContext) AgentDecision {
 	m := c.Mandate
 	limit := agentLimit(c)
 	for _, match := range c.State.Intake.Matches {
@@ -444,7 +446,7 @@ func chooseMatch(c AgentContext) AgentDecision {
 		if limit > 0 && match.TotalMinor > limit && !(c.Counters == 0 && limit*100 >= match.TotalMinor*int64(m.CounterPercent)) {
 			continue
 		}
-		return act("select-match", Action{Action: "select-match", Value: match.ID}, map[string]string{"name": match.Name, "price": euros(match.TotalMinor)})
+		return escalate("choose_professional", map[string]string{"profileId": match.ID, "name": match.Name, "price": euros(match.TotalMinor)})
 	}
 	return escalate("no_match_within_limits", nil)
 }

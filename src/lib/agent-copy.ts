@@ -72,6 +72,7 @@ export function noteText(message: { code?: string; text: string; params?: Record
 export function questionText(item: Pick<AgentEscalation, 'code' | 'params'>): string {
   const params = fill(item.params);
   switch (item.code) {
+    case 'choose_professional': return t('Review the professionals and choose who you want to continue with.');
     case 'approve_price': return t('Approve the price of {price}, or ask the professional for a different one.', params);
     case 'awaiting_reply': return t('Your assistant asked you a question in the chat. Answer it there.');
     case 'agent_misunderstood': return t('Your assistant could not understand your answer. Please use the buttons on this page.');

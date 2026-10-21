@@ -7,7 +7,16 @@ const module = { exports: {} };
 new Function('module', 'exports', bundle.outputFiles[0].text)(module, module.exports);
 const { requestInteraction, requestReplyKey } = module.exports;
 const question = { seq: 3, role: 'agent', audience: 'customer', text: 'Your address?' };
-const workspace = () => ({ job: {}, agentDialog: { awaiting: true, stage: 'address', asked: 3 }, intake: { messages: [question, { seq: 4, role: 'agent', audience: 'customer', text: 'Unrelated update' }] } });
+const workspace = () => ({ job: {id:'selected-job'}, agentDialog: { awaiting: true, stage: 'address', asked: 3 }, intake: { messages: [question, { seq: 4, role: 'agent', audience: 'customer', text: 'Unrelated update' }] } });
+
+test('old assistant questions cannot interrupt professional review without an assigned job', () => {
+  const w = workspace();
+  w.job.id = '';
+  assert.equal(requestInteraction(w,'customer'),undefined);
+  w.agentDialog.awaiting = false;
+  w.intake.messages.push({seq:5,role:'customer',audience:'customer',text:'An earlier reply'});
+  assert.equal(requestReplyKey(w,'customer'),'');
+});
 
 test('the active question is named by the saved dialog, not the newest bot message', () => {
   assert.equal(requestInteraction(workspace(), 'customer').question, question);

@@ -8,6 +8,7 @@ function requiresManualReview(workspace: WorkspaceState) {
 
 // The saved dialog owns the next interaction. A history message alone must never reopen a step.
 export function requestInteraction(workspace: WorkspaceState, role: WorkspaceRole) {
+  if (!workspace.job.id) return undefined;
   const dialog = role === 'customer' ? workspace.agentDialog : role === 'professional' ? workspace.proDialog : undefined;
   const job = workspace.job;
   if (!dialog?.awaiting || requiresManualReview(workspace)) return undefined;
@@ -26,6 +27,7 @@ export function requestInteraction(workspace: WorkspaceState, role: WorkspaceRol
 // A saved answer can arrive before the background assistant's next message.
 // Keep that brief interval in the same interaction instead of flashing every manual control.
 export function requestReplyKey(workspace: WorkspaceState, role: WorkspaceRole): string {
+  if (!workspace.job.id) return '';
   if (requiresManualReview(workspace)) return '';
   const dialog = role === 'customer' ? workspace.agentDialog : workspace.proDialog;
   if (!dialog) return '';
