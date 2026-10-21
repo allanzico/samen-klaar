@@ -50,10 +50,10 @@ export function agreementTerms(job: Job, role: WorkspaceRole | null): Term[] {
     short: ''
   });
 
-  const authorized = job.paymentAuthorizedVersion === job.scopeVersion;
+  const authorized = job.scopeVersion > 0 && job.paymentAuthorizedVersion === job.scopeVersion;
   terms.push({
     key: 'payment', icon: job.paid ? 'check' : 'clock', agreed: job.paid, label: t('Payment'),
-    value: job.paid ? t('Paid') : authorized ? (pro ? t('Held by PayPal') : t('Held by PayPal until you approve')) : pro ? t('After {name} approves', { name: other }) : t('After you approve the work'),
+    value: job.paid ? t('Paid') : authorized ? (pro ? t('Held by PayPal') : t('Held by PayPal until you approve')) : job.paymentAuthorizationTiming === 'at_booking' ? t('PayPal approval needed for the booking hold') : pro ? t('After {name} approves', { name: other }) : t('After you approve the work'),
     short: ''
   });
   return terms;

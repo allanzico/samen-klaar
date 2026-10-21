@@ -18,12 +18,12 @@ function setup(fetcher) {
     removeItem: (key) => storage.delete(key)
   };
   globalThis.window = {
-    location: { href: 'https://example.test/?workspaceId=A', pathname: '/' },
+    location: { href: 'https://example.test/?workspaceId=A', pathname: '/', assign: () => {} },
     history: {
       replaceState: (_, __, path) => { window.location.href = 'https://example.test' + path; window.location.pathname = new URL(window.location.href).pathname; },
       pushState: (_, __, path) => { window.location.href = 'https://example.test' + path; window.location.pathname = new URL(window.location.href).pathname; }
     },
-    scrollTo: () => {}
+    scrollTo: () => {}, setTimeout: () => 0
   };
   globalThis.fetch = fetcher;
   const app = {
@@ -39,6 +39,68 @@ function setup(fetcher) {
 function response(value, ok = true) {
   return { ok, json: async () => value, text: async () => String(value) };
 }
+
+test('an older failed poll cannot make a successful location or price action look like it failed', async () => {
+  for (const action of ['set-location', 'accept-price']) {
+    let finishPoll;
+    let lists = 0;
+    const { app, actions } = setup(async (url) => {
+      if (url === '/api/workspaces' && lists++ === 0) return new Promise((resolve) => { finishPoll = resolve; });
+      if (url === '/api/workspaces') return response({workspaces: app.workspaces});
+      if (url === '/api/actions') return response({job: {id:'job-A',quoteApproved:true}});
+      throw new Error(`unexpected ${url}`);
+    });
+    app.session.authenticated = true;
+    app.session.memberships = [{role:'customer',status:'active'}];
+    const polling = actions.refresh();
+    assert.equal(await actions.act(action, 'selection'), true);
+    finishPoll({...response('temporarily unavailable',false),status:503});
+    await polling;
+    assert.equal(app.error, '', `${action} was saved but the stale poll reported failure`);
+  }
+});
+
+test('a current failed poll reconnects without suggesting that a saved action failed', async () => {
+  let offline = true;
+  const { app, actions } = setup(async (url) => {
+    if (offline) return {...response('unavailable', false), status:503};
+    return response(url === '/api/workspaces' ? {workspaces:app.workspaces} : app.serverState);
+  });
+  app.session.authenticated = true;
+  app.session.memberships = [{role:'customer',status:'active'}];
+  await actions.refresh();
+  assert.equal(app.error, '');
+  assert.match(app.refreshError, /Reconnecting/);
+  offline = false;
+  await actions.refresh();
+  assert.equal(app.refreshError, '');
+});
+
+test('an assistant reservation opens PayPal once for an accepted reply with the saved hold choice', async () => {
+  for (const [timing, accepted] of [['at_booking', true], ['after_completion', true], ['at_booking', false]]) {
+    let orders = 0;
+    const destinations = [];
+    const { app, actions } = setup(async (url) => {
+      if (url === '/api/workspaces') return response({workspaces:app.workspaces});
+      if (url === '/api/actions') return accepted ? response(app.serverState) : {...response('reply rejected',false),status:409};
+      if (url.startsWith('/api/paypal/status')) return response({status:'not_started'});
+      if (url.startsWith('/api/paypal/create-order')) { orders++; return response({approvalUrl:'https://www.sandbox.paypal.com/checkoutnow?token=ORDER-1'}); }
+      if (url === '/api/state?workspaceId=A') return response({...app.serverState,job:{...app.serverState.job,appointment:{slotId:'slot'},appointmentConfirmation:{status:'pending'}}});
+      throw new Error(`unexpected ${url}`);
+    });
+    window.location.assign = (url) => destinations.push(url);
+    app.session.authenticated = true;
+    app.session.memberships = [{role:'customer',status:'active'}];
+    app.providerConfig.paymentsAvailable = true;
+    app.serverState.job = {id:'job-A',scopeVersion:1,paymentAuthorizedVersion:0,paymentAuthorizationTiming:timing};
+    assert.equal(await actions.act('agent-reply','First one',undefined,undefined,{choiceId:'slot:slot'}),accepted ? true : undefined);
+    await actions.refresh();
+    app.pending = false; // A second poll must not create a second checkout while navigation finishes.
+    await actions.refresh();
+    assert.equal(orders, accepted && timing === 'at_booking' ? 1 : 0);
+    assert.equal(destinations.length, orders);
+  }
+});
 
 test('failed selection keeps displayed state and action target together', async () => {
   const sent = [];

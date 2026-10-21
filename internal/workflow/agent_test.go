@@ -902,3 +902,26 @@ func TestUnverifiedAddressKeepsAssistantAtOneRecoverableQuestion(t *testing.T) {
 		t.Fatal("unverified address was accepted or the question was lost")
 	}
 }
+
+func TestAssistantOfferedVisitKeepsCustomersPayPalHoldChoice(t *testing.T) {
+	state := quotedState(9900)
+	state.Job.QuoteApproved = true
+	state.Job.PaymentAuthorizationTiming = PaymentAuthorizationAtBooking
+	slot := agentSlot("hold-slot", "2026-10-22T08:00:00Z", "2026-10-22T09:00:00Z")
+	state.AvailableSlots = []Appointment{slot}
+	state.Intake = &Intake{Locale: "en", Messages: []Message{{Seq: 1, Role: "agent", Audience: "customer", Text: "Which time?"}, {Seq: 2, Role: "customer", Audience: "customer", Text: "First one", Choice: "slot:hold-slot"}}}
+	state.AgentDialog = &AgentDialog{Stage: "offer", Asked: 1, Offered: []Appointment{slot}}
+	d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: DefaultMandate("customer"), Now: agentNow})
+	if d.Action == nil || d.Action.PaymentAuthorizationTiming != PaymentAuthorizationAtBooking {
+		t.Fatalf("assistant silently changed the customer's PayPal hold choice: %+v", d)
+	}
+}
+
+func TestAnExplicitlyApprovedPriceIsNotRenegotiatedByTheAssistant(t *testing.T) {
+	state := quotedState(11000)
+	state.Job.QuoteApproved = true
+	d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: customerMandate(), Now: agentNow})
+	if d.Action == nil || d.Action.Action != "book-appointment" {
+		t.Fatalf("assistant tried to renegotiate an approved plan: %+v", d)
+	}
+}

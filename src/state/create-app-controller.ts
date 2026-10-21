@@ -7,6 +7,7 @@ type ScrollToCurrent = (smooth?: boolean, targetID?: string) => Promise<void>;
 
 export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent): AppActions {
   let stateGeneration = 0;
+  let bookingCheckoutWorkspace: string | null = null;
   function currentDraftKey() { return draftKey(app.session?.account?.id, app.role, app.workspaceId); }
   function persistDraft() { app.draftRestored = false; app.draftSaved = saveDraft(currentDraftKey(), app.draft); }
   function requestedWorkspace(url: URL) {
@@ -174,8 +175,10 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     stateGeneration++;
     app.pending = true;
     app.error = '';
+    const checkoutAfterReply = action === 'agent-reply' && !app.serverState?.job.appointment && app.serverState?.job.paymentAuthorizationTiming === 'at_booking';
     try {
       const updated = await api.action(app.workspaceId, action, value, location, changeAmountMinor, negotiation, rating, paymentAuthorizationTiming);
+      if (checkoutAfterReply) bookingCheckoutWorkspace = app.workspaceId;
       app.serverState = updated;
       app.newConversation = false;
       try { await refreshWorkspaces(); } catch { app.error = 'Your change was saved, but the request list could not be refreshed.'; }
@@ -558,6 +561,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       const lists = await api.workspaces();
       const state = workspace ? await api.state(workspace) : null;
       if (generation === stateGeneration && !app.pending && app.workspaceId === workspace) {
+        app.refreshError = '';
         rememberOpenRequests(lists);
         const seen = new Set(lists.workspaces.map((item) => item.id));
         const hadOlderPages = app.workspaces.length > 100;
@@ -566,8 +570,13 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
         if (state) app.serverState = state;
       }
     } catch (error) {
-      app.error = error instanceof Error ? error.message.trim() : 'Could not refresh the request.';
+      if (generation === stateGeneration && !app.pending && app.workspaceId === workspace) app.refreshError = 'Reconnecting to updates… Your saved changes are safe.';
     } finally { refreshing = false; }
+    const job = app.serverState?.job;
+    if (generation === stateGeneration && !app.refreshError && bookingCheckoutWorkspace === workspace && workspace === app.workspaceId && !app.pending && job?.appointment && job.appointmentConfirmation?.status === 'pending' && job.paymentAuthorizationTiming === 'at_booking' && job.paymentAuthorizedVersion !== job.scopeVersion && !job.workStarted && !job.paid && !app.serverState?.cancelled) {
+      bookingCheckoutWorkspace = null;
+      await beginPayPalCheckout();
+    }
   }
 
   return {

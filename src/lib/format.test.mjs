@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import { build } from 'esbuild';
 
 globalThis.$state = (value) => value;
-const bundle = await build({ stdin: { contents: "export * from './src/lib/format'; export { noteText } from './src/lib/agent-copy';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', write: false });
+const bundle = await build({ stdin: { contents: "export * from './src/lib/format'; export { noteText } from './src/lib/agent-copy'; export { agreementTerms } from './src/lib/agreement';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', write: false });
 const module = { exports: {} };
 new Function('module', 'exports', bundle.outputFiles[0].text)(module, module.exports);
-const { money, decimalMoney, noteText, untilShort } = module.exports;
+const { money, decimalMoney, noteText, untilShort, agreementTerms } = module.exports;
 
 test('shared money formatting never displays non-finite or missing amounts as prices', () => {
   for (const value of [NaN, Infinity, -Infinity, undefined, null, '', 'NaN', {}]) {
@@ -30,4 +30,16 @@ test('an accepted price with historical formatted parameters renders its real am
 
 test('an invalid deadline cannot produce NaN in a countdown', () => {
   assert.equal(untilShort('invalid'), '—');
+});
+
+test('a saved booking hold choice is never displayed as an already authorized payment', () => {
+  const job = {quote:{currency:'EUR',totalMinor:10000,lines:[]},scopeVersion:1,paymentAuthorizedVersion:0,paymentAuthorizationTiming:'at_booking'};
+  const payment = () => agreementTerms(job,'customer').find((term) => term.key === 'payment').value;
+  assert.equal(payment(),'PayPal approval needed for the booking hold');
+  job.paymentAuthorizedVersion = 1;
+  assert.equal(payment(),'Held by PayPal until you approve');
+  job.scopeVersion = 2;
+  assert.equal(payment(),'PayPal approval needed for the booking hold');
+  job.scopeVersion = job.paymentAuthorizedVersion = 0;
+  assert.equal(payment(),'PayPal approval needed for the booking hold');
 });

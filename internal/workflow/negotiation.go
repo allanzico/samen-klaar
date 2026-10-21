@@ -103,7 +103,7 @@ func applyNegotiation(state *State, input Action) error {
 			}
 		}
 		if input.Actor == "customer" && input.PaymentAuthorizationTiming != "" {
-			timing, err := paymentAuthorizationTiming(input.PaymentAuthorizationTiming)
+			timing, err := bookingPaymentTiming(*job, input)
 			if err != nil {
 				return err
 			}

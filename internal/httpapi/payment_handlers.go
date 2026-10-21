@@ -77,6 +77,7 @@ func (s *Server) paypalAuthorizeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, map[string]string{"status": status})
+	s.TriggerAgents(state.WorkspaceID)
 }
 
 func (s *Server) paypalCaptureHandler(w http.ResponseWriter, r *http.Request) {
@@ -158,8 +159,8 @@ func (s *Server) paypalReconcileHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, map[string]any{"status": status, "state": state})
-	if state.Job.Paid {
-		s.TriggerAgents(state.WorkspaceID) // both assistants report the payment
+	if state.Job.Paid || status == "authorized" {
+		s.TriggerAgents(state.WorkspaceID) // confirmation can continue after a recovered booking hold
 	}
 }
 

@@ -215,11 +215,11 @@ func (c AgentContext) dialogConfirm(kind, id, key string, params map[string]stri
 		case in.Intent == "yes":
 			switch kind {
 			case "approve-quote":
-				return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, amountParams(params, c.State.Job.Quote.TotalMinor))
+				return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, amountParams(params, c.State.Job.Quote.TotalMinor))
 			case "accept-price":
 				return act("accept-price", Action{Action: "accept-price", ProposalID: id}, amountParams(params, c.State.Job.PriceProposal.AmountMinor))
 			default:
-				return act("accept-visit", Action{Action: "accept-date", ProposalID: id, PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, params)
+				return act("accept-visit", Action{Action: "accept-date", ProposalID: id, PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, params)
 			}
 		case in.Intent == "no" || in.Intent == "availability" && kind != "approve-quote":
 			switch kind {
@@ -390,7 +390,7 @@ func (c AgentContext) proposeFromWindows(d AgentDialog, released string) AgentDe
 		return escalate("no_time_in_window", nil)
 	}
 	if !job.QuoteApproved {
-		return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, map[string]string{"amount": euros(job.Quote.TotalMinor)})
+		return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, map[string]string{"amount": euros(job.Quote.TotalMinor)})
 	}
 	return act("propose-visit", proposeDate(candidate, "This time suits the customer."), map[string]string{"start": candidate.StartUTC, "end": candidate.EndUTC})
 }
@@ -457,7 +457,7 @@ func (c AgentContext) dialogSchedule(released string) AgentDecision {
 			if job.QuoteApproved {
 				action = "book-appointment"
 			}
-			return act("book-visit", Action{Action: action, Value: slot.SlotID, PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, map[string]string{"start": slot.StartUTC, "end": slot.EndUTC, "amount": euros(job.Quote.TotalMinor)})
+			return act("book-visit", Action{Action: action, Value: slot.SlotID, PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, map[string]string{"start": slot.StartUTC, "end": slot.EndUTC, "amount": euros(job.Quote.TotalMinor)})
 		}
 		switch in := c.intent(d, reply); in.Intent {
 		case "choose":

@@ -144,7 +144,8 @@ export function customerStep(ctx: CustomerContext): StepView | null {
         kind: terms ? 'your-turn' : 'info', tag: terms ? yourTurn : { variant: 'booked', label: t('Scheduled') }, title: terms ? t('Acknowledge the terms before work starts') : t('You’re booked'), amount: visit, after: after(0),
         text: terms ? t('{name} can’t start until you’ve read and acknowledged the reviewed terms for this booking.', { name: pro }) : undefined,
         primary: terms ? { label: t('Review and acknowledge'), run: ctx.openPolicy } : undefined,
-        secondary: job.appointment ? { label: t('Add to calendar'), run: () => downloadVisitCalendar(job.id, `${job.title} · ${job.professional}`, job.appointment!.startUtc, job.appointment!.endUtc) } : undefined
+        secondary: job.appointment ? { label: t('Add to calendar'), run: () => downloadVisitCalendar(job.id, `${job.title} · ${job.professional}`, job.appointment!.startUtc, job.appointment!.endUtc) } : undefined,
+        quiet: app.providerConfig?.paymentsAvailable && job.paymentAuthorizationTiming !== 'at_booking' ? [{ label: t('Authorize the amount in PayPal now'), run: async () => { if (await actions.act('set-payment-timing', '', undefined, undefined, undefined, undefined, 'at_booking')) await actions.beginPayPalCheckout(); } }] : []
       };
     }
     case 'in_progress':

@@ -216,6 +216,7 @@ export type AppState = {
   loading: boolean;
   pending: boolean;
   error: string;
+  refreshError?: string;
   composeMode: 'message' | 'price' | 'date';
   // Who a customer's free text goes to once a visit is booked: the professional, or their own assistant.
   messageTo: 'professional' | 'assistant';

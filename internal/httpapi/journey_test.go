@@ -76,6 +76,8 @@ func (s *journeyEvidence) Delete(_ context.Context, job, asset string) {
 type paymentTransport struct {
 	mu            sync.Mutex
 	base          string
+	approvalBase  string // Optional loopback approval page for the manual browser harness.
+	returns       map[string]string
 	trackingID    string
 	orders        map[string]string
 	references    map[string]string
@@ -161,7 +163,15 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		if err != nil || !strings.HasPrefix(payload.Context.ReturnURL, p.base+"/") || back.Query().Get("workspaceId") == "" {
 			return nil, fmt.Errorf("order return URL must identify the request workspace")
 		}
-		result = map[string]any{"id": id, "links": []any{map[string]string{"rel": "approve", "href": "https://www.sandbox.paypal.com/checkoutnow?token=" + id}}}
+		approval := "https://www.sandbox.paypal.com/checkoutnow?token=" + id
+		if p.approvalBase != "" {
+			if p.returns == nil {
+				p.returns = map[string]string{}
+			}
+			p.returns[id] = payload.Context.ReturnURL
+			approval = p.approvalBase + "?token=" + id
+		}
+		result = map[string]any{"id": id, "links": []any{map[string]string{"rel": "approve", "href": approval}}}
 	case strings.HasSuffix(r.URL.Path, "/authorize"):
 		if r.Header.Get("PayPal-Auth-Assertion") == "" {
 			return nil, fmt.Errorf("authorization omitted the seller assertion")
@@ -231,6 +241,10 @@ func TestBookingTimeAuthorizationRecoveryJourney(t *testing.T) {
 	runFullJourney(t, journeyOptions{bookingTime: true})
 }
 
+func TestAssistantBookingTimeAuthorizationRecoveryJourney(t *testing.T) {
+	runFullJourney(t, journeyOptions{bookingTime: true, assistantBooking: true})
+}
+
 func TestNegotiatedBookingTimeAuthorizationRecoveryJourney(t *testing.T) {
 	runFullJourney(t, journeyOptions{bookingTime: true, negotiatedDate: true})
 }
@@ -253,7 +267,7 @@ func TestGeneratedAvailabilityBookingJourney(t *testing.T) {
 
 type journeyOptions struct {
 	bookingTime, negotiatedDate, customerProposesDate, cancelAfterUncertain bool
-	generatedTime, agents                                                   bool
+	generatedTime, agents, assistantBooking                                 bool
 }
 
 func runFullJourney(t *testing.T, options journeyOptions) {
@@ -1148,7 +1162,36 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 	if options.bookingTime {
 		booking["paymentAuthorizationTiming"] = workflow.PaymentAuthorizationAtBooking
 	}
-	if options.negotiatedDate {
+	if options.assistantBooking {
+		urgent = decodeState(request("customer", "POST", "/api/actions", map[string]any{"workspaceId": urgent.WorkspaceID, "action": "set-payment-timing", "paymentAuthorizationTiming": workflow.PaymentAuthorizationAtBooking}, 200))
+		urgent = urgentAction("approve-quote", "")
+		// The question is a trusted assistant message; the answer and reservation use the real HTTP/runtime paths.
+		_, err := store.ApplyWorkspace(ctx, accounts["customer"], "customer", urgent.WorkspaceID, workflow.Action{Actor: "customer", Action: "agent-say", ByAgent: true, Audience: "customer", Value: "Which visit should I book?", Dialog: &workflow.AgentDialog{Stage: "offer", Awaiting: true, Offered: []workflow.Appointment{{SlotID: published.ID, StartUTC: earliestStart.Format(time.RFC3339), EndUTC: earliestStart.Add(time.Hour).Format(time.RFC3339), Timezone: "Europe/Amsterdam"}}, Choices: []workflow.Choice{{ID: "slot:" + published.ID, Label: "First visit"}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = store.SaveAgentMandate(ctx, accounts["customer"], "customer", workflow.DefaultMandate("customer")); err != nil {
+			t.Fatal(err)
+		}
+		request("customer", "POST", "/api/actions", map[string]any{"workspaceId": urgent.WorkspaceID, "action": "agent-reply", "value": "First visit", "choiceId": "slot:" + published.ID}, 200)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			if err = server.RunAgents(ctx, urgent.WorkspaceID, true); err != nil {
+				t.Fatal(err)
+			}
+			urgent = decodeState(request("customer", "GET", "/api/state?workspaceId="+urgent.WorkspaceID, nil, 200))
+			if urgent.Job.Appointment != nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("assistant never reserved the selected visit: dialog=%+v messages=%+v", urgent.AgentDialog, urgent.Intake.Messages[max(0, len(urgent.Intake.Messages)-5):])
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if _, err = store.SaveAgentMandate(ctx, accounts["customer"], "customer", workflow.AgentMandate{Enabled: false}); err != nil {
+			t.Fatal(err)
+		}
+	} else if options.negotiatedDate {
 		proposer, accepter := "professional", "customer"
 		approve := map[string]any{"workspaceId": urgent.WorkspaceID, "action": "approve-quote"}
 		if options.customerProposesDate {

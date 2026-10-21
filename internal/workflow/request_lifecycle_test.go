@@ -31,6 +31,7 @@ func TestRequestLifecycleMapping(t *testing.T) {
 		{"waitlisted without a professional", lifecycleState(func(s *State) { s.Intake = &Intake{Step: "waitlist", Waitlisted: true, Description: "Leaking sink"} }), true, true, false},
 		{"matching", lifecycleState(func(s *State) { s.Intake = &Intake{Step: "matches", Description: "Leaking sink"} }), true, true, false},
 		{"plan awaiting approval", lifecycleState(assignedJob), true, true, true},
+		{"payment preference without approval", lifecycleState(func(s *State) { assignedJob(s); s.Job.PaymentAuthorizationTiming = PaymentAuthorizationAtBooking }), true, true, true},
 		{"price under negotiation", lifecycleState(func(s *State) {
 			assignedJob(s)
 			s.Job.PriceProposal = &PriceProposal{ID: "p", Status: "pending", Actor: "professional", AmountMinor: 9000}

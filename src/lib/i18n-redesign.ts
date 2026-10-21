@@ -1,6 +1,10 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Expand current question": "Huidige vraag uitklappen",
+  "Minimize current question": "Huidige vraag inklappen",
+  "Reconnecting to updates… Your saved changes are safe.": "Opnieuw verbinden voor updates… Je opgeslagen wijzigingen zijn veilig.",
+  "Authorize the amount in PayPal now": "Het bedrag nu autoriseren in PayPal",
   "Plan and conversation": "Plan en gesprek",
   "Confirm address": "Adres bevestigen",
   "Price breakdown": "Prijsopbouw",
@@ -438,6 +442,7 @@ export const redesignNl: Record<string, string> = {
   "Address stays private until you choose.": "Je adres blijft privé tot je kiest.",
   "After this": "Hierna",
   "After you approve the work": "Nadat je het werk hebt goedgekeurd",
+  "PayPal approval needed for the booking hold": "PayPal-goedkeuring nodig om het bedrag bij de boeking vast te houden",
   "After {name} approves": "Nadat {name} goedkeurt",
   "Agree": "Afspreken",
   "Agree on the plan": "Het plan afspreken",

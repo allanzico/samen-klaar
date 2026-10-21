@@ -69,6 +69,23 @@ func Apply(state *State, input Action) error {
 			}
 		}
 		addEvent(job, "Customer saved the private service address for the assigned professional", "done")
+	case "set-payment-timing":
+		if !customer || input.ByAgent || job.ID == "" || job.WorkStarted || job.Paid || job.PaymentAuthorizedVersion != 0 || job.PaymentApprovedVersion != 0 {
+			return errors.New("choose payment timing before work starts and before authorizing a payment")
+		}
+		timing, err := paymentAuthorizationTiming(input.PaymentAuthorizationTiming)
+		if err != nil {
+			return err
+		}
+		if job.Appointment != nil {
+			if timing != PaymentAuthorizationAtBooking || job.PaymentAuthorizationTiming == PaymentAuthorizationAtBooking || !job.QuoteApproved {
+				return errors.New("use the explicit payment recovery action for an existing authorization choice")
+			}
+			if err := startAppointmentConfirmation(job, *job.Appointment); err != nil {
+				return err
+			}
+		}
+		job.PaymentAuthorizationTiming = timing
 	case "cancel-request":
 		return cancelRequest(state, input)
 
@@ -133,7 +150,7 @@ func Apply(state *State, input Action) error {
 		if selected == nil {
 			return errors.New("choose an available appointment")
 		}
-		timing, err := paymentAuthorizationTiming(input.PaymentAuthorizationTiming)
+		timing, err := bookingPaymentTiming(*job, input)
 		if err != nil {
 			return err
 		}
@@ -154,7 +171,7 @@ func Apply(state *State, input Action) error {
 		if serviceAddressRequired(*state) && job.ServiceAddress == "" {
 			return errors.New("add the full service address for your selected professional before approving the plan")
 		}
-		timing, err := paymentAuthorizationTiming(input.PaymentAuthorizationTiming)
+		timing, err := bookingPaymentTiming(*job, input)
 		if err != nil {
 			return err
 		}
@@ -187,7 +204,7 @@ func Apply(state *State, input Action) error {
 		if selected == nil {
 			return errors.New("choose an available appointment")
 		}
-		timing, err := paymentAuthorizationTiming(input.PaymentAuthorizationTiming)
+		timing, err := bookingPaymentTiming(*job, input)
 		if err != nil {
 			return err
 		}
@@ -402,6 +419,26 @@ func paymentAuthorizationTiming(value string) (string, error) {
 		return "", errors.New("choose when to authorize payment")
 	}
 	return value, nil
+}
+
+// chosenPaymentTiming keeps a saved choice, including the default for older requests.
+func chosenPaymentTiming(job Job) string {
+	if job.PaymentAuthorizationTiming == "" {
+		return PaymentAuthorizationAfterCompletion
+	}
+	return job.PaymentAuthorizationTiming
+}
+
+// An assistant may carry the customer's choice through booking, never replace it.
+func bookingPaymentTiming(job Job, input Action) (string, error) {
+	value := input.PaymentAuthorizationTiming
+	if value == "" {
+		value = job.PaymentAuthorizationTiming
+	}
+	if input.ByAgent && job.PaymentAuthorizationTiming == PaymentAuthorizationAtBooking && value != PaymentAuthorizationAtBooking {
+		return "", errors.New("the assistant cannot change the customer's PayPal authorization choice")
+	}
+	return paymentAuthorizationTiming(value)
 }
 
 // ValidatePaymentApproval enforces the workflow preconditions for payment.

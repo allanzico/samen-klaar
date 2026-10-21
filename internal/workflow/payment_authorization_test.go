@@ -5,6 +5,68 @@ import (
 	"time"
 )
 
+func TestSavedPaymentChoiceSurvivesApprovalAndCannotBeChangedByAssistant(t *testing.T) {
+	for _, action := range []string{"approve-quote", "approve-and-book"} {
+		t.Run(action, func(t *testing.T) {
+			state := NewDemoState("quote-ready")
+			if err := Apply(&state, Action{Actor: "customer", Action: "set-payment-timing", PaymentAuthorizationTiming: PaymentAuthorizationAtBooking}); err != nil {
+				t.Fatal(err)
+			}
+			if state.Job.QuoteApproved || state.Job.PaymentAuthorizedVersion != 0 {
+				t.Fatal("saving a preference approved the plan or claimed a hold")
+			}
+			input := Action{Actor: "customer", Action: action}
+			if action == "approve-and-book" {
+				input.Value = state.AvailableSlots[0].SlotID
+			}
+			input.ByAgent, input.PaymentAuthorizationTiming = true, PaymentAuthorizationAfterCompletion
+			if err := Apply(&state, input); err == nil {
+				t.Fatal("assistant replaced the customer's hold choice")
+			}
+			input.PaymentAuthorizationTiming = ""
+			if err := Apply(&state, input); err != nil {
+				t.Fatal(err)
+			}
+			if state.Job.PaymentAuthorizationTiming != PaymentAuthorizationAtBooking {
+				t.Fatal("approval forgot the saved choice")
+			}
+		})
+	}
+}
+
+func TestPaymentChoiceRequiresCustomerAndCanRecoverAnUnstartedVisit(t *testing.T) {
+	for _, input := range []Action{
+		{Actor: "professional", Action: "set-payment-timing", PaymentAuthorizationTiming: PaymentAuthorizationAtBooking},
+		{Actor: "customer", Action: "set-payment-timing", ByAgent: true, PaymentAuthorizationTiming: PaymentAuthorizationAtBooking},
+		{Actor: "customer", Action: "set-payment-timing", PaymentAuthorizationTiming: "invalid"},
+	} {
+		state := NewDemoState("quote-ready")
+		if err := Apply(&state, input); err == nil {
+			t.Fatalf("unsafe choice accepted: %+v", input)
+		}
+	}
+	state := NewDemoState("quote-ready")
+	if err := Apply(&state, Action{Actor: "customer", Action: "approve-and-book", Value: state.AvailableSlots[0].SlotID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(&state, Action{Actor: "professional", Action: "confirm-appointment"}); err != nil {
+		t.Fatal(err)
+	}
+	slot := state.Job.Appointment.SlotID
+	if err := Apply(&state, Action{Actor: "customer", Action: "set-payment-timing", PaymentAuthorizationTiming: PaymentAuthorizationAtBooking}); err != nil {
+		t.Fatal(err)
+	}
+	if state.Job.PaymentAuthorizedVersion != 0 || state.Job.Appointment.SlotID != slot || state.Job.AppointmentConfirmation.Status != "pending" {
+		t.Fatal("recovery replaced the visit or claimed an unverified hold")
+	}
+	if err := Apply(&state, Action{Actor: "professional", Action: "confirm-appointment"}); err == nil {
+		t.Fatal("recovered choice bypassed authorization")
+	}
+	if err := Apply(&state, Action{Actor: "professional", Action: "start-job"}); err == nil {
+		t.Fatal("work started before authorization")
+	}
+}
+
 func TestBookingTimeAuthorizationIsRequiredBeforeProfessionalConfirmation(t *testing.T) {
 	state := NewState()
 	state.Job = Job{ID: "job", ScopeVersion: 1, Quote: Quote{Currency: "EUR", TotalMinor: 12_500}, Timeline: []Event{}}

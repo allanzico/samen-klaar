@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import Icon from '../../ui/Icon.svelte';
   import Stepper from '../../ui/Stepper.svelte';
   import Banner from '../../ui/Banner.svelte';
@@ -7,6 +6,7 @@
   import NextStep from './NextStep.svelte';
   import Agreement from './Agreement.svelte';
   import AgreedLedger from './AgreedLedger.svelte';
+  import PaymentTimingChoice from './PaymentTimingChoice.svelte';
   import AfterThis from './AfterThis.svelte';
   import Thread from './Thread.svelte';
 import EvidenceRequirements from './EvidenceRequirements.svelte';
@@ -96,31 +96,16 @@ import RelatedJobs from './RelatedJobs.svelte';
   const area = $derived(job.location?.label || intake?.location?.label || '');
   const listLabel = $derived(t(pro ? 'Your jobs' : 'Your requests'));
 
-  // The next step sits in the side column on wide screens and in the dock on narrow ones; focus whichever is showing.
-  // The assistant's open question is the first card, but chat pages open at the newest message: bring a new
-  // question into view once, without yanking the page back on every refresh.
-  let lastAsked = 0;
-  $effect(() => {
-    const dialog = pro ? workspace.proDialog : workspace.agentDialog;
-    if (!dialog?.awaiting || !dialog.asked || dialog.asked === lastAsked) return;
-    lastAsked = dialog.asked;
-    void tick().then(() => document.getElementById('request-thread')?.scrollTo({ top: 0, behavior: 'smooth' }));
-  });
   function focusNextStep() { [...document.querySelectorAll<HTMLElement>('.ask-slot input, .ask-slot textarea, .ask-slot button, .next-step .btn')].find((button) => button.offsetParent !== null)?.focus(); }
 </script>
 
 {#snippet timing(placement: string)}
   {#if timingChoice}
-    <fieldset class="timing" disabled={app.pending}>
-      <legend>{t('When should PayPal authorize the amount?')}</legend>
-      <label class="radio-card"><input type="radio" name="timing-{placement}" value="after_completion" bind:group={requestUi.timing}/><span class="radio-dot" aria-hidden="true"></span><span><b>{t('After the work is approved')}</b><small>{t('Pay after you check the work.')}</small></span></label>
-      <label class="radio-card"><input type="radio" name="timing-{placement}" value="at_booking" bind:group={requestUi.timing}/><span class="radio-dot" aria-hidden="true"></span><span><b>{t('At booking')}</b><small>{t('PayPal holds it. Nothing is taken until you approve.')}</small></span></label>
-    </fieldset>
+    <PaymentTimingChoice {app} {actions} {workspace} id={placement}/>
   {/if}
 {/snippet}
 
 {#snippet asideContent()}
-  {#if view}<NextStep {view} pending={app.pending} placement="aside" extra={timing}/>{/if}
   {#if !hasJob && !workspace.cancelled}
     <JobSoFar {intake} busy={app.pending} onEdit={actions.focusComposer}/>
   {:else if hasJob && !stagePage && !workspace.cancelled}
@@ -178,10 +163,11 @@ import RelatedJobs from './RelatedJobs.svelte';
       </header>
     {/if}
 
-    <div id="request-thread" class="scroll" data-chat={!stagePage && !matching ? 'true' : undefined}>
       {#if app.error}<div class="content-pad"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
-      <div class="ask-slot content-pad">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>
-      {#if view && !matching && !guided}<div class="dock-step content-pad"><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
+      {#if app.refreshError}<p class="content-pad helper" role="status">{t(app.refreshError)}</p>{/if}
+      {#if guided}<div id="request-action" class="ask-slot content-pad floating">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>{/if}
+      {#if view && !matching && !guided}<div id="request-action" class="dock-step content-pad" class:floating={view.kind === 'your-turn'}><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
+    <div id="request-thread" class="conversation-flow" data-chat={!stagePage && !matching ? 'true' : undefined}>
       {#if matching && intake}
         <div class="content-pad"><AgentPanel {app} {workspace}/></div>
         <MatchView {app} {actions} {intake}/>
@@ -220,11 +206,11 @@ import RelatedJobs from './RelatedJobs.svelte';
 {#if !pro}<PolicyDialogs {app} {actions} {workspace}/>{/if}
 
 <style>
-  .request-page { display: flex; height: calc(100svh - var(--sk-topbar-h)); min-height: 0; }
-  .rail-col { display: flex; flex: 0 0 248px; min-height: 0; }
-  .main-col { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; background: var(--sk-ground); }
-  .main-col.page .web-head, .main-col.page .scroll { background: var(--sk-surface); }
-  .aside-col { display: flex; flex-direction: column; gap: 22px; flex: 0 1 380px; min-width: 320px; padding: 24px; overflow-y: auto; background: var(--sk-surface); border-left: 1px solid var(--sk-line); }
+  .request-page { display: flex; align-items: flex-start; min-height: calc(100svh - var(--sk-topbar-h)); }
+  .rail-col { position: sticky; top: var(--sk-topbar-h); display: flex; flex: 0 0 248px; height: calc(100svh - var(--sk-topbar-h)); }
+  .main-col { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: calc(100svh - var(--sk-topbar-h)); background: var(--sk-ground); }
+  .main-col.page .web-head, .main-col.page .conversation-flow { background: var(--sk-surface); }
+  .aside-col { position: sticky; top: var(--sk-topbar-h); display: flex; flex-direction: column; gap: 22px; flex: 0 1 320px; min-width: 280px; max-height: calc(100svh - var(--sk-topbar-h)); padding: 24px; overflow-y: auto; background: var(--sk-surface); border-left: 1px solid var(--sk-line); }
   .main-col.page ~ .aside-col { background: var(--sk-ground); border-left: 0; }
 
   .phone-head, .phone-strip, .bar-wrap { display: none; }
@@ -236,11 +222,13 @@ import RelatedJobs from './RelatedJobs.svelte';
   .subline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--sk-muted); }
   .area { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
 
-  .scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .conversation-flow { flex: 1; }
   .content-pad { padding: 0 40px; }
   .content { display: grid; gap: 24px; align-content: start; padding-top: 24px; padding-bottom: 28px; }
   .main-col.page .content > :global(*) { max-width: 820px; }
-  .dock-step { display: none; padding-top: 16px; }
+  .dock-step { padding-top: 16px; }
+  .floating { position: sticky; top: var(--sk-topbar-h); z-index: 20; padding-top: 12px; padding-bottom: 12px; background: var(--sk-ground); }
+  .floating > :global(*) { max-height: calc(100svh - var(--sk-topbar-h) - 40px); overflow-y: auto; }
   .ask-slot { padding-top: 16px; }
   .ask-slot:empty { display: none; }
   .replying { display: flex; align-items: center; gap: 10px; max-width: 820px; margin: 0 auto; padding: 16px 0; color: var(--sk-muted); }
@@ -253,8 +241,6 @@ import RelatedJobs from './RelatedJobs.svelte';
   .composer-row { padding: 12px 40px 28px; background: var(--sk-ground); }
   .main-col.page .composer-row { border-top: 0.5px solid var(--sk-line); background: var(--sk-surface); }
 
-  .timing { display: grid; gap: 10px; }
-  .timing legend { margin-bottom: 8px; font-size: 14px; font-weight: 600; }
   .cancel { align-self: flex-start; }
 
   /* On a short window the fixed header and composer would leave the conversation a sliver: tighten the
@@ -274,7 +260,8 @@ import RelatedJobs from './RelatedJobs.svelte';
     .back-link { display: inline-flex; }
   }
   @media (max-width: 639px) {
-    .request-page { height: 100svh; }
+    .floating { top: 0; }
+    .floating > :global(*) { max-height: calc(100svh - 40px); }
     .web-head { display: none; }
     .phone-head { position: relative; z-index: 5; display: flex; align-items: center; gap: 4px; min-height: 60px; padding: 6px 4px 6px 8px; background: var(--sk-brand); color: var(--sk-on-brand); }
     .phone-title { flex: 1; min-width: 0; }
@@ -285,6 +272,6 @@ import RelatedJobs from './RelatedJobs.svelte';
     .content-pad { padding: 0 16px; }
     .content { gap: 18px; padding-top: 16px; }
     .composer-row { padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); border-top: 0.5px solid var(--sk-line); }
-    .main-col.page .web-head, .main-col.page .scroll { background: var(--sk-ground); }
+    .main-col.page .web-head, .main-col.page .conversation-flow { background: var(--sk-ground); }
   }
 </style>

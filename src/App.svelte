@@ -34,15 +34,14 @@
   const onListPage = $derived((app.role === 'professional' && proView === 'jobs') || (app.role === 'customer' && app.customerPage === 'requests'));
   const proNeeds = $derived(app.role === 'professional' ? app.workspaces.filter((item) => statusUi(item.status, 'professional').pill === 'your-turn').length : 0);
 
-  // The thread pane scrolls, never the page. Chat pages open at the newest message.
+  // Conversation and page share one scroll. The current action stays sticky in view.
   async function scrollToCurrent(smooth = false, targetID?: string) {
     await tick();
     const pane = document.getElementById('request-thread');
     if (!pane) return;
-    const target = targetID ? document.getElementById(targetID) : null;
-    if (target) pane.scrollTo({ top: target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 16, behavior: smooth ? 'smooth' : 'auto' });
-    else if (pane.dataset.chat === 'true') pane.scrollTo({ top: pane.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-    else pane.scrollTo({ top: 0 });
+    const target = targetID ? document.getElementById(targetID) : document.getElementById('request-action');
+    const top = target ? window.scrollY + target.getBoundingClientRect().top - 80 : pane.dataset.chat === 'true' ? document.documentElement.scrollHeight : 0;
+    window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
   }
   const actions = createAppActions(app, scrollToCurrent);
 
@@ -142,7 +141,6 @@
 <style>
   .frame { display: flex; flex-direction: column; min-height: 100svh; }
   .main { flex: 1; min-width: 0; }
-  .main.request { overflow: hidden; }
   .page-error { max-width: 1040px; margin: 16px auto 0; padding: 0 16px; }
   .loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18vh 16px; color: var(--sk-muted); }
   .failed { max-width: 640px; margin: 0 auto; padding: 12vh 16px; }

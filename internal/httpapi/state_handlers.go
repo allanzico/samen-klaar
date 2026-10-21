@@ -66,7 +66,7 @@ func (s *Server) runAction(ctx context.Context, principal identity.Principal, in
 	if input.Action == "reset" {
 		return State{}, http.StatusGone, errors.New("workspace resets are not supported")
 	}
-	if (input.Action == "approve-and-book" || input.Action == "book-appointment" || input.Action == "approve-quote" || input.Action == "accept-date") && input.PaymentAuthorizationTiming == workflow.PaymentAuthorizationAtBooking && s.paypal == nil {
+	if (input.Action == "set-payment-timing" || input.Action == "approve-and-book" || input.Action == "book-appointment" || input.Action == "approve-quote" || input.Action == "accept-date") && input.PaymentAuthorizationTiming == workflow.PaymentAuthorizationAtBooking && s.paypal == nil {
 		return State{}, http.StatusServiceUnavailable, errors.New("booking-time PayPal authorization is not available for this environment")
 	}
 	if input.Action == "record-payment-authorization" {

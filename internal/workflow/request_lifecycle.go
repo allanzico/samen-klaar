@@ -20,7 +20,7 @@ var (
 func RequestConfirmed(state State) bool {
 	job := state.Job
 	return job.QuoteApproved || job.Appointment != nil || job.AppointmentConfirmation != nil ||
-		job.PaymentAuthorizedVersion != 0 || job.PaymentApprovedVersion != 0 || job.PaymentAuthorizationTiming != "" ||
+		job.PaymentAuthorizedVersion != 0 || job.PaymentApprovedVersion != 0 ||
 		job.WorkStarted || job.EvidenceSubmitted || len(job.Evidence) > 0 || job.CompletionApproved ||
 		job.Paid || job.PaymentTransactionID != "" || job.Dispute != nil || job.Review != nil ||
 		state.CancellationReview != nil && state.CancellationReview.Status != ""

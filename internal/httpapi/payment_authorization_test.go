@@ -16,7 +16,7 @@ func TestBookingAuthorizationRequiresConfiguredPayPalAndCannotBeForged(t *testin
 	})
 	handler := server.Handler()
 
-	for _, action := range []string{"approve-and-book", "book-appointment", "approve-quote", "accept-date"} {
+	for _, action := range []string{"set-payment-timing", "approve-and-book", "book-appointment", "approve-quote", "accept-date"} {
 		t.Run("unavailable provider blocks "+action, func(t *testing.T) {
 			body, err := json.Marshal(Action{Action: action, Actor: "customer", PaymentAuthorizationTiming: workflow.PaymentAuthorizationAtBooking})
 			if err != nil {

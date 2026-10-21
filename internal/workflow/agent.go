@@ -346,7 +346,7 @@ func decideCustomer(c AgentContext) AgentDecision {
 				}
 				return escalate("approve_price", map[string]string{"price": euros(job.Quote.TotalMinor)})
 			}
-		} else if job.Quote.TotalMinor > limit {
+		} else if !job.QuoteApproved && job.Quote.TotalMinor > limit {
 			// Above the limit: counter at the limit only when it is a plausible offer, otherwise ask the person.
 			if c.Counters == 0 && limit*100 >= published*int64(m.CounterPercent) {
 				return act("counter-price", Action{Action: "propose-price", PriceAmountMinor: limit, Value: "Within the budget set for this request."}, map[string]string{"amount": euros(limit), "published": euros(job.Quote.TotalMinor)})
@@ -373,7 +373,7 @@ func decideCustomer(c AgentContext) AgentDecision {
 				if job.QuoteApproved {
 					action = "book-appointment"
 				}
-				return act("book-visit", Action{Action: action, Value: slot.SlotID, PaymentAuthorizationTiming: "after_completion"}, map[string]string{"start": slot.StartUTC, "end": slot.EndUTC, "amount": euros(job.Quote.TotalMinor)})
+				return act("book-visit", Action{Action: action, Value: slot.SlotID, PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, map[string]string{"start": slot.StartUTC, "end": slot.EndUTC, "amount": euros(job.Quote.TotalMinor)})
 			}
 		}
 		return proposeVisit(c, released)
@@ -404,7 +404,7 @@ func decideCustomer(c AgentContext) AgentDecision {
 		if blocked != "" {
 			return escalate(blocked, params)
 		}
-		return act("accept-visit", Action{Action: "accept-date", ProposalID: p.ID, PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, map[string]string{"start": p.Appointment.StartUTC, "end": p.Appointment.EndUTC})
+		return act("accept-visit", Action{Action: "accept-date", ProposalID: p.ID, PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, map[string]string{"start": p.Appointment.StartUTC, "end": p.Appointment.EndUTC})
 
 	case "review_change":
 		ch := job.Change
@@ -571,7 +571,7 @@ func proposeVisit(c AgentContext, released string) AgentDecision {
 			continue
 		}
 		if !job.QuoteApproved {
-			return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, map[string]string{"amount": euros(job.Quote.TotalMinor)})
+			return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: chosenPaymentTiming(c.State.Job)}, map[string]string{"amount": euros(job.Quote.TotalMinor)})
 		}
 		return act("propose-visit", proposeDate(candidate, "None of your listed times fit my schedule; this one does."), map[string]string{"start": candidate.StartUTC, "end": candidate.EndUTC})
 	}
@@ -647,7 +647,7 @@ func nearestVisit(c AgentContext, asked Appointment) (Appointment, bool) {
 // decided by the operator team, and anything tied to payment timing stays with the person.
 func visitChangeBlocker(c AgentContext, proposed Appointment) (string, map[string]string) {
 	job := c.State.Job
-	if job.PaymentAuthorizationTiming == PaymentAuthorizationAtBooking && (job.Appointment != nil || c.Role == "customer") {
+	if job.PaymentAuthorizationTiming == PaymentAuthorizationAtBooking && job.Appointment != nil {
 		return "visit_change_involves_payment", map[string]string{"start": proposed.StartUTC}
 	}
 	if job.Appointment != nil && (job.Appointment.StartUTC != proposed.StartUTC || job.Appointment.EndUTC != proposed.EndUTC) {
