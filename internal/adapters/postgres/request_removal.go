@@ -105,14 +105,15 @@ func (s *Store) deleteCustomerRequest(ctx context.Context, accountID, workspaceI
 	if !workflow.CustomerCanDelete(state) {
 		return workflow.ErrRequestNotDeletable
 	}
-	// The state alone says nothing was approved. Refuse anyway if any payment, booking,
-	// support case or coordination record exists, so no such record is ever cascaded away.
+	// The state alone says nothing was approved. Keep booking/payment/work case records
+	// even if an older state omitted them. An area-waitlist follow-up is part of the
+	// unbooked request, not an approved job; it may be deleted with that request.
 	var kept bool
 	if err := tx.QueryRow(ctx, `SELECT
 	    EXISTS (SELECT 1 FROM paypal_payment_operations WHERE workspace_id = $1 OR ($2 <> '' AND job_id = $2))
 	 OR EXISTS (SELECT 1 FROM booking_reservations WHERE $2 <> '' AND job_id = $2)
-	 OR EXISTS (SELECT 1 FROM operator_case_work WHERE workspace_id = $1)
-	 OR EXISTS (SELECT 1 FROM operator_case_notes WHERE workspace_id = $1)
+	 OR EXISTS (SELECT 1 FROM operator_case_work WHERE workspace_id = $1 AND kind <> 'area-waitlist')
+	 OR EXISTS (SELECT 1 FROM operator_case_notes WHERE workspace_id = $1 AND kind <> 'area-waitlist')
 	 OR EXISTS (SELECT 1 FROM coordination_tasks WHERE workspace_id = $1)`, workspaceID, state.Job.ID).Scan(&kept); err != nil {
 		return err
 	}

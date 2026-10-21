@@ -143,7 +143,7 @@ export type Intake = {
   route: string;
   question: string;
   options: string[] | null;
-  messages: { role: string; text: string; senderName?: string; threadProfileId?: string; audience?: string; choice?: string; agent?: string; code?: string; params?: Record<string, string> }[];
+  messages: { seq?: number; role: string; text: string; senderName?: string; threadProfileId?: string; audience?: string; choice?: string; agent?: string; code?: string; params?: Record<string, string> }[];
   detail: string;
   urgency: string;
   budget: string;
@@ -156,7 +156,7 @@ export type Intake = {
 export type RequestPhoto = { assetId: string; contentType: string; label: string; addedAt?: string };
 
 export type AgentChoice = { id: string; label: string };
-export type AgentDialog = { stage?: string; awaiting: boolean; asked?: number; pending?: string; choices?: AgentChoice[] };
+export type AgentDialog = { stage?: string; awaiting: boolean; asked?: number; pending?: string; pendingId?: string; choices?: AgentChoice[] };
 export type WorkspaceState = {
   agentDialog?: AgentDialog;
   proDialog?: AgentDialog;

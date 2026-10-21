@@ -70,6 +70,21 @@ func TestVisitAddressRejectsCityAndAcceptsSignedAddress(t *testing.T) {
 	}
 }
 
+func TestAmbiguousVisitAddressNeedsSelectionAndAcceptsTheChosenResult(t *testing.T) {
+	first := testLocation()
+	second := first
+	second.ID, second.Address = "another-address", "Damrak 10, 1012 LG Amsterdam"
+	server := New(Dependencies{Locations: locationStub{[]workflow.Location{first, second}}})
+	if _, err := server.resolveVisitAddress(context.Background(), "customer", first.Address, nil); err == nil {
+		t.Fatal("an ambiguous address was guessed without the customer's selection")
+	}
+	first.Selection = server.signLocation("customer", first)
+	chosen, err := server.resolveVisitAddress(context.Background(), "customer", first.Address, &first)
+	if err != nil || chosen.Address != first.Address {
+		t.Fatalf("the selected address did not resolve ambiguity: %+v %v", chosen, err)
+	}
+}
+
 type geographicDirectoryStub struct {
 	directoryStub
 	base workflow.Location

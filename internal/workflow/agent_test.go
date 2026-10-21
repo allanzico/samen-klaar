@@ -623,16 +623,19 @@ func proState() State {
 
 func TestProfessionalAssistantAsksBeforeConfirmingOutsideItsHoursAndReports(t *testing.T) {
 	state := proState()
-	late := agentSlot("tue", "2026-10-20T18:00:00Z", "2026-10-20T19:00:00Z") // 20:00 in Amsterdam
+	zone, _ := time.LoadLocation("Europe/Amsterdam")
+	future := time.Now().In(zone).AddDate(0, 0, 2)
+	start := time.Date(future.Year(), future.Month(), future.Day(), 20, 0, 0, 0, zone)
+	late := agentSlot("evening", start.UTC().Format(time.RFC3339), start.Add(time.Hour).UTC().Format(time.RFC3339))
 	state.Job.Appointment = &late
-	state.Job.AppointmentConfirmation = &AppointmentConfirmation{Status: "pending", DueAt: "2026-10-21T08:00:00Z", Appointment: late}
+	state.Job.AppointmentConfirmation = &AppointmentConfirmation{Status: "pending", DueAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339), Appointment: late}
 	m := DefaultMandate("professional")
 	c := &converse{t: t, state: state, m: m, role: "professional"}
 	if d := c.settle(); d.Code != "awaiting_reply" {
 		t.Fatalf("expected a question, got %+v", d)
 	}
 	question := c.lastAssistant()
-	if !contains(question.Text, "Alex reserved Tue 20 Oct, 20:00–21:00") || !contains(question.Text, "outside your usual hours") || question.Audience != "professional" {
+	if !contains(question.Text, "Alex reserved ") || !contains(question.Text, "20:00–21:00") || !contains(question.Text, "outside your usual hours") || question.Audience != "professional" {
 		t.Fatalf("unexpected question %+v", question)
 	}
 	if c.state.ProDialog == nil || c.state.AgentDialog != nil {
@@ -643,7 +646,7 @@ func TestProfessionalAssistantAsksBeforeConfirmingOutsideItsHoursAndReports(t *t
 	if c.state.Job.AppointmentConfirmation.Status != "confirmed" {
 		t.Fatalf("a yes should confirm the visit: %+v", c.state.Job.AppointmentConfirmation)
 	}
-	if text := c.lastAssistant().Text; text != "Confirmed Tue 20 Oct, 20:00–21:00 with Alex." {
+	if text := c.lastAssistant().Text; !strings.HasPrefix(text, "Confirmed ") || !contains(text, "20:00–21:00 with Alex.") {
 		t.Fatalf("expected a report of what was agreed, got %q", text)
 	}
 	// A visit inside the hours is confirmed without a question, and still reported.
@@ -867,5 +870,35 @@ func TestProfessionalOutsideHoursPermissionKeepsDaysOffAndPaymentGates(t *testin
 	ctx.State.Job.PaymentAuthorizationTiming = PaymentAuthorizationAtBooking
 	if d := DecideAgent(ctx); d.Code != "visit_change_involves_payment" {
 		t.Fatalf("permission bypassed payment gate: %+v", d)
+	}
+}
+
+func TestAcceptedPriceConfirmationKeepsCanonicalAmountParameters(t *testing.T) {
+	state := quotedState(10000)
+	state.Job.PriceProposal = &PriceProposal{ID: "offer", Actor: "professional", Status: "pending", AmountMinor: 9900, ScopeVersion: state.Job.ScopeVersion}
+	state.Intake = &Intake{Locale: "en", Messages: []Message{{Seq: 1, Role: "agent", Audience: "customer", Text: "Shall I accept?"}, {Seq: 2, Role: "customer", Audience: "customer", Text: "Yes", Choice: "yes"}}}
+	state.AgentDialog = &AgentDialog{Stage: "confirm", Pending: "accept-price", PendingID: "offer", Asked: 1}
+	d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: DefaultMandate("customer"), Now: agentNow})
+	if d.Code != "accept-price" || d.Params["amount"] != "99.00" {
+		t.Fatalf("accepted price leaked display formatting into machine parameters: %+v", d)
+	}
+}
+
+func TestUnverifiedAddressKeepsAssistantAtOneRecoverableQuestion(t *testing.T) {
+	state := quotedState(9900)
+	state.Job.ServiceAddress = ""
+	state.Intake = &Intake{Locale: "en", Messages: []Message{{Seq: 1, Role: "customer", Audience: "customer", Text: "Damrak 1, Amsterdam"}}}
+	state.AgentDialog = &AgentDialog{Stage: "address", Asked: 0}
+	ctx := AgentContext{State: state, Role: "customer", Mandate: DefaultMandate("customer"), Now: agentNow}
+	notice := BlockedNotice(ctx, "set-address", "Choose a full street address from the location suggestions.")
+	if notice.Dialog == nil || !notice.Dialog.Awaiting || notice.Dialog.Stage != "address" || notice.NoteCode != "address:choose" || strings.Contains(notice.Value, "take it from here") {
+		t.Fatalf("address ambiguity abandoned the booking instead of asking for a selection: %+v", notice)
+	}
+	notice.Actor = "customer"
+	if err := Apply(&state, notice); err != nil {
+		t.Fatal(err)
+	}
+	if state.Job.ServiceAddress != "" || !state.AgentDialog.Awaiting {
+		t.Fatal("unverified address was accepted or the question was lost")
 	}
 }

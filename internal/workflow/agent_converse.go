@@ -13,6 +13,7 @@ import (
 
 var dialogText = map[string][2]string{
 	"ask_address":        {"What is the full address where {pro} should come? (street, number, postcode, city)", "Wat is het volledige adres waar {pro} naartoe moet komen? (straat, nummer, postcode, plaats)"},
+	"address_choose":     {"Choose your full visit address from the suggestions below. I’ll continue once it’s confirmed.", "Kies je volledige bezoekadres uit de suggesties hieronder. Daarna ga ik verder."},
 	"address_retry":      {"I need the street, house number and city so {pro} can find you. Could you type the full address?", "Ik heb straat, huisnummer en plaats nodig zodat {pro} je kan vinden. Kun je het volledige adres intypen?"},
 	"confirm_price":      {"{pro} charges {amount} for this job. You didn't give me a budget, so I'm checking: shall I go ahead at that price?", "{pro} rekent {amount} voor deze klus. Je noemde geen budget, dus ik controleer het even: zal ik hiermee akkoord gaan?"},
 	"confirm_counter":    {"{pro} would do it for {amount}. Shall I accept that?", "{pro} wil het doen voor {amount}. Zal ik dat accepteren?"},
@@ -214,9 +215,9 @@ func (c AgentContext) dialogConfirm(kind, id, key string, params map[string]stri
 		case in.Intent == "yes":
 			switch kind {
 			case "approve-quote":
-				return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, params)
+				return act("approve-plan", Action{Action: "approve-quote", PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, amountParams(params, c.State.Job.Quote.TotalMinor))
 			case "accept-price":
-				return act("accept-price", Action{Action: "accept-price", ProposalID: id}, params)
+				return act("accept-price", Action{Action: "accept-price", ProposalID: id}, amountParams(params, c.State.Job.PriceProposal.AmountMinor))
 			default:
 				return act("accept-visit", Action{Action: "accept-date", ProposalID: id, PaymentAuthorizationTiming: PaymentAuthorizationAfterCompletion}, params)
 			}
@@ -496,6 +497,16 @@ func (c AgentContext) dialogSchedule(released string) AgentDecision {
 // left idle, except a refused work approval, which stays with the person.
 func BlockedNotice(c AgentContext, code, reason string) Action {
 	d := c.dialog()
+	if code == "set-address" && c.Role == "customer" {
+		d.Stage, d.Pending, d.PendingID = "address", "", ""
+		d.Awaiting, d.Choices = true, nil
+		text := c.text("address_choose", nil)
+		if !strings.HasPrefix(reason, "Choose a full street address") {
+			text = strings.TrimRight(strings.TrimSpace(reason), ".") + ". " + text
+		}
+		return Action{Action: "agent-say", Value: text, Audience: c.Role, Dialog: &d, NoteCode: "address:choose", ByAgent: true}
+	}
+	reason = strings.TrimRight(strings.TrimSpace(reason), ".")
 	d.Awaiting, d.Choices = false, nil
 	if code == "approve-work" {
 		d.Stage, d.Pending, d.PendingID = "confirm", "work-hold", c.State.Job.EvidenceSubmittedAt

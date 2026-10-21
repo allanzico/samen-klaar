@@ -10,12 +10,12 @@
   // The composer: a layout row under the thread, never an overlay. After a match it has
   // three modes; a chat message can never change the price or reserve a visit.
   // compact: the one-line composer on plan, check and pay pages (board C12).
-  let { app, actions, assigned = false, matching = false, compact = false }: { app: AppState; actions: AppActions; assigned?: boolean; matching?: boolean; compact?: boolean } = $props();
+  let { app, actions, assigned = false, matching = false, compact = false, replyOnly = false }: { app: AppState; actions: AppActions; assigned?: boolean; matching?: boolean; compact?: boolean; replyOnly?: boolean } = $props();
 
   const job = $derived(app.serverState?.job);
   const recipient = $derived(assigned ? firstName(app.role === 'professional' ? job?.customer : job?.professional) : '');
   const minimum = $derived(assigned ? 2 : matching || !app.serverState?.intake ? 5 : 2);
-  const planning = $derived(assigned && !app.serverState?.cancelled && !job?.workStarted && !job?.paid);
+  const planning = $derived(!replyOnly && assigned && !app.serverState?.cancelled && !job?.workStarted && !job?.paid);
   const canPrice = $derived(planning && !job?.quoteApproved);
   const canDate = $derived(planning && !!job?.quoteApproved);
 
@@ -86,7 +86,7 @@
   }
   const replying = $derived(!!(app.role === 'professional' ? app.serverState?.proDialog : app.serverState?.agentDialog)?.awaiting);
   // Once a visit is booked a customer can write to the professional or ask their own assistant (move or cancel the visit).
-  const canAsk = $derived(app.role === 'customer' && assigned && !!job?.appointment && !app.serverState?.cancelled && !replying);
+  const canAsk = $derived(!replyOnly && app.role === 'customer' && assigned && !!job?.appointment && !app.serverState?.cancelled && !replying);
   const toAssistant = $derived(canAsk && app.messageTo === 'assistant');
   const placeholder = $derived(replying ? t('Reply to your assistant…') : toAssistant ? t('Ask your assistant, for example “Can we do Thursday instead?”') : assigned ? t('Write to {name}…', { name: recipient || t('them') }) : matching ? t('Tell us what to change about the request…') : app.serverState?.intake ? t('Your answer, in your own words') : t('What’s wrong? For example, my kitchen tap keeps dripping…'));
   const hint = $derived(toAssistant ? t('Your assistant asks you before it moves or cancels anything.') : assigned ? t('Enter sends · Shift + Enter adds a line') : matching ? t('Timing and budget stay saved.') : t('No need to choose a trade'));
@@ -143,11 +143,11 @@
           <button type="button" aria-pressed={toAssistant} disabled={app.pending} onclick={() => { app.messageTo = 'assistant'; }}>{t('Ask your assistant')}</button>
         </div>
       {/if}
-      <label class="visually-hidden" for="message">{toAssistant ? t('Message to your assistant') : assigned ? t('Message to {name}', { name: recipient }) : matching ? t('Correct or add to your job description') : t('Your answer')}</label>
+      <label class="visually-hidden" for="message">{replyOnly || toAssistant ? t('Message to your assistant') : assigned ? t('Message to {name}', { name: recipient }) : matching ? t('Correct or add to your job description') : t('Your answer')}</label>
       <textarea id="message" bind:value={app.draft} oninput={() => actions.persistDraft()} {placeholder} rows="2" maxlength="500" disabled={app.pending} required minlength={minimum} aria-describedby="message-hint draft-status" onkeydown={onKey}></textarea>
       <div class="message-foot">
         <span id="message-hint" class="hint">{hint}</span>
-        <button class="btn btn-primary send" type="submit" disabled={app.pending || app.draft.trim().length < minimum} aria-label={toAssistant ? t('Send to your assistant') : assigned ? t('Send message to {name}', { name: recipient }) : t('Send')}><span class="send-label">{t('Send')}</span><Icon name="send"/></button>
+        <button class="btn btn-primary send" type="submit" disabled={app.pending || app.draft.trim().length < minimum} aria-label={replyOnly || toAssistant ? t('Send to your assistant') : assigned ? t('Send message to {name}', { name: recipient }) : t('Send')}><span class="send-label">{t('Send')}</span><Icon name="send"/></button>
       </div>
     </form>
     <p id="draft-status" class="draft" role="status">{t(app.draftRestored ? 'Unsent draft restored.' : app.draft && app.draftSaved ? 'Draft saved in this browser tab.' : app.draft && !app.draftSaved ? 'Draft storage is unavailable. Keep this tab open.' : '')}</p>

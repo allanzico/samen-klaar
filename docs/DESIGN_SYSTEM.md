@@ -245,14 +245,14 @@ Two houses: a tall navy one and a shorter yellow one with a door. `onNavy` swaps
 
 ### 5.2 The next step (`NextStep.svelte`, `StepView`)
 
-One view model per request: kind (`your-turn`, `waiting`, `info`), a tag, a title, optional text, amount, banner and ledger, a **primary** button, an optional **secondary**, quiet links, a danger link and a helper, plus "After this" rows. Rendered in the web aside, the dock above the composer below 1280 px, and as the phone turn card. Disabled actions carry a `reason`. While the assistant is asking something the dock hides it, because the assistant is handling that step (the page's own buttons remain below).
+One view model per request: kind (`your-turn`, `waiting`, `info`), a tag, a title, optional text, amount, banner and ledger, a **primary** button, an optional **secondary**, quiet links, a danger link and a helper, plus "After this" rows. Rendered in the web aside, the dock above the composer below 1280 px, and as the phone turn card. Disabled actions carry a `reason`. While the assistant has a current question, its saved dialog owns the interaction: the aside, dock, manual stage forms and separate composer give way to that question and its answer control.
 
 ### 5.3 The request page
 
 1. **Header:** back link, title, the other person with an initials avatar, area, "Request options" menu, stepper, agreement strip (four facts: price, visit, address, payment).
-2. **Scroll area:** the assistant's open question (if any) → the stage for the current step (plan, evidence, review, payment) → the activity panel, related jobs, photos → "Conversation" and the thread.
+2. **Scroll area:** a current assistant question contains its answer control. A visit address uses signed location suggestions and one confirmation button; other questions use quick replies and a reply-only composer. Supporting plan, activity, photos and history live in **Plan and conversation**. The same disclosure keeps booked and waiting views quiet. Without a current question, the stage and next-step controls remain available.
 3. **Aside / dock:** next step, agreement rows, what comes after, cancel.
-4. **Composer:** one box under everything.
+4. **Composer:** the answer box sits inside the current question; ordinary messages use the composer below the thread when no question is open.
 
 ### 5.4 The thread (`Thread.svelte`)
 
@@ -295,7 +295,7 @@ Every customer and professional has an assistant (docs: [AGENT_ARCHITECTURE.md](
 
 - **Identity.** A short bot name (Pip, Juno, Kit, Remy, Nova, Finn, Mika, Luca, Noor, Teo, Ivy, Sky, Rio, Ada, Zed, Bo), a hash of the person's name, so it is the same on the home screen, in the intake chat before a match and after it (`src/lib/agent-names.ts` mirrors `internal/workflow/agent_names.go`; a test keeps them equal). The two assistants on a request never share a name. The **bot icon** marks it (never the lightning bolt). In the thread the avatar is the name's first letter on a navy tile and the name is followed by a small bot icon. In cards the avatar is the bot icon itself.
 - **Introduction.** The first message in a request says who it is ("Hi, I'm Pip, your assistant for this job.") once.
-- **The question card (`AssistantAsk`).** Soft-blue panel at the top of the scroll area, on every screen width: bot icon, name, a "Needs you" pill, the question, **quick replies** as chips, and "Or type your answer in the box below." One question at a time. For "approve the work?" it shows up to three of the professional's photos next to the question. A new question is scrolled into view once. While it is open the dock's next step hides, and the web aside's next step is demoted (outline button and a note that either way works).
+- **The question card (`AssistantAsk`).** Soft-blue panel at the top of the scroll area, on every screen width: bot icon, name, a "Needs you" pill, the question and its answer control together. **Quick replies** and a reply-only composer answer the same question. An address question contains the address selector instead. The question comes from the sequence referenced by the saved dialog, rather than the newest bot message. One question at a time. For "approve the work?" it shows up to three of the professional's photos next to the question. A new question is scrolled into view once. While it is open the aside, dock and manual stage controls hide.
 - **Quick replies.** Chips with plain labels ("Yes, book it", "No, other times", a list of times). A chip sends its label and an id; typed free text is read by the assistant (and the AI provider when needed).
 - **Privacy in the layout.** A person's chat with their assistant is private to them; the agents' negotiation lines ("Could you do this for €120?", "Agreed on €120.") are shared and show with each side's bot name.
 - **Activity panel.** "Your agent" panel: the bot's name, a pill (Handling this / Needs you), and the last few steps with times; "Show everything it did".
@@ -382,3 +382,5 @@ Adding an icon: add the 24 × 24 path to `ICONS` in `icons.ts` (stroke 2, round 
 - **Dutch** is a full set of drafts that needs native review.
 
 Open design work: a native review of Dutch copy; a visual pass of the operator screens with real data; push notifications; and a decision on a dark theme (none exists).
+
+**Booking interaction update, 21 October 2026.** A saved answer shows a single replying state while the background assistant advances; it expires after 25 seconds so manual recovery remains available. Payment authorization, disputes and operator review take precedence over stale dialog state. Shared currency formatting rejects missing/non-finite amounts with an em dash, and historical assistant prices support saved Dutch and English display formats. New decision parameters always contain canonical decimal amounts.

@@ -1,5 +1,5 @@
 import type { AgentActivity, AgentEscalation } from './types';
-import { dayTime, money } from './format';
+import { dayTime, decimalMoney } from './format';
 import { t } from './i18n.svelte';
 
 // Agent parameters arrive as strings: amounts as decimal euros, times as ISO timestamps.
@@ -7,7 +7,7 @@ function fill(params: Record<string, string> = {}): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(params)) {
     if (['start', 'end'].includes(key)) out[key] = dayTime(value);
-    else if (['amount', 'price', 'limit', 'floor', 'offered', 'published'].includes(key)) out[key] = money(Math.round(Number(value) * 100));
+    else if (['amount', 'price', 'limit', 'floor', 'offered', 'published'].includes(key)) out[key] = decimalMoney(value);
     else out[key] = value;
   }
   return out;

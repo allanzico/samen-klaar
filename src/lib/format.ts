@@ -1,11 +1,19 @@
 import { currentLocale, t } from './i18n.svelte';
+import { decimalAmount, finiteNumber } from './numbers';
 
 const locale = () => (currentLocale() === 'nl' ? 'nl-NL' : 'en-GB');
 
 // Money always uses nl-NL formatting ("€ 95,00", non-breaking space) and tabular figures in CSS.
-export function money(minor: number, currency = 'EUR'): string {
+export function money(minor: unknown, currency = 'EUR'): string {
+  const amount = finiteNumber(minor);
+  if (amount === null) return '—';
   const code = /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : 'EUR';
-  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: code }).format(minor / 100);
+  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: code }).format(amount / 100);
+}
+
+export function decimalMoney(value: unknown, currency = 'EUR'): string {
+  const amount = decimalAmount(value);
+  return money(amount === null ? null : Math.round(amount * 100), currency);
 }
 
 export function time(iso: string, timeZone?: string): string {
@@ -58,7 +66,9 @@ export function timezoneCity(timeZone: string): string {
 
 // "1 h 29 min", "45 min": how long until a deadline, for "Confirm within …". Never negative.
 export function untilShort(iso: string, now = Date.now()): string {
-  const minutes = Math.max(0, Math.round((new Date(iso).getTime() - now) / 60000));
+  const deadline = finiteNumber(new Date(iso).getTime());
+  if (deadline === null || finiteNumber(now) === null) return '—';
+  const minutes = Math.max(0, Math.round((deadline - now) / 60000));
   if (minutes < 60) return t('{minutes} min', { minutes });
   const hours = Math.floor(minutes / 60);
   return minutes % 60 ? t('{hours} h {minutes} min', { hours, minutes: minutes % 60 }) : t('{hours} h', { hours });
