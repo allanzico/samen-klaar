@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"github.com/allanzico/samen-klaar/internal/workflow"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type testDirectory struct{ calls []string }
@@ -36,6 +38,38 @@ func TestRejectUnknownAndDuplicateModelChoices(t *testing.T) {
 	for _, fits := range [][]Fit{{{Index: 99, Reason: "Unknown service must not be selected."}}, {{Index: 0, Reason: "Suitable sink service."}, {Index: 0, Reason: "Duplicate must not be selected."}}} {
 		if _, _, err := Find(context.Background(), &testDirectory{}, testSelector{Selection{Fits: fits}}, "Plumbing", "Leaking sink", "customer"); err == nil {
 			t.Fatal("invalid AI selection accepted")
+		}
+	}
+}
+
+func TestLongExplanationDoesNotDiscardEligibleService(t *testing.T) {
+	for _, reason := range []string{
+		strings.Repeat("This published service repairs accessible leaking sink connections. ", 6),
+		strings.Repeat("Deze dienst repareert lekkende verbindingen — onderdelen na overleg. ", 6),
+	} {
+		directory := &testDirectory{}
+		selection := testSelector{Selection{Fits: []Fit{{Index: 0, Reason: reason}}}}
+		matches, question, err := Find(context.Background(), directory, selection, "Plumbing", "Leaking sink", "customer")
+		if err != nil || question != "" || len(matches) != 2 {
+			t.Fatalf("a long explanation discarded the eligible service: matches=%d question=%q err=%v", len(matches), question, err)
+		}
+		for _, match := range matches {
+			if match.ServiceName != "Sink leak repair" || !utf8.ValidString(match.FitReason) || len([]rune(match.FitReason)) > 240 || !strings.HasSuffix(match.FitReason, "…") {
+				t.Fatalf("expected the eligible service with a bounded, valid explanation: %+v", match)
+			}
+		}
+	}
+}
+
+func TestFitExplanationTrimsWhitespaceAndRejectsBlankCopy(t *testing.T) {
+	for _, reason := range []string{" \nThis service covers sink leaks.\t ", strings.Repeat(" ", 20)} {
+		matches, _, err := Find(context.Background(), &testDirectory{}, testSelector{Selection{Fits: []Fit{{Index: 0, Reason: reason}}}}, "Plumbing", "Leaking sink", "customer")
+		if strings.TrimSpace(reason) == "" {
+			if err == nil {
+				t.Fatal("blank explanation accepted")
+			}
+		} else if err != nil || len(matches) != 2 || matches[0].FitReason != strings.TrimSpace(reason) {
+			t.Fatalf("explanation whitespace was not normalized: matches=%+v err=%v", matches, err)
 		}
 	}
 }

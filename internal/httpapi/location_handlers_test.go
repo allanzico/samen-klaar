@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/allanzico/samen-klaar/internal/matching"
 	"github.com/allanzico/samen-klaar/internal/workflow"
 )
 
@@ -141,4 +142,42 @@ func TestGeocodedIntakeKeepsPrivateAddressThroughHTTPSelection(t *testing.T) {
 	outside.Address = "Outside street 1"
 	outside.Selection = server.signLocation("test-customer", outside)
 	send("set-service-address", outside.Address, &outside, 409)
+}
+
+type longExplanationAI struct{ intakeStub }
+
+func (longExplanationAI) SelectServices(context.Context, string, []matching.Service) (matching.Selection, error) {
+	return matching.Selection{Fits: []matching.Fit{{Index: 0, Reason: strings.Repeat("The published service covers accessible leaking sink connections. ", 6)}}}, nil
+}
+
+func TestLocationSelectionKeepsMatchesWithLongProviderExplanation(t *testing.T) {
+	initial := workflow.NewState()
+	initial.Intake = &workflow.Intake{Step: "location", Category: "Plumbing", Description: "Leaking sink", Detail: "The pipe underneath is dripping", Urgency: "I'm flexible", Budget: "I'm flexible"}
+	location := testLocation()
+	location.Kind, location.Address, location.Label = "place", "", "Amsterdam"
+	server := New(Dependencies{Store: workflow.NewMemoryStore(initial), Sessions: customerSession(), AppBaseURL: "http://example.test", AI: &longExplanationAI{}, Directory: geographicDirectoryStub{base: location}, Locations: locationStub{[]workflow.Location{location}}})
+	location.Selection = server.signLocation("test-customer", location)
+	body, err := json.Marshal(Action{Action: "set-location", Location: &location})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/actions", strings.NewReader(string(body)))
+	addTestOrigin(request)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("first location selection failed: status=%d body=%s", response.Code, response.Body.String())
+	}
+	reloaded := httptest.NewRecorder()
+	server.Handler().ServeHTTP(reloaded, httptest.NewRequest(http.MethodGet, "/api/state", nil))
+	var state workflow.State
+	if reloaded.Code != http.StatusOK || json.Unmarshal(reloaded.Body.Bytes(), &state) != nil {
+		t.Fatal("could not reload the selected location")
+	}
+	if state.Intake == nil || state.Intake.Step != "matches" || len(state.Intake.Matches) != 1 || state.Job.ID != "" {
+		t.Fatalf("reload lost professional results or assigned a job: %+v", state)
+	}
+	if reason := state.Intake.Matches[0].FitReason; len([]rune(reason)) > 240 || !strings.HasSuffix(reason, "…") {
+		t.Fatalf("unbounded provider explanation reached the results: %q", reason)
+	}
 }

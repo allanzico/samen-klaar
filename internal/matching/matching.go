@@ -54,7 +54,8 @@ func Find(ctx context.Context, directory Directory, selector Selector, category,
 		return nil, "", errors.New("too many service selections")
 	}
 	for _, fit := range selection.Fits {
-		if fit.Index < 0 || fit.Index >= len(services) || seen[fit.Index] || len(fit.Reason) < 8 || len(fit.Reason) > 240 {
+		reason := displayFitReason(fit.Reason)
+		if fit.Index < 0 || fit.Index >= len(services) || seen[fit.Index] || len(reason) < 8 {
 			return nil, "", errors.New("invalid service selection")
 		}
 		seen[fit.Index] = true
@@ -63,7 +64,7 @@ func Find(ctx context.Context, directory Directory, selector Selector, category,
 			return nil, "", err
 		}
 		for _, candidate := range candidates {
-			candidate.FitReason = fit.Reason
+			candidate.FitReason = reason
 			matches = append(matches, candidate)
 		}
 	}
@@ -86,4 +87,16 @@ func Find(ctx context.Context, directory Directory, selector Selector, category,
 		return matches, question, nil
 	}
 	return matches, "", nil
+}
+
+// Explanation length is a display concern, not service eligibility. Providers
+// can return a valid selection with longer copy; keep it readable without
+// discarding the matching professionals or splitting a Unicode character.
+func displayFitReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	runes := []rune(reason)
+	if len(runes) <= 240 {
+		return reason
+	}
+	return strings.TrimSpace(string(runes[:239])) + "…"
 }
