@@ -19,10 +19,19 @@ func RequestStatus(state State, role string) (string, string) {
 		if state.Intake == nil {
 			return "draft", "Start with a message"
 		}
+		if state.Intake.Step == "waitlist" {
+			return "waitlist", "No matching professional yet"
+		}
+		if state.Intake.Step == "unmatched" {
+			return "unmatched", "No suitable service identified"
+		}
 		if state.Intake.Step == "matches" {
 			return "matching", "Review matching services"
 		}
 		return "describing", "Describing the job"
+	}
+	if state.Intake != nil && state.Intake.Step == "professional_review" {
+		return "review_professional", "Review the professional’s service"
 	}
 	if job.Dispute != nil {
 		switch job.Dispute.Status {

@@ -34,6 +34,13 @@ export function customerStep(ctx: CustomerContext): StepView | null {
   const job = workspace.job;
   if (!job.id && !workspace.cancelled) return null;
   const pro = firstName(job.professional) || t('the professional');
+  if (workspace.intake?.step === 'professional_review') return {
+    kind: 'your-turn', tag:{variant:'your-turn',label:t('Your turn')}, title: t('Review {name} before continuing', {name:pro}),
+    text: t('Check the service, price and exclusions below. You can choose someone else. No visit is booked.'),
+    primary: {label:t('Continue with {name}', {name:pro}),run:()=>actions.act('confirm-professional',job.id)},
+    secondary: {label:t('Back to professionals'),run:()=>actions.act('return-to-matches')}
+  };
+
   const total = money(job.quote.totalMinor, job.quote.currency);
   const slots = workspace.availableSlots;
   const needsAddress = !!job.location && !job.serviceAddress;
@@ -222,6 +229,8 @@ export type ProContext = {
 export function proStep(ctx: ProContext): StepView | null {
   const { app, actions, workspace, code, noteReady, saveNote, openExtra } = ctx;
   const job = workspace.job;
+  if (workspace.intake?.step === 'professional_review') return {kind:'waiting',tag:{variant:'waiting',label:t('Waiting')},title:t('The customer is reviewing your service'),text:t('No visit has been booked yet.')};
+
   if (!job.id) return null;
   const customer = shortName(job.customer || t('Customer'));
   const first = firstName(job.customer) || t('the customer');

@@ -44,6 +44,8 @@ export function statusUi(code: string, role: WorkspaceRole | null, other = '', s
     case 'draft': case 'describing': return ui('neutral', t('Draft'), 1, t('Describing the job'), t('Your job so far'));
     case 'matching': return yourTurn(2, t('Choose a professional'));
     case 'waitlist': return ui('neutral', t('No coverage'), 2, t('On the area waitlist'));
+    case 'unmatched': return ui('neutral', t('No suitable service identified'), 2, t('Edit request'));
+    case 'review_professional': return pro ? waiting(3,t('The customer is reviewing your service')) : yourTurn(3,t('Review the professional’s service'));
     case 'quote': return pro ? waiting(3, t('Waiting for plan approval'), t('Waiting for {name} to approve the plan', { name })) : yourTurn(3, t('Confirm the plan'), t('Book your visit'));
     case 'booking': return pro ? waiting(3, t('Waiting for a visit time'), t('Waiting for {name} to choose a time', { name })) : yourTurn(3, t('Choose a visit time'), t('Book your visit'));
     case 'review_price': return yourTurn(3, t('Review the price offer'), t('{name} proposed a price', { name }));

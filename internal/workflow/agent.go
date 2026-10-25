@@ -294,6 +294,9 @@ func DecideAgent(c AgentContext) AgentDecision {
 }
 
 func decideCustomer(c AgentContext) AgentDecision {
+	if c.State.Intake != nil && c.State.Intake.Step == "professional_review" {
+		return escalate("review_professional", nil)
+	}
 	state, m := c.State, c.Mandate
 	job := state.Job
 	code := requestStatusCode(state, c.Role)
@@ -485,6 +488,9 @@ func recommendMatch(c AgentContext) AgentDecision {
 }
 
 func decideProfessional(c AgentContext) AgentDecision {
+	if c.State.Intake != nil && c.State.Intake.Step == "professional_review" {
+		return wait()
+	}
 	state, m := c.State, c.Mandate
 	job := state.Job
 	if job.ID == "" {

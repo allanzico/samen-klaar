@@ -8,6 +8,13 @@ import (
 )
 
 func Apply(state *State, input Action) error {
+	if state.Intake != nil && state.Intake.Step == "professional_review" && state.Job.ID != "" {
+		switch input.Action {
+		case "cancel-request", "confirm-professional", "review-professional", "return-to-matches", "revise-intake", "edit-intake", "record-request-photo", "remove-request":
+		default:
+			return errors.New("review this professional and choose Continue before planning the visit")
+		}
+	}
 	if input.Action == "set-booking-autonomy" {
 		return setBookingAutonomy(state, input)
 	}
@@ -40,7 +47,7 @@ func Apply(state *State, input Action) error {
 	if input.Action == "record-request-photo" {
 		return recordRequestPhoto(state, input)
 	}
-	if input.Action == "start-intake" || input.Action == "answer-intake" || input.Action == "set-location" || input.Action == "join-waitlist" || input.Action == "refresh-matches" || input.Action == "select-match" || input.Action == "return-to-matches" || input.Action == "revise-intake" {
+	if input.Action == "start-intake" || input.Action == "answer-intake" || input.Action == "set-location" || input.Action == "join-waitlist" || input.Action == "refresh-matches" || input.Action == "select-match" || input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "confirm-professional" || input.Action == "review-professional" || input.Action == "edit-intake" {
 		return applyIntake(state, input)
 	}
 	job := &state.Job

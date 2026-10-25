@@ -7,6 +7,15 @@ import (
 )
 
 var dutchIntakeCopy = map[string]string{
+	"We couldn’t find an approved professional with a matching service for this request in your area. You can save your request to the area waitlist. No visit has been booked.": "We hebben geen goedgekeurde vakpersoon met een passende dienst voor deze aanvraag in jouw omgeving gevonden. Je kunt je aanvraag op de wachtlijst voor deze omgeving bewaren. Er is geen bezoek geboekt.",
+
+	"I couldn’t identify a suitable service from these details. Your request is saved. You can edit the problem description; no visit has been booked.": "Ik kon op basis van deze details geen passende dienst vinden. Je aanvraag is bewaard. Je kunt de probleembeschrijving aanpassen; er is geen bezoek geboekt.",
+
+	"Review this professional’s service and price. You can choose someone else; nothing is booked yet.":              "Bekijk de dienst en prijs van deze vakpersoon. Je kunt iemand anders kiezen; er is nog niets geboekt.",
+	"You chose to continue with this professional. Next, agree the address, price and visit. Nothing is booked yet.": "Je hebt gekozen om met deze vakpersoon door te gaan. Spreek nu het adres, de prijs en het bezoek af. Er is nog niets geboekt.",
+	"What would you like help with? Update your request below.":                                                      "Waar wil je hulp bij? Pas je aanvraag hieronder aan.",
+	"What should the professional know about the problem? Update the details below.":                                 "Wat moet de vakpersoon weten over het probleem? Pas de details hieronder aan.",
+
 	"Enter an address, postcode or city. Your exact address stays private until you choose a professional.":                     "Voer een adres, postcode of plaats in. Je volledige adres blijft privé totdat je een vakprofessional kiest.",
 	"Where is the problem, and what happens when you notice it?":                                                                "Waar is het probleem en wat merk je ervan?",
 	"Does water still come out of the tap, and where is it leaking?":                                                            "Komt er nog water uit de kraan en waar lekt het?",
@@ -81,11 +90,13 @@ func intakeOptionID(step, label string) string {
 }
 
 func intakeOptions(i *Intake, labels []string) {
-	i.Options = make([]string, len(labels))
-	i.OptionIDs = make([]string, len(labels))
-	for index, label := range labels {
-		i.Options[index] = intakeText(i.Locale, label)
-		i.OptionIDs[index] = intakeOptionID(i.Step, label)
+	i.Options, i.OptionIDs = []string{}, []string{}
+	for _, label := range labels {
+		if canonicalIntakeOption(intakeText("en", label)) == "I'll describe more" {
+			continue
+		}
+		i.Options = append(i.Options, intakeText(i.Locale, label))
+		i.OptionIDs = append(i.OptionIDs, intakeOptionID(i.Step, label))
 	}
 }
 

@@ -348,3 +348,20 @@ test('photo comparison keeps the completion record and gives a specific safe rec
     assert.equal(app.pending, false);
   }
 });
+
+test('editing a description or replying from a no-match result revises the request', async()=>{
+ for(const step of ['description','waitlist','unmatched']) {
+  let sent;
+  const {app,actions}=setup(async(url,options)=>{
+   if(url==='/api/actions') {sent=JSON.parse(options.body);return response({job:{id:''},intake:{step:'detail'}});}
+   if(url==='/api/workspaces') return response({workspaces:[]});
+   throw new Error(`unexpected ${url}`);
+  });
+  app.serverState={job:{id:''},intake:{step}};
+  app.draft='The kitchen sink pipe is leaking';
+  await actions.sendMessage();
+  assert.equal(sent.action,'revise-intake',step);
+  assert.equal(sent.value,'The kitchen sink pipe is leaking');
+  assert.equal(app.draft,'');
+ }
+});

@@ -13,13 +13,13 @@
   import { t } from '../../lib/i18n.svelte';
 
   // C01–C03 and C14: the plan card, then "To book, confirm three things" (price, address, time).
-  let { app, actions, workspace, code }: { app: AppState; actions: AppActions; workspace: WorkspaceState; code: RequestCode } = $props();
+  let { app, actions, workspace, code, reviewOnly = false }: { app: AppState; actions: AppActions; workspace: WorkspaceState; code: RequestCode; reviewOnly?: boolean } = $props();
   const job = $derived(workspace.job);
   const pro = $derived(firstName(job.professional));
   const slots = $derived(workspace.availableSlots);
   const needsAddress = $derived(!!job.location && !job.serviceAddress);
   const slot = $derived(effectiveSlot(slots, !needsAddress));
-  const planPage = $derived(code === 'quote');
+  const planPage = $derived(code === 'quote' || reviewOnly);
   const assessment = $derived(job.intakeRoute === 'assessment');
 
   let address = $state('');
@@ -84,7 +84,7 @@
       </details>
     </section>
 
-    <section class="box checklist" aria-labelledby="checklist-title">
+    {#if !reviewOnly}<section class="box checklist" aria-labelledby="checklist-title">
       <h2 id="checklist-title" class="section-title">{t('To book, confirm three things')}</h2>
       <ol class="rows">
         <li class="check done">
@@ -109,7 +109,7 @@
           </div>
         </li>
       </ol>
-    </section>
+    </section>{/if}
   {:else}
     <section class="box checklist" aria-labelledby="pick-title">
       <h2 id="pick-title" class="section-title">{code === 'choose_visit' ? t('Choose another time') : t('Choose a visit time')}</h2>

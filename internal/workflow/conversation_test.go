@@ -15,7 +15,7 @@ func TestAssignedMessagesDoNotApproveOrBook(t *testing.T) {
 		t.Fatalf("message changed agreement: %+v", s)
 	}
 }
-func TestCorrectionKeepsPreferencesAndProtectsApprovedPlans(t *testing.T) {
+func TestCorrectionKeepsPreferencesAndProtectsBookedPlans(t *testing.T) {
 	s := NewState()
 	s.Intake = &Intake{Step: "selected", Category: "Plumbing", Description: "Sink leak", Urgency: "As soon as possible", Budget: "100 euros"}
 	s.Job.ID = "job"
@@ -29,8 +29,9 @@ func TestCorrectionKeepsPreferencesAndProtectsApprovedPlans(t *testing.T) {
 	}
 	s.Job.ID = "job"
 	s.Job.QuoteApproved = true
+	s.Job.Appointment = &Appointment{SlotID: "reserved"}
 	if err := Apply(&s, action); err == nil {
-		t.Fatal("replaced an approved plan")
+		t.Fatal("replaced a booked plan")
 	}
 }
 

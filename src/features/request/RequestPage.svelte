@@ -8,6 +8,7 @@
   import AgreedLedger from './AgreedLedger.svelte';
   import PaymentTimingChoice from './PaymentTimingChoice.svelte';
   import BookingAutonomyChoice from './BookingAutonomyChoice.svelte';
+  import PrebookingNavigation from './PrebookingNavigation.svelte';
   import { automaticReleaseOn } from '../../lib/booking-autonomy';
   import AfterThis from './AfterThis.svelte';
   import Thread from './Thread.svelte';
@@ -85,10 +86,10 @@ import RelatedJobs from './RelatedJobs.svelte';
     : customerStep({ app, actions, workspace, code, timing: requestUi.timing, slot, openReport: () => { requestUi.reporting = true; }, openPolicy: () => { requestUi.policy = true; } }));
   const timingChoice = $derived(!pro && showTimingChoice(app, workspace, code));
 
-  const customerPages = ['quote', 'booking', 'choose_visit', 'review', 'payment', 'paid', 'refunded', 'refund_pending', 'dispute_review', 'cancellation_review'];
+  const customerPages = ['review_professional', 'quote', 'booking', 'choose_visit', 'review', 'payment', 'paid', 'refunded', 'refund_pending', 'dispute_review', 'cancellation_review'];
   const proPages = ['in_progress', 'note_requested', 'review', 'payment', 'paid', 'dispute_review'];
   const stagePage = $derived(hasJob && (pro ? proPages : customerPages).includes(code) && !(code === 'booking' && !!job.appointment));
-  const showComposer = $derived(!guided && (pro ? hasJob : intake?.step !== 'location' && (!workspace.cancelled || hasJob)));
+  const showComposer = $derived(workspace.intake?.step !== 'professional_review' && !guided && (pro ? hasJob : intake?.step !== 'location' && (!workspace.cancelled || hasJob)));
   const canCancel = $derived(hasJob && canCancelRequest(workspace));
   let historyOpen = $state(false);
 
@@ -102,15 +103,15 @@ import RelatedJobs from './RelatedJobs.svelte';
 </script>
 
 {#snippet timing(placement: string)}
-  {#if !pro && !job.appointment && ['quote','booking','choose_visit','review_date'].includes(code)}<BookingAutonomyChoice {app} {actions} {workspace} id={placement}/>{/if}
-  {#if timingChoice && (!job.bookingAutonomyRequired || job.bookingAutonomy)}
+  {#if !pro && workspace.intake?.step !== 'professional_review' && !job.appointment && ['quote','booking','choose_visit','review_date'].includes(code)}<BookingAutonomyChoice {app} {actions} {workspace} id={placement}/>{/if}
+  {#if workspace.intake?.step !== 'professional_review' && timingChoice && (!job.bookingAutonomyRequired || job.bookingAutonomy)}
     <PaymentTimingChoice {app} {actions} {workspace} id={placement}/>
   {/if}
 {/snippet}
 
 {#snippet asideContent()}
   {#if !hasJob && !workspace.cancelled}
-    <JobSoFar {intake} busy={app.pending} onEdit={actions.focusComposer}/>
+    <JobSoFar {intake} busy={app.pending} onEdit={() => actions.act('edit-intake','description')}/>
   {:else if hasJob && !stagePage && !workspace.cancelled}
     <Agreement {job} {role} variant="rows"/>
   {/if}
@@ -170,6 +171,7 @@ import RelatedJobs from './RelatedJobs.svelte';
         <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
         {#if job.bookingAutonomy.mode==='automatic'}<button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={() => actions.act('set-booking-autonomy','manual')}>{t('Turn off automatic review and release')}</button>{/if}</div>
       {/if}
+      <div class="content-pad"><PrebookingNavigation {app} {actions} {workspace}/></div>
       {#if app.error}<div class="content-pad"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
       {#if app.refreshError}<p class="content-pad helper" role="status">{t(app.refreshError)}</p>{/if}
       {#if guided}<div id="request-action" class="ask-slot content-pad floating">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>{/if}
@@ -202,7 +204,7 @@ import RelatedJobs from './RelatedJobs.svelte';
     </div>
 
     {#if showComposer}
-      <div class="composer-row"><Composer {app} {actions} compact={stagePage && app.composeMode === 'message'} assigned={hasJob} matching={!hasJob && (intake?.step === 'matches' || intake?.step === 'waitlist')}/></div>
+      <div class="composer-row"><Composer {app} {actions} compact={stagePage && app.composeMode === 'message'} assigned={hasJob} matching={!hasJob && (intake?.step === 'matches' || intake?.step === 'waitlist' || intake?.step === 'unmatched')}/></div>
     {/if}
   </div>
 

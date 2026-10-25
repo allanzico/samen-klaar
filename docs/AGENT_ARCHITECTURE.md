@@ -209,3 +209,7 @@ version in force.
   customer agent starts when the match list appears.
 - Agents act on the earliest matching time and the first match inside the limit. Geographic profiles
   are ranked by straight-line distance and availability. Rating and routed travel-time ranking are not implemented.
+
+## Professional review before planning — 25 October 2026
+
+`select-match` creates an unbooked candidate plan with intake stage `professional_review`. Both assistants pause there; the customer sees the service, price, materials and exclusions before `confirm-professional` moves intake to `selected`. Confirmation carries the current job ID and cannot be made by an agent. Workflow validation blocks address, negotiation and booking progress until that customer confirmation. `review-professional` reopens the review and clears old assistant questions before a visit is booked. `return-to-matches` and `edit-intake` preserve the request conversation while clearing an unbooked candidate plan; a negotiated price alone does not lock navigation. Booking, work and payment history still prevent rewinding.

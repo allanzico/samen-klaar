@@ -142,6 +142,8 @@ export type Job = {
 
 export type Location = { label: string; latitude: number; longitude: number; source: string; id?: string; kind?: string; city?: string; postcode?: string; country?: string; neighborhood?: string; bounds?: number[]; address?: string; selection?: string };
 export type Intake = {
+  matchClarifications?: number;
+  detailAttempts?: number;
   locale?:string; optionIds?:string[];
   step: string;
   description: string;

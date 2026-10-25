@@ -77,3 +77,23 @@ test('new bookings require an explicit current agreement permission; legacy book
   assert.equal(needsAutonomyChoice(job),false);
   assert.equal(automaticReleaseOn(job),false);
 });
+
+const navigationBundle = await build({entryPoints:['src/lib/prebooking.ts'],bundle:true,platform:'node',format:'cjs',write:false});
+const navigationModule = {exports:{}};
+new Function('module','exports',navigationBundle.outputFiles[0].text)(navigationModule,navigationModule.exports);
+const {canReviseUnbookedRequest,previousIntakeStep}=navigationModule.exports;
+test('an agreed price can go back, while a reserved visit cannot rewind',()=>{
+ const w={job:{id:'job',quoteApproved:true,evidence:[]}};
+ assert.equal(canReviseUnbookedRequest(w),true);
+ for(const change of [{appointment:{slotId:'reserved'}},{paymentAuthorizedVersion:1},{workStarted:true},{paid:true}]) {
+  assert.equal(canReviseUnbookedRequest({...w,job:{...w.job,...change}}),false);
+ }
+ assert.equal(previousIntakeStep('urgency'),'detail');
+ assert.equal(previousIntakeStep('location'),'budget');
+ assert.equal(previousIntakeStep('matches'),'location');
+});
+test('stale assistant questions cannot cover the professional review step',()=>{
+ const w=workspace();w.intake.step='professional_review';
+ assert.equal(requestInteraction(w,'customer'),undefined);
+ assert.equal(requestReplyKey(w,'customer'),'');
+});

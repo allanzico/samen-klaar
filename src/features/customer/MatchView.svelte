@@ -74,7 +74,7 @@
             <div class="person"><span class="avatar avatar-44" aria-hidden="true">{initials(match.name)}</span><div><h2 id="compare-{match.id}">{match.name}</h2><p class="secondary-text">{match.serviceName || t(match.category)}</p></div></div>
             {@render facts(match)}
             {@render included(match)}
-            <button type="button" class="btn {index === 0 ? 'btn-primary' : 'btn-outline'} btn-block push" disabled={app.pending} onclick={() => select(match)}>{t('Choose {name} and continue', { name: firstName(match.name) })}</button>
+            <button type="button" class="btn {index === 0 ? 'btn-primary' : 'btn-outline'} btn-block push" disabled={app.pending} onclick={() => select(match)}>{t('Review {name}’s service', { name: firstName(match.name) })}</button>
           </article>
         {/each}
       </div>
@@ -88,19 +88,19 @@
         <p class="service"><Icon name="check-circle"/><span><b>{best.serviceName}</b>{#if best.fitReason}<small>{best.fitReason}</small>{/if}</span></p>
         {@render facts(best)}
         {@render included(best)}
-        <button type="button" class="btn btn-primary btn-block btn-strong" disabled={app.pending} onclick={() => select(best)}>{t('Choose {name} and continue', { name: firstName(best.name) })}</button>
-        <p class="helper center">{t('You choose the professional. Your assistant then helps with the plan and visit.')}</p>
+        <button type="button" class="btn btn-primary btn-block btn-strong" disabled={app.pending} onclick={() => select(best)}>{t('Review {name}’s service', { name: firstName(best.name) })}</button>
+        <p class="helper center">{t('Review the full service next. You can go back before booking.')}</p>
       </article>
     {/if}
   </div>
 
   <aside class="side" aria-label={t('Your job and alternatives')}>
     <section class="box side-job">
-      <div class="side-head"><h2 class="small-title">{t('Your job')}</h2><button type="button" class="btn btn-quiet" disabled={app.pending} onclick={actions.focusComposer}>{t('Edit')}</button></div>
+      <div class="side-head"><h2 class="small-title">{t('Your job')}</h2><button type="button" class="btn btn-quiet" disabled={app.pending} onclick={() => actions.act('edit-intake','description')}>{t('Edit')}</button></div>
       <p>{intake.description}</p>
       <div class="facts-tags">{#if intake.category}<span class="pill pill--fact">{t(intake.category)}</span>{/if}{#if area}<span class="pill pill--fact">{area}</span>{/if}{#if intake.urgency}<span class="pill pill--fact">{t(intake.urgency)}</span>{/if}</div>
     </section>
-    <button type="button" class="btn btn-quiet" disabled={app.pending} onclick={actions.focusComposer}>{t('Not your problem? Describe it again')}</button>
+    <button type="button" class="btn btn-quiet" disabled={app.pending} onclick={() => actions.act('edit-intake','description')}>{t('Not your problem? Describe it again')}</button>
     {#if others.length && !comparing}
       <div class="side-head"><h2 class="small-title">{t('Also available')}</h2>{#if matches.length > 1}<button type="button" class="btn btn-quiet" onclick={() => { comparing = true; }}>{matches.length === 3 ? t('Compare all three') : t('Compare both')}</button>{/if}</div>
       <ul class="box rows alts">
@@ -108,7 +108,7 @@
           <li>
             <span class="avatar" aria-hidden="true">{initials(match.name)}</span>
             <span class="alt-text"><b>{match.name}</b><small>{money(match.totalMinor, match.currency)} · {t('{minutes} min', { minutes: match.durationMinutes })} · {match.earliestAppointment ? dayTime(match.earliestAppointment.startUtc, match.earliestAppointment.timezone) : t('time in chat')}</small></span>
-            <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} onclick={() => select(match)}>{t('Choose {name}', { name: firstName(match.name) })}</button>
+            <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} onclick={() => select(match)}>{t('Review {name}', { name: firstName(match.name) })}</button>
           </li>
         {/each}
       </ul>

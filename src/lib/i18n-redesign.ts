@@ -1,6 +1,27 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Review the professional’s service": "Bekijk de dienst van de vakpersoon",
+
+  "No suitable service identified": "Geen passende dienst gevonden",
+  "We couldn’t identify a suitable service from the details so far. Your request is saved, and no visit is booked. You can edit the problem description below.": "We konden op basis van de huidige details geen passende dienst vinden. Je aanvraag is bewaard en er is geen bezoek geboekt. Je kunt de probleembeschrijving hieronder aanpassen.",
+
+  "Request steps": "Stappen van je aanvraag",
+  "Back to professional": "Terug naar vakpersoon",
+  "Back to previous step": "Terug naar de vorige stap",
+  "Back to professionals": "Terug naar vakpersonen",
+  "Review {name} before continuing": "Bekijk {name} voordat je doorgaat",
+  "Continue with {name}": "Doorgaan met {name}",
+  "Check the service, price and exclusions below. You can choose someone else. No visit is booked.": "Bekijk hieronder de dienst, prijs en uitsluitingen. Je kunt iemand anders kiezen. Er is geen bezoek geboekt.",
+  "Review the selected professional and choose Continue when you are ready.": "Bekijk de gekozen vakpersoon en kies Doorgaan wanneer je klaar bent.",
+  "The customer is reviewing your service": "De klant bekijkt je dienst",
+  "No visit has been booked yet.": "Er is nog geen bezoek geboekt.",
+  "Review {name}’s service": "Bekijk de dienst van {name}",
+  "Review {name}": "Bekijk {name}",
+  "Review the full service next. You can go back before booking.": "Bekijk hierna de volledige dienst. Je kunt teruggaan voordat je boekt.",
+  "No matching {trade} for this request in {area}": "Geen passende {trade} voor deze aanvraag in {area}",
+  "We couldn’t find an approved professional offering a suitable service for this request in your area. You can save it for our team, edit the request or try another area. No visit is booked.": "We hebben geen goedgekeurde vakpersoon met een passende dienst voor deze aanvraag in jouw omgeving gevonden. Je kunt de aanvraag bewaren voor ons team, aanpassen of een andere omgeving proberen. Er is geen bezoek geboekt.",
+
   "Who checks the work and releases payment?": "Wie controleert het werk en geeft de betaling vrij?",
   "Let my assistant review and release": "Laat mijn assistent controleren en betalen",
   "Check the professional’s photos and note, approve documented work and release {amount} from my PayPal hold.": "Controleer de foto’s en notitie van de vakpersoon, keur gedocumenteerd werk goed en geef {amount} vrij uit mijn PayPal-reservering.",

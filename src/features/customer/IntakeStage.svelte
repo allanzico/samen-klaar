@@ -14,6 +14,7 @@
   let searching = $state(false);
   $effect(() => { if (intake.location?.label && !area) area = intake.location.label; });
   const trade = $derived(tradeOf(intake.category));
+  const answerOptions = $derived((intake.options ?? []).map((label,index)=>({label,id:intake.optionIds?.[index]})).filter(({label,id})=>!id?.endsWith(':describe_more') && !["I'll describe more", 'I’ll describe more', 'Ik geef meer informatie', 'Ik beschrijf het verder'].includes(label)));
   async function setArea(event: SubmitEvent) {
     event.preventDefault();
     searching = true;
@@ -21,9 +22,9 @@
   }
 </script>
 
-{#if ['detail', 'urgency', 'budget'].includes(intake.step) && intake.options?.length}
+{#if ['detail', 'urgency', 'budget'].includes(intake.step) && answerOptions.length}
   <div class="chips" role="group" aria-label={t('Suggested answers')}>
-    {#each intake.options as option, i}<button type="button" class="chip" disabled={app.pending} onclick={() => actions.chooseAnswer(intake.optionIds?.[i] || option)}>{t(option)}</button>{/each}
+    {#each answerOptions as option}<button type="button" class="chip" disabled={app.pending} onclick={() => actions.chooseAnswer(option.id || option.label)}>{t(option.label)}</button>{/each}
   </div>
 {/if}
 
@@ -47,11 +48,18 @@
     <LocationSearch id="service-area" label={t('Address, postcode or city')} bind:value={area} bind:selected disabled={app.pending} help={t('Your exact address is shared only with the professional you choose.')}/>
     <button class="btn btn-primary" disabled={app.pending || !selected}>{t('Find professionals')}</button>
   </form>
+{:else if intake.step === 'unmatched'}
+  <section class="box waitlist" aria-labelledby="unmatched-title">
+    <h2 id="unmatched-title" class="section-title">{t('No suitable service identified')}</h2>
+    <p class="secondary-text">{t('We couldn’t identify a suitable service from the details so far. Your request is saved, and no visit is booked. You can edit the problem description below.')}</p>
+    <button type="button" class="btn btn-outline" disabled={app.pending} onclick={()=>actions.act('edit-intake','description')}>{t('Edit request')}</button>
+    <button type="button" class="btn btn-danger-link" disabled={app.pending} onclick={() => { app.error = ''; requestUi.deleting = true; }}>{t('Delete request')}</button>
+  </section>
 {:else if intake.step === 'waitlist'}
   <section class="box waitlist" aria-labelledby="waitlist-title">
     <span class="icon-tile icon-tile-48" aria-hidden="true"><Icon name="pin"/></span>
-    <h2 id="waitlist-title" class="section-title">{t('No {trade} covers {area} yet', { trade: tradeName(trade), area: intake.location?.label ?? area })}</h2>
-    <p class="secondary-text">{t('We haven’t found a reviewed professional who serves this area. You can save the request for our team. This isn’t a booking, and we can’t promise a match.')}</p>
+    <h2 id="waitlist-title" class="section-title">{t('No matching {trade} for this request in {area}', { trade: tradeName(trade), area: intake.location?.label ?? area })}</h2>
+    <p class="secondary-text">{t('We couldn’t find an approved professional offering a suitable service for this request in your area. You can save it for our team, edit the request or try another area. No visit is booked.')}</p>
     {#if intake.waitlisted}
       <Banner kind="success" text={t('Saved. Your request stays in your account.')}/>
     {:else}

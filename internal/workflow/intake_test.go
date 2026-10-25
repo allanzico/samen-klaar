@@ -30,6 +30,9 @@ func intakeAnswer(t *testing.T, state *State, action, value string) {
 		t.Fatal(err)
 	}
 	if action == "select-match" && state.Job.Location != nil {
+		if err := Apply(state, Action{Actor: "customer", Action: "confirm-professional", Value: state.Job.ID}); err != nil {
+			t.Fatal(err)
+		}
 		if err := Apply(state, Action{Actor: "customer", Action: "set-service-address", Value: "Damrak 1, 1012 LG Amsterdam"}); err != nil {
 			t.Fatal(err)
 		}
@@ -272,6 +275,9 @@ func TestUrgentMatchingOrdersVisitsAndRequiresApproval(t *testing.T) {
 		t.Fatal("own service was selectable")
 	}
 	if err := Apply(&state, Action{Actor: "customer", Action: "select-match", Value: "jonas", SelectedOffer: offer, CustomerAccountID: "other-customer", AvailableSlots: []Appointment{early}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(&state, Action{Actor: "customer", Action: "confirm-professional", Value: state.Job.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if err := Apply(&state, Action{Actor: "customer", Action: "set-service-address", Value: "Damrak 1, 1012 LG Amsterdam"}); err != nil {

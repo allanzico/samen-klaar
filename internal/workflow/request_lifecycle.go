@@ -76,3 +76,13 @@ func removeRequest(state *State, input Action) error {
 	}
 	return cancelRequest(state, input)
 }
+
+// A negotiated price alone does not reserve a visit. Navigation remains reversible
+// until booking or work/payment history requires keeping the agreed record.
+func CanReviseUnbookedRequest(state State) bool {
+	job := state.Job
+	return !state.Cancelled && job.Appointment == nil && job.AppointmentConfirmation == nil &&
+		job.PaymentAuthorizedVersion == 0 && job.PaymentApprovedVersion == 0 && !job.WorkStarted &&
+		!job.EvidenceSubmitted && len(job.Evidence) == 0 && !job.CompletionApproved && !job.Paid &&
+		job.PaymentTransactionID == "" && job.Dispute == nil && job.Review == nil && state.CancellationReview == nil
+}

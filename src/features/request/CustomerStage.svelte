@@ -22,8 +22,8 @@
   const coverageLabel = (coverage: string) => t(coverage === 'documented' || coverage === 'shown' ? 'Shown' : coverage === 'missing' ? 'Missing' : 'Unclear');
 </script>
 
-{#if code === 'quote' || ((code === 'booking' || code === 'choose_visit') && !app.serverState?.job.appointment)}
-  <PlanStage {app} {actions} {workspace} {code}/>
+{#if workspace.intake?.step === 'professional_review' || code === 'quote' || ((code === 'booking' || code === 'choose_visit') && !app.serverState?.job.appointment)}
+  <PlanStage {app} {actions} {workspace} {code} reviewOnly={workspace.intake?.step === 'professional_review'}/>
 {:else if code === 'in_progress'}
   <Banner kind="info" title={t('Nothing extra without your yes')} text={t('If {name} finds more to fix, it comes here as an offer first.', { name: pro })}/>
 {:else if code === 'review'}

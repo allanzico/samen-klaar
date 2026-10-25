@@ -5,7 +5,7 @@ import type { WorkspaceState, WorkspaceRole } from './types';
 // waitlist, authorize_booking and note_requested.
 export type RequestCode =
   | 'loading' | 'draft' | 'describing' | 'matching' | 'waitlist'
-  | 'quote' | 'booking' | 'review_price' | 'waiting_price' | 'review_date' | 'waiting_date'
+  | 'unmatched' | 'review_professional' | 'quote' | 'booking' | 'review_price' | 'waiting_price' | 'review_date' | 'waiting_date'
   | 'authorize_booking' | 'confirm_visit' | 'waiting_visit_confirmation' | 'choose_visit'
   | 'booked' | 'in_progress' | 'review_change' | 'waiting_change'
   | 'review' | 'note_requested' | 'payment' | 'paid'
@@ -21,8 +21,10 @@ export function requestStatus(state: WorkspaceState | null, role: WorkspaceRole 
     if (!state.intake) return 'draft';
     if (state.intake.step === 'matches') return 'matching';
     if (state.intake.step === 'waitlist') return 'waitlist';
+    if (state.intake.step === 'unmatched') return 'unmatched';
     return 'describing';
   }
+  if (state.intake?.step === 'professional_review') return 'review_professional';
   switch (job.dispute?.status) {
     case 'open': case 'partial_refund_review': case 'payment_reversal_review': return 'dispute_review';
     case 'refund_pending': return 'refund_pending';

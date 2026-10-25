@@ -86,6 +86,7 @@ func TestConversationHTTPRoundTrip(t *testing.T) {
 		t.Fatal("no suitable match")
 	}
 	state = send("select-match", state.Intake.Matches[0].ID)
+	state = send("confirm-professional", state.Job.ID)
 	state = send("set-service-address", "Damrak 1, 1012 LG Amsterdam")
 	send("set-booking-autonomy", "manual")
 	send("approve-quote", "")
@@ -145,4 +146,102 @@ func (directoryStub) ServiceCatalog(context.Context, string, string, string, ...
 }
 func (d directoryStub) ServiceMatches(ctx context.Context, category, exclude string, _ matching.Service, _ ...workflow.Location) ([]workflow.Match, error) {
 	return d.ListProfessionalMatches(ctx, category, workflow.Location{}, exclude)
+}
+
+// A later uncertain routing response must not erase a trade already inferred
+// from a clear free-form request and force the customer through location again.
+type uncertainFollowupIntake struct{ intakeStub }
+
+func (s *uncertainFollowupIntake) Clarify(_ context.Context, _, description string) (workflow.IntakeSuggestion, error) {
+	s.calls++
+	if s.calls == 1 {
+		return workflow.InferIntake(description), nil
+	}
+	return workflow.IntakeSuggestion{Category: "Unclear", Route: "assessment", Question: "Where is the problem, and what happens?", Options: []string{"I'll describe more"}}, nil
+}
+func TestFreeFormIntakeFindsPlumberAfterOneLocationSearch(t *testing.T) {
+	server := New(Dependencies{Store: workflow.NewMemoryStore(workflow.NewState()), Sessions: customerSession(), AppBaseURL: "http://example.test", AI: &uncertainFollowupIntake{}, Directory: directoryStub{}})
+	var state State
+	for _, step := range [][2]string{{"start-intake", "My kitchen sink is leaking"}, {"answer-intake", "Water drips from the connection beneath the basin when the tap runs"}, {"answer-intake", "Sometime next week"}, {"answer-intake", "Please show the available prices"}, {"set-location", "Amsterdam"}} {
+		body, _ := json.Marshal(Action{Action: step[0], Value: step[1]})
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/actions", bytes.NewReader(body))
+		addTestOrigin(request)
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", step[0], response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if state.Intake.Step != "matches" || len(state.Intake.Matches) == 0 || state.Intake.Location == nil {
+		t.Fatalf("free-form request needed another search: step=%s category=%s", state.Intake.Step, state.Intake.Category)
+	}
+}
+
+type recoveryIntake struct {
+	intakeStub
+	noFit, selectorUnavailable bool
+}
+
+func (s *recoveryIntake) SelectServices(context.Context, string, []matching.Service) (matching.Selection, error) {
+	if s.selectorUnavailable {
+		return matching.Selection{}, errors.New("synthetic selector unavailable")
+	}
+	if s.noFit {
+		return matching.Selection{Question: "Which connection beneath the sink needs repair?"}, nil
+	}
+	return matching.Selection{Fits: []matching.Fit{{Index: 0, Reason: "This service covers the described sink leak."}}}, nil
+}
+func TestUnmatchedFreeTextSettlesAndBackUsesSavedProfessionals(t *testing.T) {
+	for _, noFit := range []bool{true, false} {
+		t.Run(map[bool]string{true: "unavailable", false: "back-without-provider"}[noFit], func(t *testing.T) {
+			ai := &recoveryIntake{noFit: noFit}
+			server := New(Dependencies{Store: workflow.NewMemoryStore(workflow.NewState()), Sessions: customerSession(), AppBaseURL: "http://example.test", AI: ai, Directory: directoryStub{}})
+			send := func(action, value string) State {
+				t.Helper()
+				body, _ := json.Marshal(Action{Action: action, Value: value})
+				response := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, "/api/actions", bytes.NewReader(body))
+				addTestOrigin(request)
+				server.Handler().ServeHTTP(response, request)
+				if response.Code != 200 {
+					t.Fatalf("%s: %d %s", action, response.Code, response.Body.String())
+				}
+				var state State
+				if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+					t.Fatal(err)
+				}
+				return state
+			}
+			send("start-intake", "My kitchen sink is leaking")
+			send("answer-intake", "The pipe beneath the sink drips when the tap runs")
+			send("answer-intake", "Next week")
+			send("answer-intake", "Show the available prices")
+			state := send("set-location", "Amsterdam")
+			if noFit {
+				if state.Intake.Step != "detail" {
+					t.Fatalf("expected one focused follow-up, got %s", state.Intake.Step)
+				}
+				state = send("answer-intake", "The drain connection right below the basin leaks")
+				if state.Intake.Step != "waitlist" || state.Intake.Location == nil || state.Job.ID != "" {
+					t.Fatal("no-match request returned to another address/detail question")
+				}
+			} else {
+				state = send("select-match", state.Intake.Matches[0].ID)
+				ai.selectorUnavailable = true
+				state = send("return-to-matches", "")
+				if state.Intake.Step != "matches" || len(state.Intake.Matches) != 1 || state.Job.ID != "" {
+					t.Fatal("back navigation lost the professional results")
+				}
+			}
+			reload := httptest.NewRecorder()
+			server.Handler().ServeHTTP(reload, httptest.NewRequest(http.MethodGet, "/api/state", nil))
+			var restored State
+			if reload.Code != 200 || json.Unmarshal(reload.Body.Bytes(), &restored) != nil || restored.Intake.Step != state.Intake.Step || restored.Intake.Location == nil {
+				t.Fatal("reload lost the terminal search/navigation state")
+			}
+		})
+	}
 }

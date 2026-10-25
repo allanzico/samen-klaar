@@ -520,6 +520,11 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 			return workflow.State{}, err
 		}
 	}
+	if current.Job.ID != "" && (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake") {
+		if err := validateBookingPaymentReleaseTx(ctx, tx, current); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	if current.Job.Appointment == nil && (input.Action == "book-appointment" || input.Action == "approve-and-book" || input.Action == "accept-date") {
 		if err := validateBookingPaymentReleaseTx(ctx, tx, current); err != nil {
 			return workflow.State{}, err
@@ -543,7 +548,7 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 
 	// Finding another professional reopens a request the professional cancelled, so it takes
 	// a place under the open-request limit again.
-	if input.Action == "return-to-matches" && role == "customer" && current.Cancelled {
+	if role == "customer" && (input.Action == "return-to-matches" && current.Cancelled || (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake") && !workflow.RequestOpen(current)) {
 		open, err := lockOpenRequestCountTx(ctx, tx, ownerID, workspaceID)
 		if err != nil {
 			return workflow.State{}, err

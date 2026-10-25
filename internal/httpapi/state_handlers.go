@@ -127,7 +127,11 @@ func (s *Server) runAction(ctx context.Context, principal identity.Principal, in
 			category = workflow.ClarifiedCategory(*current.Intake, input.Value, input.Suggestion)
 		}
 		readyAfterDetail := current.Intake != nil && current.Intake.Step == "detail" && current.Intake.Urgency != "" && current.Intake.Budget != "" && current.Intake.Location != nil
-		searchRequested := input.Action == "set-location" || input.Action == "return-to-matches" || input.Action == "refresh-matches" && current.Intake != nil && current.Intake.Location != nil
+		returningToSavedMatches := input.Action == "return-to-matches" && current.Intake != nil && len(current.Intake.Matches) > 0 && !current.Cancelled
+		if returningToSavedMatches {
+			input.Matches = append([]workflow.Match{}, current.Intake.Matches...)
+		}
+		searchRequested := input.Action == "set-location" || input.Action == "return-to-matches" && !returningToSavedMatches || input.Action == "refresh-matches" && current.Intake != nil && current.Intake.Location != nil
 		searchAfterAnswer := input.Action == "answer-intake" && (current.Intake != nil && current.Intake.Step == "budget" && current.Intake.Location != nil || readyAfterDetail)
 		if current.Intake != nil && (searchRequested || searchAfterAnswer) {
 			if s.directory == nil {

@@ -134,6 +134,7 @@ func TestGeocodedIntakeKeepsPrivateAddressThroughHTTPSelection(t *testing.T) {
 		t.Fatal("location result was not canonical or exposed the address in its public label")
 	}
 	state = send("select-match", state.Intake.Matches[0].ID, nil, 200)
+	state = send("confirm-professional", state.Job.ID, nil, 200)
 	if state.Job.ServiceAddress != location.Address || state.Job.ServiceLocation == nil {
 		t.Fatal("exact address was not carried into the selected job")
 	}

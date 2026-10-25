@@ -118,23 +118,25 @@ func OrderMatches(matches []Match, location *Location) {
 }
 
 type Intake struct {
-	ServiceAddress string    `json:"serviceAddress,omitempty"`
-	Locale         string    `json:"locale,omitempty"`
-	OptionIDs      []string  `json:"optionIds,omitempty"`
-	Step           string    `json:"step"`
-	Description    string    `json:"description"`
-	Category       string    `json:"category"`
-	Route          string    `json:"route"`
-	Question       string    `json:"question"`
-	Options        []string  `json:"options"`
-	Messages       []Message `json:"messages"`
-	Detail         string    `json:"detail"`
-	Urgency        string    `json:"urgency"`
-	Budget         string    `json:"budget"`
-	Location       *Location `json:"location"`
-	Matches        []Match   `json:"matches"`
-	NeedsReview    bool      `json:"needsReview"`
-	Waitlisted     bool      `json:"waitlisted"`
+	DetailAttempts      int       `json:"detailAttempts,omitempty"`
+	MatchClarifications int       `json:"matchClarifications,omitempty"`
+	ServiceAddress      string    `json:"serviceAddress,omitempty"`
+	Locale              string    `json:"locale,omitempty"`
+	OptionIDs           []string  `json:"optionIds,omitempty"`
+	Step                string    `json:"step"`
+	Description         string    `json:"description"`
+	Category            string    `json:"category"`
+	Route               string    `json:"route"`
+	Question            string    `json:"question"`
+	Options             []string  `json:"options"`
+	Messages            []Message `json:"messages"`
+	Detail              string    `json:"detail"`
+	Urgency             string    `json:"urgency"`
+	Budget              string    `json:"budget"`
+	Location            *Location `json:"location"`
+	Matches             []Match   `json:"matches"`
+	NeedsReview         bool      `json:"needsReview"`
+	Waitlisted          bool      `json:"waitlisted"`
 }
 
 func containsAny(s string, words ...string) bool {
@@ -248,6 +250,50 @@ func applyIntakeInput(state *State, input Action) error {
 	i.Question = intakeText(i.Locale, i.Question)
 	intakeOptions(i, i.Options)
 
+	if input.Action == "confirm-professional" || input.Action == "review-professional" {
+		if input.ByAgent || state.Job.ID == "" || input.Value != state.Job.ID || !CanReviseUnbookedRequest(*state) {
+			return errors.New("review the current professional before continuing; a booked visit cannot be changed here")
+		}
+		state.AgentDialog, state.ProDialog = nil, nil
+		if input.Action == "review-professional" {
+			ask(i, "professional_review", "Review this professional’s service and price. You can choose someone else; nothing is booked yet.")
+		} else {
+			if i.Step != "professional_review" {
+				return errors.New("this professional has already been reviewed")
+			}
+			ask(i, "selected", "You chose to continue with this professional. Next, agree the address, price and visit. Nothing is booked yet.")
+		}
+		return nil
+	}
+	if input.Action == "edit-intake" {
+		if input.ByAgent || !CanReviseUnbookedRequest(*state) {
+			return errors.New("a booked request cannot return to intake")
+		}
+		questions := map[string]string{
+			"description": "What would you like help with? Update your request below.",
+			"detail":      "What should the professional know about the problem? Update the details below.",
+			"urgency":     "When would you like someone to take a look?",
+			"budget":      "Do you have a budget in mind? It's okay if you're not sure yet.",
+			"location":    "Enter an address, postcode or city. Your exact address stays private until you choose a professional.",
+		}
+		question, ok := questions[value]
+		if !ok {
+			return errors.New("choose a request step to edit")
+		}
+		state.Job = NewState().Job
+		state.AgentDialog, state.ProDialog = nil, nil
+		state.AvailableSlots = []Appointment{}
+		i.Matches, i.Waitlisted = []Match{}, false
+		i.MatchClarifications = 0
+		ask(i, value, question)
+		if value == "urgency" {
+			intakeOptions(i, []string{"As soon as possible", "In the next few days", "I'm flexible"})
+		}
+		if value == "budget" {
+			intakeOptions(i, []string{"I’m flexible", "Help me understand the cost"})
+		}
+		return nil
+	}
 	if input.Action == "return-to-matches" || input.Action == "revise-intake" {
 		if input.Action == "return-to-matches" && state.Cancelled && state.CancelledBy == "professional" {
 			state.Cancelled = false
@@ -258,8 +304,8 @@ func applyIntakeInput(state *State, input Action) error {
 			finishIntake(i, input.Matches, input.SuggestedQuestion)
 			return nil
 		}
-		if state.Job.QuoteApproved || state.Job.Appointment != nil || state.Job.WorkStarted || state.Job.Paid {
-			return errors.New("an approved plan cannot be replaced; discuss changes with your professional")
+		if !CanReviseUnbookedRequest(*state) {
+			return errors.New("a booked visit cannot be replaced; cancel it or discuss changes with your professional")
 		}
 		if input.Action == "revise-intake" && (len(value) < 5 || len(value) > 500 || input.Suggestion == nil || !ValidSuggestion(*input.Suggestion)) {
 			return errors.New("describe the corrected job in 5 to 500 characters")
@@ -272,6 +318,8 @@ func applyIntakeInput(state *State, input Action) error {
 			return nil
 		}
 		i.Description, i.Detail = value, ""
+		i.MatchClarifications = 0
+		i.DetailAttempts = 0
 		i.Category, i.Route = input.Suggestion.Category, input.Suggestion.Route
 		i.Matches = []Match{}
 		i.Waitlisted = false
@@ -375,11 +423,11 @@ func applyIntakeInput(state *State, input Action) error {
 			job.ScopeHistory = []ScopeSnapshot{scopeSnapshot(job)}
 		}
 		next := State{Job: job, AvailableSlots: append([]Appointment{}, input.AvailableSlots...)}
-		selected := match.Name + " is your selected professional. Review or negotiate the price below, then agree a time. Nothing is booked yet."
+		selected := "Review " + match.Name + "’s service and price before continuing. You can return to the results and choose someone else. Nothing is booked yet."
 		if i.Locale == "nl" {
-			selected = match.Name + " is je gekozen vakpersoon. Bekijk of bespreek de prijs en spreek daarna een tijd af. Er is nog niets geboekt."
+			selected = "Bekijk de dienst en prijs van " + match.Name + " voordat je doorgaat. Je kunt terug naar de resultaten om iemand anders te kiezen. Er is nog niets geboekt."
 		}
-		ask(i, "selected", selected)
+		ask(i, "professional_review", selected)
 		next.Intake = i
 		*state = next
 		return nil
@@ -397,6 +445,7 @@ func applyIntakeInput(state *State, input Action) error {
 	i.Messages = append(i.Messages, Message{Role: "customer", Text: display})
 	switch i.Step {
 	case "detail":
+		i.DetailAttempts++
 		i.Detail = strings.TrimSpace(i.Detail + "\n" + display)
 		i.Category = ClarifiedCategory(*i, value, input.Suggestion)
 		if input.Suggestion != nil && ValidSuggestion(*input.Suggestion) {
@@ -422,7 +471,7 @@ func applyIntakeInput(state *State, input Action) error {
 }
 
 func ClarifiedCategory(i Intake, detail string, suggestion *IntakeSuggestion) string {
-	if suggestion != nil && ValidSuggestion(*suggestion) {
+	if suggestion != nil && ValidSuggestion(*suggestion) && suggestion.Category != "Unclear" {
 		return suggestion.Category
 	}
 	if i.Category != "Unclear" {
@@ -434,21 +483,25 @@ func ClarifiedCategory(i Intake, detail string, suggestion *IntakeSuggestion) st
 func finishIntake(i *Intake, matches []Match, questions ...string) {
 	i.Matches = append([]Match{}, matches...)
 	i.NeedsReview = false
-	if i.Category == "Unclear" {
+	if i.Category == "Unclear" && i.DetailAttempts >= 2 {
+		i.Matches = []Match{}
+		ask(i, "unmatched", "I couldn’t identify a suitable service from these details. Your request is saved. You can edit the problem description; no visit has been booked.")
+	} else if i.Category == "Unclear" {
 		i.Matches = []Match{}
 		ask(i, "detail", "Where is the problem, and what happens when you notice it? A little more detail will help me find the right professional.", "I'll describe more")
 	} else if i.Location == nil {
 		ask(i, "location", "Enter an address, postcode or city. Your exact address stays private until you choose a professional.")
 	} else if len(i.Matches) == 0 {
-		if len(questions) > 0 && questions[0] != "" && !strings.Contains(strings.ToLower(questions[0]), "area waitlist") {
+		if i.MatchClarifications == 0 && len(questions) > 0 && questions[0] != "" && !strings.Contains(strings.ToLower(questions[0]), "area waitlist") {
+			i.MatchClarifications++
 			i.Step = "detail"
 			i.Question = questions[0]
-			intakeOptions(i, []string{"I’ll describe more"})
+			intakeOptions(i, nil)
 			i.Messages = append(i.Messages, Message{Role: "assistant", Text: questions[0]})
 			return
 		}
 		i.Step = "waitlist"
-		question := intakeText(i.Locale, "There isn’t an approved professional serving this area yet. You can save your request to the area waitlist. No visit has been booked.")
+		question := intakeText(i.Locale, "We couldn’t find an approved professional with a matching service for this request in your area. You can save your request to the area waitlist. No visit has been booked.")
 		i.Question = question
 		intakeOptions(i, nil)
 		if len(i.Messages) == 0 || i.Messages[len(i.Messages)-1].Text != question {

@@ -394,7 +394,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     event?.preventDefault();
     if (app.pending) return;
     const assigned = !!app.serverState?.job.id;
-    const matching = app.serverState?.intake?.step === 'matches';
+    const matching = ['matches', 'waitlist', 'unmatched', 'description'].includes(app.serverState?.intake?.step ?? '');
     const replying = !!(app.role === 'professional' ? app.serverState?.proDialog : app.serverState?.agentDialog)?.awaiting;
     // With no question open, a customer can still ask their assistant to move or cancel a booked visit.
     const asking = app.role === 'customer' && app.messageTo === 'assistant' && !!app.serverState?.job.appointment && !app.serverState?.cancelled;
