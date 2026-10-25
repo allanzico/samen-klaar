@@ -1,3 +1,4 @@
+import { needsAutonomyChoice, automaticReleaseOn } from './booking-autonomy';
 import { t } from './i18n.svelte';
 import { money, sameDay, shortVisit, time, visitRange } from './format';
 import { downloadVisitCalendar } from './calendar';
@@ -39,7 +40,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
   const yourTurn = { variant: 'your-turn' as const, label: t('Your turn') };
   const waitingTag = { variant: 'waiting' as const, label: t('Waiting on {name}', { name: pro }) };
   const visit = job.appointment ? visitRange(job.appointment.startUtc, job.appointment.endUtc, job.appointment.timezone) : undefined;
-  const after = (from: number) => [t('{name} comes at the agreed time', { name: pro }), t('{name} sends photos and a note when done', { name: pro }), t('You approve the work, then pay')].slice(from);
+  const after = (from: number) => [t('{name} comes at the agreed time', { name: pro }), t('{name} sends photos and a note when done', { name: pro }), automaticReleaseOn(job) ? t('Your assistant checks completion and releases the authorized payment') : t('You approve the work, then pay')].slice(from);
   const releasing = RELEASING.includes(app.paypalStatus);
 
   async function book(action: 'approve-and-book' | 'book-appointment', slotID?: string) {
@@ -63,7 +64,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
 
   switch (code) {
     case 'quote': {
-      const reason = job.needsClarification ? t('Answer the question to continue') : needsAddress ? t('Add your address to continue') : slots.length && !slot ? t('Choose a time to continue') : releasing ? t('Waiting for the previous PayPal hold to be released') : '';
+      const reason = needsAutonomyChoice(job) ? t('Choose who reviews completion and releases payment') : job.needsClarification ? t('Answer the question to continue') : needsAddress ? t('Add your address to continue') : slots.length && !slot ? t('Choose a time to continue') : releasing ? t('Waiting for the previous PayPal hold to be released') : '';
       return {
         kind: 'your-turn', tag: yourTurn, title: t('Book your visit'), amount: total,
         primary: slots.length
@@ -78,7 +79,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
     case 'booking': case 'choose_visit': {
       const declined = code === 'choose_visit';
       const earlier = job.appointmentConfirmation?.appointment;
-      const reason = needsAddress ? t('Add your address to continue') : !slot ? t('Choose a time to continue') : releasing ? t('Waiting for the previous PayPal hold to be released') : '';
+      const reason = needsAutonomyChoice(job) ? t('Choose who reviews completion and releases payment') : needsAddress ? t('Add your address to continue') : !slot ? t('Choose a time to continue') : releasing ? t('Waiting for the previous PayPal hold to be released') : '';
       return {
         kind: 'your-turn', tag: yourTurn, title: declined ? t('Choose another time') : slots.length ? t('Book your visit') : t('Suggest a visit time'),
         banner: declined ? { kind: 'error', title: earlier ? t('{name} couldn’t confirm {time}', { name: pro, time: shortVisit(earlier.startUtc, earlier.timezone) }) : t('The visit wasn’t confirmed'), text: t('Nothing charged. The time was released, and any PayPal hold is being released. Pick another time.') } : undefined,
@@ -113,7 +114,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
       const offer = job.dateProposal!;
       return {
         kind: 'your-turn', tag: yourTurn, title: t('{name} proposed a visit', { name: pro }), amount: visitRange(offer.appointment.startUtc, offer.appointment.endUtc, offer.appointment.timezone), text: offer.note || undefined,
-        primary: { label: t('Accept and book'), run: () => acceptVisit(offer.id) },
+        primary: { label: t('Accept and book'), run: () => acceptVisit(offer.id), disabled: needsAutonomyChoice(job), reason: needsAutonomyChoice(job) ? t('Choose who reviews completion and releases payment') : undefined },
         secondary: { label: t('Suggest another time'), run: () => actions.openProposal('date') },
         helper: t('Accepting reserves this visit at the agreed price.'),
         quiet: [{ label: t('Decline visit'), run: () => actions.act('decline-date', '', undefined, undefined, { proposalId: offer.id }) }]
@@ -131,9 +132,9 @@ export function customerStep(ctx: CustomerContext): StepView | null {
       const uncertain = UNCERTAIN.includes(app.paypalStatus);
       return {
         kind: 'your-turn', tag: yourTurn, title: t('Authorize {amount} for this booking', { amount: total }), amount: visit,
-        text: t('PayPal holds the amount for up to 29 days. Nothing is taken until you approve the work and the payment.'),
+        text: automaticReleaseOn(job) ? t('Authorize the agreed amount in PayPal at booking. Your assistant releases it only after checking the completion record.') : t('PayPal holds the amount for up to 29 days. Nothing is taken until you approve the work and the payment.'),
         primary: uncertain ? { label: t('Check payment status'), run: () => actions.reconcilePayPal() } : { label: t('Continue with PayPal'), run: () => actions.beginPayPalCheckout() },
-        secondary: { label: t('Pay after the work'), run: () => actions.act('defer-payment-authorization'), disabled: uncertain, reason: uncertain ? t('Check payment status before changing when you pay.') : undefined }
+        secondary: automaticReleaseOn(job) ? undefined : { label: t('Pay after the work'), run: () => actions.act('defer-payment-authorization'), disabled: uncertain, reason: uncertain ? t('Check payment status before changing when you pay.') : undefined }
       };
     }
     case 'waiting_visit_confirmation':

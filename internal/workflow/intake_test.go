@@ -115,6 +115,7 @@ func TestConversationMatchesByAreaBeforeSharingAddress(t *testing.T) {
 	if err := apply(&state, "book-appointment", "customer", "slot-tue"); err == nil {
 		t.Fatal("booked without approval")
 	}
+	intakeAnswer(t, &state, "set-booking-autonomy", "manual")
 	intakeAnswer(t, &state, "approve-quote", "")
 	intakeAnswer(t, &state, "book-appointment", "test-slot")
 	if err := apply(&state, "start-intake", "customer", "Another leaking sink"); err == nil {
@@ -281,6 +282,9 @@ func TestUrgentMatchingOrdersVisitsAndRequiresApproval(t *testing.T) {
 	}
 	if err := Apply(&state, Action{Actor: "customer", Action: "approve-and-book", Value: "expired-slot"}); err == nil || state.Job.QuoteApproved {
 		t.Fatal("invalid visit partially approved the plan")
+	}
+	if err := Apply(&state, Action{Actor: "customer", Action: "set-booking-autonomy", Value: "manual"}); err != nil {
+		t.Fatal(err)
 	}
 	if err := Apply(&state, Action{Actor: "customer", Action: "approve-and-book", Value: early.SlotID}); err != nil {
 		t.Fatal(err)

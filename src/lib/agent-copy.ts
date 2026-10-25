@@ -18,7 +18,7 @@ export function activityText(item: AgentActivity): string {
   if (!item.action) return t('Stopped and asked you: {question}', { question: questionText(item) });
   if (item.outcome === 'rejected') return t('Tried “{step}”, but it was not allowed: {reason}', { step: item.action ?? item.code, reason: item.error ?? '' });
   switch (item.code) {
-    case 'ask-address': case 'ask-availability': case 'ask-offer': case 'ask-confirm': case 'ask-move': case 'ask-cancel': case 'ask-work': return t('Asked you a question in the chat');
+    case 'ask-booking-autonomy': case 'ask-address': case 'ask-availability': case 'ask-offer': case 'ask-confirm': case 'ask-move': case 'ask-cancel': case 'ask-work': return t('Asked you a question in the chat');
     case 'tell-ask': return t('Answered your message in the chat');
     case 'tell-moved': return t('Told you your request to move the visit is with the professional');
     case 'tell-refused': return t('Told you the professional could not take the new time');
@@ -47,6 +47,9 @@ export function activityText(item: AgentActivity): string {
     case 'propose-visit': return t('Proposed a visit on {start}', params);
     case 'accept-visit': return t('Accepted the visit on {start}', params);
     case 'approve-extra': return t('Approved extra work of {amount}', params);
+    case 'check-completion-photos': return t('Checked the completion photos for this booking');
+    case 'approve-delegated-payment': return t('Approved release of the agreed amount under your booking permission');
+    case 'release-delegated-payment': return t('Released the authorized payment under your booking permission');
     case 'approve-work': return t('Approved the finished work for you');
     case 'confirm-visit': return t('Confirmed the visit on {start}', params);
     case 'find-another': return t('Went back to the matches to find another professional');
@@ -81,6 +84,8 @@ export function questionText(item: Pick<AgentEscalation, 'code' | 'params'>): st
     case 'no_time_in_window': return t('None of the free times fit the days and hours you allowed.');
     case 'visit_outside_window': return t('A visit on {start} is outside the days and hours you allowed.', params);
     case 'extra_work_needs_approval': return t('Extra work of {amount} needs your approval.', params);
+    case 'booking_autonomy_choice': return t('Choose who reviews completion and releases payment');
+    case 'autonomy_review_needed': return t('The completion record needs your review. Your assistant has not released payment.');
     case 'check_the_work': return t('The work is ready. Only you can approve it.');
     case 'payment_needs_you': return t('The work is approved. Payment is yours to confirm.');
     case 'no_match_within_limits': return t('No professional fits your price limit and time window.');

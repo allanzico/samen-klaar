@@ -347,7 +347,7 @@ func applyIntakeInput(state *State, input Action) error {
 		}
 		total := offer.PriceMinor + offer.CalloutMinor
 		job := Job{
-			ID: "job_" + rand.Text(), ProfessionalProfileID: offer.ProfileID, ProfessionalAccountID: offer.AccountID,
+			BookingAutonomyRequired: true, ID: "job_" + rand.Text(), ProfessionalProfileID: offer.ProfileID, ProfessionalAccountID: offer.AccountID,
 			Title: offer.ServiceName, ServiceDescription: offer.ServiceDescription, Customer: input.CustomerName, Professional: offer.DisplayName,
 			Description: i.Description, Category: offer.Category, ScopeVersion: 1,
 			Location: i.Location, IntakeRoute: i.Route, ClarificationAnswer: i.Detail,

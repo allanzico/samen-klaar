@@ -52,3 +52,28 @@ test('completed and stale dialogs cannot hide the real next action', () => {
     assert.equal(requestInteraction(w, 'customer'), undefined);
   }
 });
+
+const autonomyBundle = await build({ entryPoints: ['src/lib/booking-autonomy.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
+const autonomyModule = { exports: {} };
+new Function('module', 'exports', autonomyBundle.outputFiles[0].text)(autonomyModule, autonomyModule.exports);
+const { autonomyChoiceKey, automaticReleaseOn, needsAutonomyChoice } = autonomyModule.exports;
+
+test('new bookings require an explicit current agreement permission; legacy bookings stay manual', () => {
+  const job = {id:'job',scopeVersion:2,professionalAccountId:'pro',professionalProfileId:'service',quote:{totalMinor:12500,currency:'EUR'}};
+  assert.equal(needsAutonomyChoice(job), false);
+  job.bookingAutonomyRequired = true;
+  assert.equal(needsAutonomyChoice(job), true);
+  assert.equal(autonomyChoiceKey(job), 'job|2|12500|EUR|service');
+  job.bookingAutonomy = {mode:'automatic',version:1,scopeVersion:2,amountMinor:12500,currency:'EUR',professionalAccountId:'pro',professionalProfileId:'service',decidedAt:'2026-10-25T12:00:00Z'};
+  assert.equal(automaticReleaseOn(job), true);
+  assert.equal(needsAutonomyChoice(job), false);
+  for (const [key,value] of Object.entries({scopeVersion:3,amountMinor:13000,currency:'USD',professionalAccountId:'other',professionalProfileId:'other',decidedAt:''})) {
+    const changed = {...job,bookingAutonomy:{...job.bookingAutonomy,[key]:value}};
+    assert.equal(automaticReleaseOn(changed),false,key);
+    assert.equal(needsAutonomyChoice(changed),true,key);
+  }
+  job.bookingAutonomy.mode = 'manual';
+  job.quote.totalMinor = 14000;
+  assert.equal(needsAutonomyChoice(job),false);
+  assert.equal(automaticReleaseOn(job),false);
+});

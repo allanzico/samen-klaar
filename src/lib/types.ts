@@ -75,7 +75,13 @@ export type Appointment = { slotId: string; startsAt: string; timezone: string; 
 export type NegotiationInput = { policyKind?: string; policyVersion?: string; workItemIds?: string[]; priceAmountMinor?: number; proposedAppointment?: Partial<Appointment>; proposalId?: string; choiceId?: string };
 export type PriceProposal = { id: string; status: string; actor: string; amountMinor: number; note: string; scopeVersion: number };
 export type DateProposal = { id: string; status: string; actor: string; note: string; appointment: Appointment };
+export type BookingAutonomy = { mode: 'automatic' | 'manual'; version: number; scopeVersion: number; amountMinor: number; currency: string; professionalAccountId: string; professionalProfileId: string; decidedAt: string };
 export type Job = {
+  bookingAutonomyRequired?: boolean;
+  bookingAutonomy?: BookingAutonomy;
+  completionApprovedByAgent?: boolean;
+  paymentApprovedByAgent?: boolean;
+  professionalAccountId?: string;
   workItems?: WorkItem[];
   policyRequirements?: PolicyRequirement[];
   policyAcknowledgments?: { kind: string; version: string; scopeVersion: number; acknowledgedAt: string }[];
@@ -201,6 +207,7 @@ export type ProfessionalDashboard = {
 export type ProviderConfig = {
   appName: string;
   locationSearchAvailable?: boolean;
+  automaticReleaseAvailable?: boolean;
   guidedReviewAvailable: boolean;
   evidenceUploadsAvailable: boolean;
   paymentsAvailable: boolean;

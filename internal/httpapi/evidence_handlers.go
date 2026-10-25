@@ -209,7 +209,8 @@ func (s *Server) evidenceReviewHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"code": code})
 		return
 	}
-	state, err = s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), Action{Action: "record-evidence-review", Actor: string(principal.ActiveRole), EvidenceReview: review, ExpectedScope: state.Job.ScopeVersion, ExpectedEvidenceRound: workflow.EvidenceRound(state.Job)}, r.URL.Query().Get("workspaceId"))
+	workflow.BindEvidenceReview(state.Job, review)
+	state, err = s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), Action{Action: "record-evidence-review", Actor: string(principal.ActiveRole), EvidenceReview: review, ExpectedScope: state.Job.ScopeVersion, ExpectedEvidenceRound: workflow.EvidenceRound(state.Job), ExpectedEvidenceFingerprint: workflow.CompletionEvidenceFingerprint(state.Job)}, r.URL.Query().Get("workspaceId"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

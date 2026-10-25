@@ -15,7 +15,7 @@ see "Known limits" at the end.
 
 | Agent | Acts alone when | Stops and asks when |
 | --- | --- | --- |
-| Customer | the customer has chosen a professional; the service address is saved; the price is inside the limit, then books the earliest time inside the allowed days and hours; accepts an offer at or under the limit; approves extra work up to the allowed amount | a professional has not been chosen by the customer; price is above the limit after one counter-offer; no published free time fits and its one visit proposal was not met; address missing; a clarification question; finished work (it asks in the chat and approves only on a yes, unless the person delegated approval); payment (always: PayPal approval is the person's) |
+| Customer | the customer has chosen a professional; the service address is saved; the price is inside the limit, then books the earliest time inside the allowed days and hours; accepts an offer at or under the limit; approves extra work up to the allowed amount | a professional has not been chosen by the customer; price is above the limit after one counter-offer; no published free time fits and its one visit proposal was not met; address missing; a clarification question; finished work (it asks in the chat and approves only on a yes, unless the person delegated approval); initial PayPal approval; completion and capture without current booking permission or with unclear evidence |
 | Professional | a price offer is at or above the floor (a percentage of the listed price); a reserved visit is inside the allowed days and hours (if auto-confirm is on); a proposed time is inside the hours (if auto-accept is on); a proposed time outside the hours gets one counter at the closest time inside them (a free published slot first) | an offer is below the floor after one counter-offer; a visit is outside the hours; anything about work, disputes or money |
 
 ### Reschedules, declines and cancellations
@@ -64,9 +64,7 @@ account menu lets them tighten or widen it, pause the agent entirely, or hand ov
   agent asks for it (`address_needed`).
 - **Professional defaults:** auto-confirm and auto-accept on, a 90 percent price floor, and days and hours
   taken from their working-hours schedule (Monday to Friday 08:00 to 18:00 without one).
-- **Always the person's:** payment. Approving finished work is theirs: the assistant asks in the chat and
-  acts on the answer, or approves alone if the customer ticks "Approve finished work for me"
-  (`autoApproveWork`); the workflow still refuses unless documentation is present. Delegating payment is not possible yet (see Known limits).
+- **Per-booking permission:** before a new booking the customer explicitly chooses automatic review/release or manual review/payment. Automatic permission binds the agreed scope, price, currency and professional and requires a buyer-approved PayPal hold. Legacy `autoApproveWork` only applies to old jobs without a booking choice; it grants no payment authority.
 - **Pause.** A paused agent does nothing. Saved preferences override the defaults, including the pause.
 
 ## The assistant talks (scheduling dialogue)
@@ -142,16 +140,9 @@ settle it, with the AI interpreter. The new intents are `reschedule` (days optio
 4. Anything else ("the key is under the mat") gets one reply saying what it can do and that nothing was
    sent to the professional; the customer switches the box to the professional to write to them.
 
-**Approving finished work and payment (customer).** When the professional submits the completion
-(status `review`, work note present, evidence the workflow would accept) the assistant asks in the chat,
-summarising what was handed in (number of files, the professional's note, the file check if there was one):
-"Shall I approve it? Approving doesn't pay anything." A yes sends `approve-completion`; a no approves
-nothing, leaves "check the work" with the person and is asked again only for a new submission. If the work
-cannot be approved yet it stays the old escalation `check_the_work`; with "Approve finished work for me"
-on, the assistant approves without asking. After approval it says once that payment is the one step it
-cannot do, because PayPal needs the customer's own approval, with a button (`Code: "link:payment"`) that
-focuses the payment step. It never calls `approve-payment` or any PayPal action. When the payment
-completes it says so once.
+**Approving finished work and payment (customer).** Manual mode asks before approving work and leaves payment with the customer. Automatic mode checks the professional's existing stored completion photos and note. The review must document every required work item and match the exact current scope, completion round and evidence fingerprint. The runner then makes separate completion and payment approvals before capturing only the existing buyer-approved hold. Unclear results, changed terms, revocation, a paused assistant, disputes or an expired hold return control to the customer. No customer photo upload is required to compare the professional's evidence.
+
+Consent is versioned and recorded in `booking_autonomy_consents` in the same transaction as the workspace change. The capture claim locks and rechecks the workspace, permission, evidence and active customer mandate. Turning autonomy off clears pending approvals made by the assistant. Once capture is claimed, turning it off returns a conflict and requires payment reconciliation; it cannot promise to stop a payment already submitted. Capture retries reuse the durable PayPal attempt and idempotency key.
 
 **The professional's assistant mirrors it.** In its private chat it reports, once each and in order, that
 the customer approved the finished work (payment next), that they approved the payment in PayPal, and
@@ -207,13 +198,8 @@ version in force.
 
 ## Known limits
 
-- **Payment timing.** Agent bookings always use pay-after-completion. A PayPal hold at booking needs
-  the buyer to approve in PayPal's own window; an agent cannot do that without a saved (vaulted)
-  payment method and a spending authorization. That is the next money slice (hold and pay with limits).
-  Design and blockers: [AGENT_PAYMENT_HOLDS.md](AGENT_PAYMENT_HOLDS.md); PayPal must enable vaulting first.
-- **Payment delegation.** Customers can delegate approving finished work but not paying: capturing after
-  completion needs the buyer in PayPal's window, and a hold at booking needs vaulting (see above). The
-  assistant only tells the customer where that step is.
+- **Payment timing.** Automatic completion/release requires the customer to approve the hold in PayPal at booking. Assistants cannot create a fresh hold or authorize a replacement without the buyer. Vaulting remains blocked; see [AGENT_PAYMENT_HOLDS.md](AGENT_PAYMENT_HOLDS.md).
+- **Evidence limits.** Photos document visible work; they cannot establish workmanship or safety. Missing, unclear or stale evidence prevents automatic release. Real provider and wallet testing remains separate from synthetic journeys.
 - **Changing a visit that has a PayPal hold** (payment at booking) stays with the person, because it
   touches an authorization; the assistant says so and does nothing.
 - **Cancelling after work started** and disputes are not the assistant's. A professional's own counter

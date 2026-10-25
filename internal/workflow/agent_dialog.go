@@ -102,6 +102,16 @@ func applyAgentChat(state *State, input Action) error {
 		if actor != "customer" && actor != "professional" || len(text) < 1 || len(text) > 500 {
 			return errors.New("there is no question from your assistant to answer")
 		}
+		autonomyChoice := ""
+		if actor == "customer" && dialog != nil && dialog.Stage == "booking-autonomy" && dialog.Awaiting {
+			if input.ByAgent || dialog.PendingID != BookingAutonomyKey(*job) {
+				return errors.New("the booking agreement changed; choose autonomy again")
+			}
+			if input.ChoiceID != "manual" && input.ChoiceID != "automatic|"+BookingAutonomyKey(*job) {
+				return errors.New("use one of the booking autonomy choices")
+			}
+			autonomyChoice = input.ChoiceID
+		}
 		message := Message{Seq: len(state.Intake.Messages) + 1, Role: actor, Text: text, SenderName: name, ThreadProfileID: job.ProfessionalProfileID, Audience: actor, Choice: input.ChoiceID}
 		if dialog == nil || !dialog.Awaiting {
 			// With no question open, a customer may still ask their assistant for something once a visit is booked.
@@ -113,6 +123,11 @@ func applyAgentChat(state *State, input Action) error {
 				state.AgentDialog = dialog
 			}
 			message.Code = askCode
+		}
+		if autonomyChoice != "" {
+			if err := setBookingAutonomy(state, Action{Action: "set-booking-autonomy", Actor: actor, Value: autonomyChoice}); err != nil {
+				return err
+			}
 		}
 		state.Intake.Messages = append(state.Intake.Messages, message)
 		dialog.Awaiting = false // the assistant has the answer; it sets this again if it needs more

@@ -598,6 +598,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 			}
 			if len(choose) == 0 || choose[0] {
 				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": "select-match", "value": profile.Profile.ID}, 200)
+				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": "set-booking-autonomy", "value": "manual"}, 200)
 				if err := server.RunAgents(ctx, id, true); err != nil {
 					t.Fatal(err)
 				}
@@ -672,6 +673,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 			t.Fatal("saving agent preferences chose a professional")
 		}
 		request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "select-match", "value": profile.Profile.ID}, 200)
+		request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "set-booking-autonomy", "value": "manual"}, 200)
 		waitFor(blockedID, func(s workflow.State) bool {
 			return s.Job.AppointmentConfirmation != nil && s.Job.AppointmentConfirmation.Status == "confirmed"
 		})
@@ -1187,6 +1189,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		t.Fatal("urgent assessment did not offer the actual earliest visit")
 	}
 	urgent = urgentAction("select-match", profile.Profile.ID)
+	urgent = urgentAction("set-booking-autonomy", "manual")
 	if urgent.Job.Appointment != nil || urgent.Job.QuoteApproved {
 		t.Fatal("urgent selection skipped customer approval")
 	}
@@ -1439,6 +1442,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		t.Fatal("published service-area matching or planning without published availability failed")
 	}
 	state = act("customer", "select-match", profile.Profile.ID, nil, 200)
+	state = act("customer", "set-booking-autonomy", "manual", nil, 200)
 	state = act("customer", "set-service-address", "Damrak 1, 1012 LG Amsterdam", nil, 200)
 	if len(state.AvailableSlots) != 0 || state.Job.Quote.TotalMinor != 13000 {
 		t.Fatal("unexpected initial plan")

@@ -7,6 +7,8 @@
   import Agreement from './Agreement.svelte';
   import AgreedLedger from './AgreedLedger.svelte';
   import PaymentTimingChoice from './PaymentTimingChoice.svelte';
+  import BookingAutonomyChoice from './BookingAutonomyChoice.svelte';
+  import { automaticReleaseOn } from '../../lib/booking-autonomy';
   import AfterThis from './AfterThis.svelte';
   import Thread from './Thread.svelte';
 import EvidenceRequirements from './EvidenceRequirements.svelte';
@@ -100,7 +102,8 @@ import RelatedJobs from './RelatedJobs.svelte';
 </script>
 
 {#snippet timing(placement: string)}
-  {#if timingChoice}
+  {#if !pro && !job.appointment && ['quote','booking','choose_visit','review_date'].includes(code)}<BookingAutonomyChoice {app} {actions} {workspace} id={placement}/>{/if}
+  {#if timingChoice && (!job.bookingAutonomyRequired || job.bookingAutonomy)}
     <PaymentTimingChoice {app} {actions} {workspace} id={placement}/>
   {/if}
 {/snippet}
@@ -163,6 +166,10 @@ import RelatedJobs from './RelatedJobs.svelte';
       </header>
     {/if}
 
+      {#if !pro && job.appointment && job.bookingAutonomy && !job.paid}
+        <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
+        {#if job.bookingAutonomy.mode==='automatic'}<button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={() => actions.act('set-booking-autonomy','manual')}>{t('Turn off automatic review and release')}</button>{/if}</div>
+      {/if}
       {#if app.error}<div class="content-pad"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
       {#if app.refreshError}<p class="content-pad helper" role="status">{t(app.refreshError)}</p>{/if}
       {#if guided}<div id="request-action" class="ask-slot content-pad floating">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>{/if}

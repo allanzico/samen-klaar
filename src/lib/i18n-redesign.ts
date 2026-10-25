@@ -1,6 +1,27 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Who checks the work and releases payment?": "Wie controleert het werk en geeft de betaling vrij?",
+  "Let my assistant review and release": "Laat mijn assistent controleren en betalen",
+  "Check the professional’s photos and note, approve documented work and release {amount} from my PayPal hold.": "Controleer de foto’s en notitie van de vakpersoon, keur gedocumenteerd werk goed en geef {amount} vrij uit mijn PayPal-reservering.",
+  "I’ll review and pay myself": "Ik controleer en betaal zelf",
+  "Ask me before approving completion or releasing payment.": "Vraag mij om goedkeuring voordat het werk wordt goedgekeurd of de betaling wordt vrijgegeven.",
+  "Unclear evidence comes back to you. Photos cannot confirm workmanship or safety. Turn autonomy off before payment release starts.": "Bij onduidelijk bewijs beslis jij. Foto’s bevestigen geen vakmanschap of veiligheid. Zet autonomie uit voordat de betaling wordt vrijgegeven.",
+  "Automatic review and release are unavailable right now. You can review and pay yourself.": "Automatisch controleren en betalen is nu niet beschikbaar. Je kunt zelf controleren en betalen.",
+  "Automatic completion review and payment release are on.": "Automatische controle en vrijgave van de betaling staan aan.",
+  "The agreement changed. Automatic payment release is paused.": "De afspraak is gewijzigd. Automatisch betalen is gepauzeerd.",
+  "You review completion and release payment yourself.": "Je controleert het werk en geeft zelf de betaling vrij.",
+  "Turn off automatic review and release": "Automatisch controleren en betalen uitzetten",
+  "Authorize the agreed amount in PayPal at booking. Your assistant releases it only after checking the completion record.": "Autoriseer het afgesproken bedrag in PayPal bij het boeken. Je assistent geeft het pas vrij na controle van de opleverdocumentatie.",
+  "Choose who reviews completion and releases payment": "Kies wie het werk controleert en de betaling vrijgeeft",
+  "Your assistant checks completion and releases the authorized payment": "Je assistent controleert het werk en geeft de geautoriseerde betaling vrij",
+  "Checked the completion photos for this booking": "Controleerde de opleverfoto’s voor deze boeking",
+  "Approved release of the agreed amount under your booking permission": "Keurde betaling van het afgesproken bedrag goed met jouw toestemming voor deze boeking",
+  "Released the authorized payment under your booking permission": "Gaf de geautoriseerde betaling vrij met jouw toestemming voor deze boeking",
+  "The completion record needs your review. Your assistant has not released payment.": "Je moet de opleverdocumentatie zelf beoordelen. Je assistent heeft de betaling niet vrijgegeven.",
+  "Choose completion review and payment release for each booking. You can turn autonomy off on that request.": "Kies per boeking wie het werk controleert en de betaling vrijgeeft. Je kunt autonomie op die aanvraag uitzetten.",
+  "Your assistant helps with price and visit times after you choose a professional. During booking, choose whether it may review completion and release your authorized payment.": "Je assistent helpt met de prijs en bezoektijden nadat je een vakpersoon kiest. Kies tijdens het boeken of hij het werk mag controleren en je geautoriseerde betaling mag vrijgeven.",
+
   "Comparing photos…": "Foto’s vergelijken…",
   "We couldn’t compare these photos. Try again, or review the completion record yourself.": "We konden deze foto’s niet vergelijken. Probeer opnieuw of beoordeel zelf de documentatie van het afgeronde werk.",
   "This photo could not be read for comparison. Try a smaller JPEG, PNG or WebP image.": "Deze foto kon niet worden gelezen voor de vergelijking. Probeer een kleinere JPEG-, PNG- of WebP-afbeelding.",

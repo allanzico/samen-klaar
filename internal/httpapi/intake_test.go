@@ -87,6 +87,7 @@ func TestConversationHTTPRoundTrip(t *testing.T) {
 	}
 	state = send("select-match", state.Intake.Matches[0].ID)
 	state = send("set-service-address", "Damrak 1, 1012 LG Amsterdam")
+	send("set-booking-autonomy", "manual")
 	send("approve-quote", "")
 	send("book-appointment", "test-slot")
 	response := httptest.NewRecorder()

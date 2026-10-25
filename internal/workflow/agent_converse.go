@@ -12,6 +12,9 @@ import (
 // says yes (unless they chose "book without asking"). All text is written in the customer's language.
 
 var dialogText = map[string][2]string{
+	"booking_autonomy":   {"For this booking, may I check the professional’s completion photos and note, approve documented work and release the agreed {amount} from your PayPal hold? I’ll ask you if anything is unclear. Photos cannot confirm workmanship or safety. You can turn this off before payment release starts.", "Mag ik voor deze boeking de opleverfoto’s en notitie van de vakpersoon controleren, gedocumenteerd werk goedkeuren en het afgesproken bedrag van {amount} vrijgeven uit je PayPal-reservering? Bij onduidelijkheid vraag ik het jou. Foto’s bevestigen geen vakmanschap of veiligheid. Je kunt dit uitzetten voordat de betaling wordt vrijgegeven."},
+	"autonomy_automatic": {"Yes, review and release for me", "Ja, controleer en betaal voor mij"},
+	"autonomy_manual":    {"No, I’ll review and pay myself", "Nee, ik controleer en betaal zelf"},
 	"ask_address":        {"What is the full address where {pro} should come? (street, number, postcode, city)", "Wat is het volledige adres waar {pro} naartoe moet komen? (straat, nummer, postcode, plaats)"},
 	"address_choose":     {"Choose your full visit address from the suggestions below. I’ll continue once it’s confirmed.", "Kies je volledige bezoekadres uit de suggesties hieronder. Daarna ga ik verder."},
 	"address_retry":      {"I need the street, house number and city so {pro} can find you. Could you type the full address?", "Ik heb straat, huisnummer en plaats nodig zodat {pro} je kan vinden. Kun je het volledige adres intypen?"},
@@ -88,6 +91,13 @@ func (c AgentContext) visitWhen(a Appointment) string {
 }
 
 func (c AgentContext) money(minor int64) string {
+	if code := c.State.Job.Quote.Currency; code != "" && code != "EUR" {
+		amount := euros(minor)
+		if dialogLocale(c) == 1 {
+			amount = strings.Replace(amount, ".", ",", 1)
+		}
+		return code + " " + amount
+	}
 	if dialogLocale(c) == 1 {
 		return strings.Replace(fmt.Sprintf("€ %.2f", float64(minor)/100), ".", ",", 1)
 	}

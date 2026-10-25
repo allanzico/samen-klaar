@@ -8,6 +8,20 @@ import (
 )
 
 func Apply(state *State, input Action) error {
+	if input.Action == "set-booking-autonomy" {
+		return setBookingAutonomy(state, input)
+	}
+	if input.ByAgent && (input.Action == "approve-payment" || input.AutonomyVersion > 0 && input.Action == "approve-completion" || input.Action == "record-evidence-review") {
+		if state.Cancelled || state.CancellationReview != nil && state.CancellationReview.Status == "pending" || !BookingAutonomyCurrent(state.Job) || input.AutonomyVersion != state.Job.BookingAutonomy.Version || input.ExpectedScope != state.Job.ScopeVersion || input.ExpectedEvidenceRound != EvidenceRound(state.Job) || input.ExpectedEvidenceFingerprint != CompletionEvidenceFingerprint(state.Job) {
+			return errors.New("booking autonomy or completion evidence changed; customer review is required")
+		}
+		if input.Action != "record-evidence-review" {
+			if err := ValidateAutonomousCompletion(state.Job); err != nil {
+				return err
+			}
+		}
+	}
+
 	if input.Action == "remove-request" {
 		return removeRequest(state, input)
 	}
@@ -70,6 +84,9 @@ func Apply(state *State, input Action) error {
 		}
 		addEvent(job, "Customer saved the private service address for the assigned professional", "done")
 	case "set-payment-timing":
+		if BookingAutonomyCurrent(*job) && input.PaymentAuthorizationTiming != PaymentAuthorizationAtBooking {
+			return errors.New("turn off booking autonomy before changing payment timing")
+		}
 		if !customer || input.ByAgent || job.ID == "" || job.WorkStarted || job.Paid || job.PaymentAuthorizedVersion != 0 || job.PaymentApprovedVersion != 0 {
 			return errors.New("choose payment timing before work starts and before authorizing a payment")
 		}
@@ -268,8 +285,15 @@ func Apply(state *State, input Action) error {
 		if !customer || !job.EvidenceSubmitted || job.Paid || input.EvidenceReview == nil || input.ExpectedScope != job.ScopeVersion || input.ExpectedEvidenceRound != 0 && input.ExpectedEvidenceRound != EvidenceRound(*job) {
 			return errors.New("the customer can review submitted evidence before payment")
 		}
+		if input.ExpectedEvidenceFingerprint != "" && input.ExpectedEvidenceFingerprint != CompletionEvidenceFingerprint(*job) {
+			return errors.New("completion files changed during review; compare the current files")
+		}
 		job.EvidenceReview = input.EvidenceReview
-		addEvent(job, "SamenKlaar checked the completion files · customer review required", "done")
+		if input.ByAgent {
+			addEvent(job, "Assistant checked completion files under the customer's booking permission", "done")
+		} else {
+			addEvent(job, "SamenKlaar checked the completion files · customer review required", "done")
+		}
 	case "request-details":
 		if !customer || !job.EvidenceSubmitted || job.DetailAdded || job.DetailsRequested {
 			return errors.New("there is no missing documentation to request")
@@ -301,8 +325,13 @@ func Apply(state *State, input Action) error {
 			return err
 		}
 		job.CompletionApproved = true
+		job.CompletionApprovedByAgent = input.ByAgent && input.AutonomyVersion > 0
 		job.CompletionApprovedAt = time.Now().UTC().Format(time.RFC3339)
-		addEvent(job, "Customer approved completion for scope v"+strconv.Itoa(job.ScopeVersion), "done")
+		if job.CompletionApprovedByAgent {
+			addEvent(job, "Customer's assistant approved documented completion for scope v"+strconv.Itoa(job.ScopeVersion)+" under booking permission", "done")
+		} else {
+			addEvent(job, "Customer approved completion for scope v"+strconv.Itoa(job.ScopeVersion), "done")
+		}
 	case "approve-payment":
 		if !customer || !job.CompletionApproved || job.Paid {
 			return errors.New("customer completion approval is required before payment approval")
@@ -317,8 +346,13 @@ func Apply(state *State, input Action) error {
 			return errors.New("resolve the proposed scope change before payment approval")
 		}
 		job.PaymentApprovedVersion = job.ScopeVersion
+		job.PaymentApprovedByAgent = input.ByAgent
 		job.PaymentApprovedAt = time.Now().UTC().Format(time.RFC3339)
-		addEvent(job, "Customer approved the payment amount for scope v"+strconv.Itoa(job.ScopeVersion), "done")
+		if input.ByAgent {
+			addEvent(job, "Customer's assistant approved payment release for scope v"+strconv.Itoa(job.ScopeVersion)+" under booking permission", "done")
+		} else {
+			addEvent(job, "Customer approved the payment amount for scope v"+strconv.Itoa(job.ScopeVersion), "done")
+		}
 	case "confirm-payment":
 		if !customer || !job.CompletionApproved || job.PaymentApprovedVersion != job.ScopeVersion || job.Paid {
 			return errors.New("payment requires customer approval for the current approved scope")
@@ -342,6 +376,9 @@ func Apply(state *State, input Action) error {
 		job.PaymentAuthorizedVersion = job.ScopeVersion
 		addEvent(job, "PayPal authorized the agreed amount · capture remains subject to completion and customer approval", "done")
 	case "defer-payment-authorization":
+		if BookingAutonomyCurrent(*job) {
+			return errors.New("turn off booking autonomy before changing payment timing")
+		}
 		if !customer || job.PaymentAuthorizationTiming != PaymentAuthorizationAtBooking || job.PaymentAuthorizedVersion == job.ScopeVersion || job.Appointment == nil || job.WorkStarted || job.Paid {
 			return errors.New("payment timing can only change before a booking-time authorization succeeds")
 		}
@@ -431,6 +468,13 @@ func chosenPaymentTiming(job Job) string {
 
 // An assistant may carry the customer's choice through booking, never replace it.
 func bookingPaymentTiming(job Job, input Action) (string, error) {
+	if input.Action != "approve-quote" && BookingAutonomyChoiceNeeded(job) {
+		return "", errors.New("choose automatic review and release, or review and pay yourself before booking")
+	}
+	if BookingAutonomyCurrent(job) && input.PaymentAuthorizationTiming != "" && input.PaymentAuthorizationTiming != PaymentAuthorizationAtBooking {
+		return "", errors.New("automatic release requires PayPal authorization at booking")
+	}
+
 	value := input.PaymentAuthorizationTiming
 	if value == "" {
 		value = job.PaymentAuthorizationTiming
@@ -443,6 +487,12 @@ func bookingPaymentTiming(job Job, input Action) (string, error) {
 
 // ValidatePaymentApproval enforces the workflow preconditions for payment.
 func ValidatePaymentApproval(job Job) error {
+	if job.PaymentApprovedByAgent {
+		if err := ValidateAutonomousCompletion(job); err != nil {
+			return err
+		}
+	}
+
 	if !job.CompletionApproved || job.PaymentApprovedVersion != job.ScopeVersion || job.Paid {
 		return errors.New("completion and the current scope amount must be approved before PayPal checkout")
 	}

@@ -178,11 +178,14 @@ type EvidenceFinding struct {
 }
 
 type EvidenceReview struct {
-	Summary     string            `json:"summary"`
-	Coverage    []EvidenceFinding `json:"coverage"`
-	Limitations string            `json:"limitations"`
-	Model       string            `json:"-"`
-	ReviewedAt  string            `json:"reviewedAt"`
+	ScopeVersion        int               `json:"scopeVersion,omitempty"`
+	CompletionRound     int               `json:"completionRound,omitempty"`
+	EvidenceFingerprint string            `json:"evidenceFingerprint,omitempty"`
+	Summary             string            `json:"summary"`
+	Coverage            []EvidenceFinding `json:"coverage"`
+	Limitations         string            `json:"limitations"`
+	Model               string            `json:"-"`
+	ReviewedAt          string            `json:"reviewedAt"`
 }
 
 // JobReview is created only for a completed job whose payment was captured.
@@ -268,6 +271,10 @@ type DateProposal struct {
 }
 
 type Job struct {
+	BookingAutonomyRequired    bool                     `json:"bookingAutonomyRequired,omitempty"`
+	BookingAutonomy            *BookingAutonomy         `json:"bookingAutonomy,omitempty"`
+	CompletionApprovedByAgent  bool                     `json:"completionApprovedByAgent,omitempty"`
+	PaymentApprovedByAgent     bool                     `json:"paymentApprovedByAgent,omitempty"`
 	ServiceLocation            *Location                `json:"serviceLocation,omitempty"`
 	PolicyRequirements         []PolicyRequirement      `json:"policyRequirements,omitempty"`
 	PolicyAcknowledgments      []PolicyAcknowledgment   `json:"policyAcknowledgments,omitempty"`
@@ -340,6 +347,8 @@ type State struct {
 }
 
 type Action struct {
+	AutonomyVersion                  int               `json:"-"`
+	ExpectedEvidenceFingerprint      string            `json:"-"`
 	ChoiceID                         string            `json:"choiceId,omitempty"`
 	ByAgent                          bool              `json:"-"`
 	Audience                         string            `json:"-"`

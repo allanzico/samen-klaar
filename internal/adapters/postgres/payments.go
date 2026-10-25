@@ -155,6 +155,11 @@ func (s *Store) claimPaymentIntent(ctx context.Context, workspaceID, jobID strin
 		}
 	}
 	if to == "capturing" {
+		if state.Job.PaymentApprovedByAgent {
+			if err := customerAgentEnabledTx(ctx, tx, workspaceID); err != nil {
+				return false, err
+			}
+		}
 		if err := workflow.ValidatePaymentApproval(state.Job); err != nil {
 			return false, err
 		}

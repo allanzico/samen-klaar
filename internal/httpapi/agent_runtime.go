@@ -139,9 +139,18 @@ func (s *Server) agentStep(ctx context.Context, workspaceID, role string, who wo
 		input.CustomerAccountID = who.AccountID
 		input.ByAgent = true
 		principal := identity.Principal{User: identity.User{ID: who.AccountID, DisplayName: who.DisplayName, Locale: who.Locale}, ActiveRole: identity.Role(role)}
-		stepCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+		timeout := 35 * time.Second
+		if input.Action == "review-completion-evidence" {
+			timeout = 80 * time.Second
+		}
+		stepCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		_, _, applyErr := s.runAction(stepCtx, principal, input)
+		var applyErr error
+		if input.Action == "review-completion-evidence" || input.Action == "release-authorized-payment" {
+			_, _, applyErr = s.runAutonomyAction(stepCtx, principal, input)
+		} else {
+			_, _, applyErr = s.runAction(stepCtx, principal, input)
+		}
 		if applyErr != nil {
 			// Tell the person what went wrong in the chat, so a reply they gave never hangs unanswered.
 			if state.Intake != nil && input.Action != "agent-say" {

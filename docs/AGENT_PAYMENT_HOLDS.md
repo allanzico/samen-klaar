@@ -182,3 +182,7 @@ different refund and consumer-law model. Recommend (a) and decide only after the
 - [Save PayPal with the Orders API (platforms)](https://developer.paypal.com/docs/multiparty/checkout/save-payment-methods/during-purchase/orders-api/paypal/)
 - [Platform-level onboarding](https://developer.paypal.com/docs/multiparty/checkout/save-payment-methods/onboarding/platform) and [merchant-level onboarding](https://developer.paypal.com/docs/multiparty/checkout/save-payment-methods/onboarding/merchant/)
 - [Authorize a payment and capture funds later](https://developer.paypal.com/docs/multiparty/checkout/standard/customize/auth-capture/)
+
+## Existing buyer-approved holds — 25 October 2026
+
+The vaulting blocker above concerns an assistant creating a hold without the buyer. Per-booking completion review and release now use a hold the customer explicitly approves in PayPal at booking. Capturing that existing hold under current booking permission does not require vaulting. Expired or replaced authorizations still require the buyer.

@@ -17,7 +17,7 @@
   const dialog = $derived(interaction?.dialog);
   const question = $derived(interaction?.question);
   const choices = $derived(dialog?.choices ?? []);
-  const timingChoice = $derived(role === 'customer' && !!app.providerConfig?.paymentsAvailable && !workspace.job.appointment && (dialog?.stage === 'offer' || ['approve-quote', 'accept-date'].includes(dialog?.pending ?? '')));
+  const timingChoice = $derived((!workspace.job.bookingAutonomyRequired || !!workspace.job.bookingAutonomy) && role === 'customer' && !!app.providerConfig?.paymentsAvailable && !workspace.job.appointment && (dialog?.stage === 'offer' || ['approve-quote', 'accept-date'].includes(dialog?.pending ?? '')));
   let minimized = $state(false);
   const questionSequence = $derived(question?.seq ?? dialog?.asked);
   $effect(() => { if (questionSequence) minimized = false; });
@@ -63,11 +63,13 @@
     {#if choices.length}
       <div class="choices" role="group" aria-label={t('Quick replies')}>
         {#each choices as choice (choice.id + choice.label)}
-          <button type="button" class="chip" disabled={app.pending} onclick={() => actions.act('agent-reply', choice.label, undefined, undefined, { choiceId: choice.id })}>{choice.label}</button>
+          <button type="button" class="chip" disabled={app.pending || (choice.id.startsWith('automatic|') && !app.providerConfig?.automaticReleaseAvailable)} onclick={() => actions.act('agent-reply', choice.label, undefined, undefined, { choiceId: choice.id })}>{choice.label}</button>
         {/each}
       </div>
     {/if}
-    <Composer {app} {actions} assigned={!!workspace.job.id} replyOnly compact/>
+    {#if dialog.stage==='booking-autonomy'}
+      {#if !app.providerConfig?.automaticReleaseAvailable}<p class="helper">{t('Automatic review and release are unavailable right now. You can review and pay yourself.')}</p>{/if}
+    {:else}<Composer {app} {actions} assigned={!!workspace.job.id} replyOnly compact/>{/if}
     {/if}
     </div>
   </section>

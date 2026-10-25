@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -451,6 +452,20 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 	if role == "professional" && current.Job.ProfessionalAccountID != actorAccountID {
 		return workflow.State{}, errors.New("professional is not assigned to this request")
 	}
+	if input.ByAgent && (input.AutonomyVersion > 0 || input.Action == "approve-payment") || input.Action == "set-booking-autonomy" && strings.HasPrefix(input.Value, "automatic|") || input.Action == "agent-reply" && strings.HasPrefix(input.ChoiceID, "automatic|") {
+		if err := customerAgentEnabledTx(ctx, tx, workspaceID); err != nil {
+			return workflow.State{}, err
+		}
+	}
+	if (input.Action == "set-booking-autonomy" && input.Value == "manual" || input.Action == "agent-reply" && input.ChoiceID == "manual") && current.Job.BookingAutonomy != nil && current.Job.BookingAutonomy.Mode == "automatic" {
+		var releasing bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM paypal_payment_operations WHERE workspace_id=$1 AND job_id=$2 AND status IN ('capturing','capture_uncertain','captured'))`, workspaceID, current.Job.ID).Scan(&releasing); err != nil {
+			return workflow.State{}, err
+		}
+		if releasing {
+			return workflow.State{}, errors.New("payment release has already started; check PayPal status before changing autonomy")
+		}
+	}
 	// PayPal can deliver PAYMENT.CAPTURE.COMPLETED before the buyer returns to
 	// the app. Treat the browser return for that same capture as an idempotent
 	// confirmation instead of rejecting a payment already reconciled by webhook.
@@ -542,6 +557,10 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 	}
 	wasCancelled := current.Cancelled
 	previousTiming := current.Job.PaymentAuthorizationTiming
+	previousAutonomyVersion := 0
+	if current.Job.BookingAutonomy != nil {
+		previousAutonomyVersion = current.Job.BookingAutonomy.Version
+	}
 	if err = workflow.Apply(&current, input); err != nil {
 		return workflow.State{}, err
 	}
@@ -551,6 +570,11 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 		}
 	}
 	state := current
+	if consent := state.Job.BookingAutonomy; consent != nil && consent.Version != previousAutonomyVersion {
+		if _, err := tx.Exec(ctx, `INSERT INTO booking_autonomy_consents(workspace_id,job_id,version,actor_account_id,mode,scope_version,amount_minor,currency,professional_account_id,professional_profile_id,decided_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz)`, workspaceID, state.Job.ID, consent.Version, actorAccountID, consent.Mode, consent.ScopeVersion, consent.AmountMinor, consent.Currency, consent.ProfessionalAccountID, consent.ProfessionalProfileID, consent.DecidedAt); err != nil {
+			return workflow.State{}, err
+		}
+	}
 	if input.Action != "defer-payment-authorization" && previousTiming != state.Job.PaymentAuthorizationTiming {
 		if err := deferPaymentAuthorizationTx(ctx, tx, state); err != nil {
 			return workflow.State{}, err

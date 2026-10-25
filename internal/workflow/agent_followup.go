@@ -11,50 +11,52 @@ import (
 // words and at any time, to move or cancel the visit; it reads the request, asks the customer to confirm
 // and then uses the same actions a button would (propose-date, cancel-request), so the professional's
 // assistant and the operator rules apply as usual. When the professional marks the work complete it
-// asks whether to approve it, and for payment it only tells the customer where PayPal approval is
-// theirs: it never pays. Every outcome is reported once, derived from the request itself.
+// asks whether to approve it in manual mode. Per-booking autonomy can instead review evidence and
+// release an existing buyer-approved hold. Every outcome is reported once from the request itself.
 
 func init() {
 	for key, text := range map[string][2]string{
-		"ask_unclear":       {"I can move or cancel the visit with {pro}, or help you approve finished work. To write to {pro}, switch the box below to {pro}; nothing was sent to them.", "Ik kan het bezoek met {pro} verplaatsen of annuleren, of je helpen met het goedkeuren van afgerond werk. Om {pro} te schrijven zet je het vak hieronder op {pro}; er is niets naar hen gestuurd."},
-		"ask_move_when":     {"When would you like to move the visit to? It is booked for {current}. Tell me a day or time in your own words, for example “Thursday afternoon”.", "Naar wanneer wil je het bezoek verplaatsen? Het staat nu op {current}. Vertel een dag of tijd in je eigen woorden, bijvoorbeeld “donderdagmiddag”."},
-		"move_retry":        {"Sorry, I couldn't make out the day. Try something like “Thursday afternoon” or “21 Oct 10–12”, or tell me to leave the visit as it is.", "Sorry, ik kon de dag niet goed lezen. Probeer bijvoorbeeld “donderdagmiddag” of “21 okt 10–12”, of zeg dat het bezoek zo blijft."},
-		"move_none":         {"I couldn't find a time with {pro} on those days. Which other days or times suit you? Or tell me to leave the visit as it is.", "Ik kon op die dagen geen tijd bij {pro} vinden. Welke andere dagen of tijden passen je? Of zeg dat het bezoek zo blijft."},
-		"move_offer_open":   {"{pro} has {when} open, which fits. Shall I ask {pro} to move your visit there from {current}?", "{pro} heeft {when} open en dat past. Zal ik {pro} vragen je bezoek daarheen te verplaatsen vanaf {current}?"},
-		"move_offer_ask":    {"{pro} has no published time then, but I can ask for {when}. Shall I ask {pro} to move your visit there from {current}?", "{pro} heeft dan geen vrije tijd gepubliceerd, maar ik kan {when} vragen. Zal ik {pro} vragen je bezoek daarheen te verplaatsen vanaf {current}?"},
-		"move_late":         {" The visit is less than 24 hours away, so a change this late also needs our operator team's approval after {pro} agrees. It stays as it is until then.", " Het bezoek is over minder dan 24 uur, dus een wijziging zo laat moet ook door ons operatorteam worden goedgekeurd nadat {pro} akkoord is. Tot die tijd blijft het zoals het is."},
-		"move_yes":          {"Yes, ask {pro}", "Ja, vraag het aan {pro}"},
-		"keep":              {"No, keep it as it is", "Nee, laat het zoals het is"},
-		"move_kept":         {"Okay, the visit stays on {current}.", "Oké, het bezoek blijft op {current}."},
-		"move_sent":         {"Your request to move the visit to {when} is with {pro}. I'll tell you what they say.", "Je verzoek om het bezoek te verplaatsen naar {when} ligt bij {pro}. Ik laat je weten wat ze zeggen."},
-		"move_refused":      {"{pro} couldn't do {when}, so the visit stays on {current}. Tell me another day if you'd like me to ask again.", "{pro} kon niet op {when}, dus het bezoek blijft op {current}. Noem een andere dag als ik het opnieuw moet vragen."},
-		"move_review":       {"{pro} agreed to {when}. Because the visit is less than 24 hours away, our operator team has to approve the change. The visit stays on {current} until they decide.", "{pro} is akkoord met {when}. Omdat het bezoek over minder dan 24 uur is, moet ons operatorteam de wijziging goedkeuren. Het bezoek blijft op {current} tot zij beslissen."},
-		"move_unconfirmed":  {"{pro} hasn't confirmed the current time yet. Once they do, I can ask to move it. If you'd rather not wait, I can cancel it.", "{pro} heeft de huidige tijd nog niet bevestigd. Zodra dat gebeurd is, kan ik vragen om te verplaatsen. Wil je niet wachten, dan kan ik het annuleren."},
-		"move_open":         {"There is already a visit proposal waiting for an answer, so let's settle that first.", "Er ligt al een voorstel voor een bezoektijd te wachten op antwoord, dus laten we dat eerst afhandelen."},
-		"visit_started":     {"The work has already started, so I can't move or cancel the visit. If something is wrong, you can report it on this page or write to {pro}: switch the box below to {pro}.", "Het werk is al begonnen, dus ik kan het bezoek niet verplaatsen of annuleren. Als er iets mis is, meld het dan op deze pagina of schrijf {pro}: zet het vak hieronder op {pro}."},
-		"visit_in_review":   {"A request about this visit is already with our operator team. I'll leave it alone until they decide.", "Er ligt al een verzoek over dit bezoek bij ons operatorteam. Ik laat het met rust tot zij beslissen."},
-		"visit_hold":        {"You chose to have PayPal hold the payment when you booked, so changing or cancelling the visit touches your payment. I'll leave that to you: use the buttons on this page, or write to {pro}.", "Je koos ervoor dat PayPal de betaling bij het boeken vasthoudt, dus een wijziging of annulering raakt je betaling. Dat laat ik aan jou: gebruik de knoppen op deze pagina of schrijf {pro}."},
-		"cancel_confirm":    {"Do you want me to cancel the visit with {pro} on {when}? {pro} will be told. Nothing has been paid.", "Wil je dat ik het bezoek met {pro} op {when} annuleer? {pro} krijgt bericht. Er is niets betaald."},
-		"cancel_late":       {" The visit is less than 24 hours away, so this goes to our operator team as a request. It stays booked until they decide.", " Het bezoek is over minder dan 24 uur, dus dit gaat als verzoek naar ons operatorteam. Het blijft geboekt tot zij beslissen."},
-		"cancel_yes":        {"Yes, cancel it", "Ja, annuleer het"},
-		"cancel_kept":       {"Okay, I won't cancel. The visit stays on {current}.", "Oké, ik annuleer niet. Het bezoek blijft op {current}."},
-		"cancel_done":       {"Your request with {pro} is cancelled and they know. Nothing was charged.", "Je aanvraag bij {pro} is geannuleerd en zij weten het. Er is niets in rekening gebracht."},
-		"cancel_review":     {"I sent your cancellation request to our operator team. The visit with {pro} stays booked until they decide.", "Ik heb je annuleringsverzoek naar ons operatorteam gestuurd. Het bezoek met {pro} blijft geboekt tot zij beslissen."},
-		"work_ask":          {"{pro} says the work is done. {summary} Shall I approve it? Approving doesn't pay anything: payment is a separate step that only you can do, in PayPal.", "{pro} meldt dat het werk klaar is. {summary} Zal ik het goedkeuren? Goedkeuren betekent nog niet betalen: betalen is een aparte stap die alleen jij kunt doen, in PayPal."},
-		"work_both":         {"They added {files} and left this note: “{note}”.", "Ze voegden {files} toe en lieten deze notitie achter: “{note}”."},
-		"work_files":        {"They added {files}.", "Ze voegden {files} toe."},
-		"work_note":         {"They left this note: “{note}”.", "Ze lieten deze notitie achter: “{note}”."},
-		"work_check":        {" Our check of the files: {check}", " Onze controle van de bestanden: {check}"},
-		"file_one":          {"1 file", "1 bestand"},
-		"file_many":         {"{n} files", "{n} bestanden"},
-		"work_yes":          {"Yes, approve it", "Ja, keur goed"},
-		"work_no":           {"Not yet", "Nog niet"},
-		"work_hold":         {"Okay, I won't approve it and nothing is paid. When you're ready you can approve it or report a problem on this page, or write to {pro}.", "Oké, ik keur het niet goed en er wordt niets betaald. Wanneer je er klaar voor bent kun je het goedkeuren of een probleem melden op deze pagina, of {pro} schrijven."},
-		"payment_notice":    {"The work is approved. Paying is the one step I can't do for you: PayPal needs your own approval. You can finish it in the payment step on this page.", "Het werk is goedgekeurd. Betalen is de ene stap die ik niet voor je kan doen: PayPal heeft je eigen goedkeuring nodig. Die rond je af in de betaalstap op deze pagina."},
-		"paid_notice":       {"Your payment of {amount} to {pro} is complete. If you like, leave a review on this page.", "Je betaling van {amount} aan {pro} is voltooid. Laat gerust een beoordeling achter op deze pagina."},
-		"pro_work_approved": {"{customer} approved the finished work. Payment is next: they still have to approve it in PayPal, and I'll tell you when it arrives.", "{customer} heeft het afgeronde werk goedgekeurd. Nu volgt de betaling: die moet nog in PayPal worden goedgekeurd en ik laat het je weten zodra die binnen is."},
-		"pro_pay_approved":  {"{customer} approved the payment of {amount} in PayPal. It is being completed.", "{customer} heeft de betaling van {amount} in PayPal goedgekeurd. Die wordt afgerond."},
-		"pro_paid":          {"{customer}'s payment of {amount} has arrived.", "De betaling van {amount} van {customer} is binnen."},
+		"pro_work_approved_auto": {"The customer’s assistant checked the completion record and approved the documented work under their booking permission. The authorized payment is ready for release.", "De assistent van de klant heeft de opleverdocumentatie gecontroleerd en het gedocumenteerde werk goedgekeurd met toestemming voor deze boeking. De geautoriseerde betaling kan worden vrijgegeven."},
+		"pro_pay_approved_auto":  {"Release of {amount} was approved under the customer’s booking permission. I’ll tell you when payment arrives.", "Betaling van {amount} is goedgekeurd met toestemming van de klant voor deze boeking. Ik laat je weten wanneer de betaling binnenkomt."},
+		"ask_unclear":            {"I can move or cancel the visit with {pro}, or help you approve finished work. To write to {pro}, switch the box below to {pro}; nothing was sent to them.", "Ik kan het bezoek met {pro} verplaatsen of annuleren, of je helpen met het goedkeuren van afgerond werk. Om {pro} te schrijven zet je het vak hieronder op {pro}; er is niets naar hen gestuurd."},
+		"ask_move_when":          {"When would you like to move the visit to? It is booked for {current}. Tell me a day or time in your own words, for example “Thursday afternoon”.", "Naar wanneer wil je het bezoek verplaatsen? Het staat nu op {current}. Vertel een dag of tijd in je eigen woorden, bijvoorbeeld “donderdagmiddag”."},
+		"move_retry":             {"Sorry, I couldn't make out the day. Try something like “Thursday afternoon” or “21 Oct 10–12”, or tell me to leave the visit as it is.", "Sorry, ik kon de dag niet goed lezen. Probeer bijvoorbeeld “donderdagmiddag” of “21 okt 10–12”, of zeg dat het bezoek zo blijft."},
+		"move_none":              {"I couldn't find a time with {pro} on those days. Which other days or times suit you? Or tell me to leave the visit as it is.", "Ik kon op die dagen geen tijd bij {pro} vinden. Welke andere dagen of tijden passen je? Of zeg dat het bezoek zo blijft."},
+		"move_offer_open":        {"{pro} has {when} open, which fits. Shall I ask {pro} to move your visit there from {current}?", "{pro} heeft {when} open en dat past. Zal ik {pro} vragen je bezoek daarheen te verplaatsen vanaf {current}?"},
+		"move_offer_ask":         {"{pro} has no published time then, but I can ask for {when}. Shall I ask {pro} to move your visit there from {current}?", "{pro} heeft dan geen vrije tijd gepubliceerd, maar ik kan {when} vragen. Zal ik {pro} vragen je bezoek daarheen te verplaatsen vanaf {current}?"},
+		"move_late":              {" The visit is less than 24 hours away, so a change this late also needs our operator team's approval after {pro} agrees. It stays as it is until then.", " Het bezoek is over minder dan 24 uur, dus een wijziging zo laat moet ook door ons operatorteam worden goedgekeurd nadat {pro} akkoord is. Tot die tijd blijft het zoals het is."},
+		"move_yes":               {"Yes, ask {pro}", "Ja, vraag het aan {pro}"},
+		"keep":                   {"No, keep it as it is", "Nee, laat het zoals het is"},
+		"move_kept":              {"Okay, the visit stays on {current}.", "Oké, het bezoek blijft op {current}."},
+		"move_sent":              {"Your request to move the visit to {when} is with {pro}. I'll tell you what they say.", "Je verzoek om het bezoek te verplaatsen naar {when} ligt bij {pro}. Ik laat je weten wat ze zeggen."},
+		"move_refused":           {"{pro} couldn't do {when}, so the visit stays on {current}. Tell me another day if you'd like me to ask again.", "{pro} kon niet op {when}, dus het bezoek blijft op {current}. Noem een andere dag als ik het opnieuw moet vragen."},
+		"move_review":            {"{pro} agreed to {when}. Because the visit is less than 24 hours away, our operator team has to approve the change. The visit stays on {current} until they decide.", "{pro} is akkoord met {when}. Omdat het bezoek over minder dan 24 uur is, moet ons operatorteam de wijziging goedkeuren. Het bezoek blijft op {current} tot zij beslissen."},
+		"move_unconfirmed":       {"{pro} hasn't confirmed the current time yet. Once they do, I can ask to move it. If you'd rather not wait, I can cancel it.", "{pro} heeft de huidige tijd nog niet bevestigd. Zodra dat gebeurd is, kan ik vragen om te verplaatsen. Wil je niet wachten, dan kan ik het annuleren."},
+		"move_open":              {"There is already a visit proposal waiting for an answer, so let's settle that first.", "Er ligt al een voorstel voor een bezoektijd te wachten op antwoord, dus laten we dat eerst afhandelen."},
+		"visit_started":          {"The work has already started, so I can't move or cancel the visit. If something is wrong, you can report it on this page or write to {pro}: switch the box below to {pro}.", "Het werk is al begonnen, dus ik kan het bezoek niet verplaatsen of annuleren. Als er iets mis is, meld het dan op deze pagina of schrijf {pro}: zet het vak hieronder op {pro}."},
+		"visit_in_review":        {"A request about this visit is already with our operator team. I'll leave it alone until they decide.", "Er ligt al een verzoek over dit bezoek bij ons operatorteam. Ik laat het met rust tot zij beslissen."},
+		"visit_hold":             {"You chose to have PayPal hold the payment when you booked, so changing or cancelling the visit touches your payment. I'll leave that to you: use the buttons on this page, or write to {pro}.", "Je koos ervoor dat PayPal de betaling bij het boeken vasthoudt, dus een wijziging of annulering raakt je betaling. Dat laat ik aan jou: gebruik de knoppen op deze pagina of schrijf {pro}."},
+		"cancel_confirm":         {"Do you want me to cancel the visit with {pro} on {when}? {pro} will be told. Nothing has been paid.", "Wil je dat ik het bezoek met {pro} op {when} annuleer? {pro} krijgt bericht. Er is niets betaald."},
+		"cancel_late":            {" The visit is less than 24 hours away, so this goes to our operator team as a request. It stays booked until they decide.", " Het bezoek is over minder dan 24 uur, dus dit gaat als verzoek naar ons operatorteam. Het blijft geboekt tot zij beslissen."},
+		"cancel_yes":             {"Yes, cancel it", "Ja, annuleer het"},
+		"cancel_kept":            {"Okay, I won't cancel. The visit stays on {current}.", "Oké, ik annuleer niet. Het bezoek blijft op {current}."},
+		"cancel_done":            {"Your request with {pro} is cancelled and they know. Nothing was charged.", "Je aanvraag bij {pro} is geannuleerd en zij weten het. Er is niets in rekening gebracht."},
+		"cancel_review":          {"I sent your cancellation request to our operator team. The visit with {pro} stays booked until they decide.", "Ik heb je annuleringsverzoek naar ons operatorteam gestuurd. Het bezoek met {pro} blijft geboekt tot zij beslissen."},
+		"work_ask":               {"{pro} says the work is done. {summary} Shall I approve it? Approving doesn't pay anything: payment is a separate step that only you can do, in PayPal.", "{pro} meldt dat het werk klaar is. {summary} Zal ik het goedkeuren? Goedkeuren betekent nog niet betalen: betalen is een aparte stap die alleen jij kunt doen, in PayPal."},
+		"work_both":              {"They added {files} and left this note: “{note}”.", "Ze voegden {files} toe en lieten deze notitie achter: “{note}”."},
+		"work_files":             {"They added {files}.", "Ze voegden {files} toe."},
+		"work_note":              {"They left this note: “{note}”.", "Ze lieten deze notitie achter: “{note}”."},
+		"work_check":             {" Our check of the files: {check}", " Onze controle van de bestanden: {check}"},
+		"file_one":               {"1 file", "1 bestand"},
+		"file_many":              {"{n} files", "{n} bestanden"},
+		"work_yes":               {"Yes, approve it", "Ja, keur goed"},
+		"work_no":                {"Not yet", "Nog niet"},
+		"work_hold":              {"Okay, I won't approve it and nothing is paid. When you're ready you can approve it or report a problem on this page, or write to {pro}.", "Oké, ik keur het niet goed en er wordt niets betaald. Wanneer je er klaar voor bent kun je het goedkeuren of een probleem melden op deze pagina, of {pro} schrijven."},
+		"payment_notice":         {"The work is approved. Paying is the one step I can't do for you: PayPal needs your own approval. You can finish it in the payment step on this page.", "Het werk is goedgekeurd. Betalen is de ene stap die ik niet voor je kan doen: PayPal heeft je eigen goedkeuring nodig. Die rond je af in de betaalstap op deze pagina."},
+		"paid_notice":            {"Your payment of {amount} to {pro} is complete. If you like, leave a review on this page.", "Je betaling van {amount} aan {pro} is voltooid. Laat gerust een beoordeling achter op deze pagina."},
+		"pro_work_approved":      {"{customer} approved the finished work. Payment is next: they still have to approve it in PayPal, and I'll tell you when it arrives.", "{customer} heeft het afgeronde werk goedgekeurd. Nu volgt de betaling: die moet nog in PayPal worden goedgekeurd en ik laat het je weten zodra die binnen is."},
+		"pro_pay_approved":       {"{customer} approved the payment of {amount} in PayPal. It is being completed.", "{customer} heeft de betaling van {amount} in PayPal goedgekeurd. Die wordt afgerond."},
+		"pro_paid":               {"{customer}'s payment of {amount} has arrived.", "De betaling van {amount} van {customer} is binnen."},
 	} {
 		dialogText[key] = text
 	}
@@ -139,7 +141,7 @@ func (c AgentContext) visitNotices() (AgentDecision, bool) {
 			params["amount"] = c.money(job.Quote.TotalMinor)
 			return c.tellIdle("tell-paid", "paid_notice", params, key), true
 		}
-	case job.CompletionApproved:
+	case job.CompletionApproved && !BookingAutonomyCurrent(job):
 		key := "payment:" + job.CompletionApprovedAt
 		if !d.reported(key) {
 			// The step itself is PayPal's window; the assistant only points to it.
@@ -419,10 +421,18 @@ func (c AgentContext) proPaymentMilestones() (AgentDecision, bool) {
 		return c.say(code, false, c.text(text, params), nil, func(d *AgentDialog) { d.Stage, d.Pending = "idle", ""; d.report(key) }), true
 	}
 	if key := "approved:" + job.CompletionApprovedAt; !d.reported(key) {
-		return report("tell-work-approved", "pro_work_approved", key)
+		text := "pro_work_approved"
+		if job.CompletionApprovedByAgent {
+			text = "pro_work_approved_auto"
+		}
+		return report("tell-work-approved", text, key)
 	}
 	if key := "payapproved:" + job.PaymentApprovedAt; job.PaymentApprovedAt != "" && job.PaymentApprovedVersion == job.ScopeVersion && !d.reported(key) {
-		return report("tell-payment-approved", "pro_pay_approved", key)
+		text := "pro_pay_approved"
+		if job.PaymentApprovedByAgent {
+			text = "pro_pay_approved_auto"
+		}
+		return report("tell-payment-approved", text, key)
 	}
 	if key := "paid:" + job.PaymentTransactionID; job.Paid && !d.reported(key) {
 		return report("tell-paid", "pro_paid", key)

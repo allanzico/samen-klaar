@@ -12,7 +12,8 @@ import (
 // An agent acts for one person on one request, using the same named actions a person would press.
 // It only ever acts inside that person's mandate: explicit limits the person set in advance. Anything
 // outside the mandate, anything uncertain, and every step that needs a person (a physical visit, a
-// PayPal approval, judging finished work, a dispute) is escalated instead of guessed.
+// buyer approval in PayPal, a physical inspection, a dispute) is escalated instead of guessed.
+// Completion review and capture of an existing hold require explicit per-booking permission.
 //
 // DecideAgent is pure: it reads a snapshot and returns what the agent would do. The runner applies it
 // through the normal workflow validation, which re-checks every rule, so a stale snapshot cannot
@@ -44,7 +45,7 @@ type AgentMandate struct {
 	ServiceAddress        string `json:"serviceAddress,omitempty"`
 	AutoApproveExtraMinor int64  `json:"autoApproveExtraMinor,omitempty"`
 	CounterPercent        int    `json:"counterPercent,omitempty"`
-	// Approving finished work is a person's decision unless they hand it to their agent here.
+	// Legacy work-only preference. New bookings use an explicit BookingAutonomy decision.
 	AutoApproveWork bool `json:"autoApproveWork,omitempty"`
 	// By default the assistant asks the customer before booking a time. This lets it book on its own.
 	BookWithoutAsking bool `json:"bookWithoutAsking,omitempty"`
@@ -57,7 +58,7 @@ type AgentMandate struct {
 }
 
 // DefaultMandate is the authority an agent has before its person changes anything: it is on from the
-// start, books inside ordinary days and hours, and keeps work approval and payment with people.
+// start, books inside ordinary days and hours, and grants no completion or payment authority.
 func DefaultMandate(role string) AgentMandate {
 	m := AgentMandate{Enabled: true}
 	if role == "customer" {
@@ -356,6 +357,12 @@ func decideCustomer(c AgentContext) AgentDecision {
 		if job.PriceProposal != nil && job.PriceProposal.Status == "pending" || job.DateProposal != nil && job.DateProposal.Status == "pending" {
 			return wait()
 		}
+		if BookingAutonomyChoiceNeeded(job) {
+			if state.Intake != nil {
+				return c.dialogBookingAutonomy()
+			}
+			return escalate("booking_autonomy_choice", nil)
+		}
 		// A professional who declined or let a reservation lapse is not offered the same time again.
 		var released string
 		if confirmation := job.AppointmentConfirmation; confirmation != nil && (confirmation.Status == "declined" || confirmation.Status == "expired") {
@@ -395,6 +402,12 @@ func decideCustomer(c AgentContext) AgentDecision {
 		return escalate("price_above_limit", map[string]string{"price": euros(p.AmountMinor), "limit": euros(limit)})
 
 	case "review_date":
+		if job.Appointment == nil && BookingAutonomyChoiceNeeded(job) {
+			if state.Intake != nil {
+				return c.dialogBookingAutonomy()
+			}
+			return escalate("booking_autonomy_choice", nil)
+		}
 		p := job.DateProposal
 		blocked, params := visitChangeBlocker(c, p.Appointment)
 		if dialogMode && blocked != "late_change_needs_you" && blocked != "visit_change_involves_payment" {
@@ -414,8 +427,17 @@ func decideCustomer(c AgentContext) AgentDecision {
 		return escalate("extra_work_needs_approval", map[string]string{"amount": euros(ch.AmountMinor)})
 
 	case "review":
+		if BookingAutonomyCurrent(job) {
+			if job.EvidenceReview == nil || job.EvidenceReview.EvidenceFingerprint != CompletionEvidenceFingerprint(job) {
+				return c.autonomyAction("check-completion-photos", "review-completion-evidence")
+			}
+			if err := ValidateAutonomousCompletion(job); err != nil {
+				return escalate("autonomy_review_needed", nil)
+			}
+			return c.autonomyAction("approve-work", "approve-completion")
+		}
 		// Judging finished work is the person's decision unless they handed it to their agent.
-		if m.AutoApproveWork {
+		if m.AutoApproveWork && job.BookingAutonomy == nil {
 			return act("approve-work", Action{Action: "approve-completion"}, nil)
 		}
 		// The assistant asks in the chat and acts on the answer; the page's own buttons still work.
@@ -427,6 +449,17 @@ func decideCustomer(c AgentContext) AgentDecision {
 		}
 		return escalate("check_the_work", nil)
 	case "payment":
+		if BookingAutonomyCurrent(job) {
+			if err := ValidateAutonomousCompletion(job); err != nil {
+				return escalate("autonomy_review_needed", nil)
+			}
+			if job.PaymentApprovedVersion != job.ScopeVersion {
+				return c.autonomyAction("approve-delegated-payment", "approve-payment")
+			}
+			if job.PaymentApprovedByAgent {
+				return c.autonomyAction("release-delegated-payment", "release-authorized-payment")
+			}
+		}
 		return escalate("payment_needs_you", nil)
 	case "dispute_review", "cancellation_review", "refund_pending":
 		return wait()

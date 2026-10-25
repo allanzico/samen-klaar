@@ -70,7 +70,7 @@
   <form class="agent-form" onsubmit={(event) => { event.preventDefault(); void save(); }}>
     <p class="secondary-text">{pro
       ? t('Your agent is already working for you. It answers price offers, accepts visit times and confirms visits inside your working hours. It never does the work or decides a dispute, and payments always stay with you.')
-      : t('Your agent is already working for you from your first message: it picks a professional, negotiates price and visit time once, and books a visit. Payments always stay with you, and so does approving finished work unless you hand that over below.')}</p>
+      : t('Your assistant helps with price and visit times after you choose a professional. During booking, choose whether it may review completion and release your authorized payment.')}</p>
     {#if error}<Banner kind="error" text={error}/>{/if}
     {#if loaded}
       <label class="switch"><input type="checkbox" role="switch" bind:checked={paused}/><span class="track" aria-hidden="true"></span><span>{t('Pause my agent')}</span></label>
@@ -89,7 +89,7 @@
             <div class="money-input narrow"><span aria-hidden="true">€</span><input id="agent-limit" inputmode="decimal" bind:value={limit} placeholder="150"/></div>
             <p class="field-help">{t('Your agent also stays within the budget you give in the chat, and asks you to approve the price when you give none. Slightly above this, it offers this amount once. Further above, it asks you.')}</p></div>
           <label class="check"><input type="checkbox" bind:checked={bookAlone}/>{t('Book a visit time without asking me first, using the days and hours below')}</label>
-          <label class="check"><input type="checkbox" bind:checked={autoWork}/>{t('Approve finished work for me when the professional marks it complete. Payment still needs me.')}</label>
+          <p class="field-help">{t('Choose completion review and payment release for each booking. You can turn autonomy off on that request.')}</p>
           <div class="field"><label for="agent-extra">{t('Extra work I allow without asking, up to')}</label>
             <div class="money-input narrow"><span aria-hidden="true">€</span><input id="agent-extra" inputmode="decimal" bind:value={extra}/></div></div>
           <div class="field"><label for="agent-address">{t('Service address to share with the professional')}</label>

@@ -79,27 +79,13 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 	if len(files) == 0 || len(files) > 5 {
 		return nil, errors.New("select one to five uploaded evidence files for review")
 	}
-	scopeItems := make([]string, 0, len(job.Quote.Lines))
-	scopeIDs := make([]string, 0, len(job.Quote.Lines))
+	scopeItems := []string{}
+	scopeIDs := []string{}
 	allowedItems := map[string]bool{}
-	for index, line := range job.Quote.Lines {
-		if line.Basis == "Published provider call-out fee" || strings.HasPrefix(line.Basis, "Customer and professional agreed:") {
-			continue
-		}
-		id := fmt.Sprintf("work-%d", index+1)
-		allowedItems[id] = true
-		scopeIDs = append(scopeIDs, id)
-		scopeItems = append(scopeItems, id+" ("+line.Label+")")
-	}
-	if len(job.WorkItems) > 0 {
-		scopeItems = nil
-		scopeIDs = nil
-		allowedItems = map[string]bool{}
-		for _, item := range job.WorkItems {
-			scopeItems = append(scopeItems, item.ID+" ("+item.Description+")")
-			allowedItems[item.ID] = true
-			scopeIDs = append(scopeIDs, item.ID)
-		}
+	for _, item := range workflow.ReviewableWorkItems(job) {
+		scopeIDs = append(scopeIDs, item.ID)
+		scopeItems = append(scopeItems, item.ID+" ("+item.Description+")")
+		allowedItems[item.ID] = true
 	}
 	if len(scopeItems) == 0 {
 		return nil, errors.New("the approved scope has no work items to review")
@@ -171,6 +157,7 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 			}
 		}
 	}
+	workflow.BindEvidenceReview(job, &review)
 	review.Model = c.model
 	review.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
 	review.Limitations = strings.TrimSpace(review.Limitations)
