@@ -695,10 +695,15 @@ func TestProfessionalAssistantAsksBeforeConfirmingOutsideItsHoursAndReports(t *t
 		t.Fatalf("expected a report of what was agreed, got %q", text)
 	}
 	// A visit inside the hours is confirmed without a question, and still reported.
-	inside := agentSlot("wed", "2026-10-21T09:00:00Z", "2026-10-21T10:00:00Z")
+	insideStart := time.Now().In(zone).AddDate(0, 0, 1)
+	for insideStart.Weekday() == time.Saturday || insideStart.Weekday() == time.Sunday {
+		insideStart = insideStart.AddDate(0, 0, 1)
+	}
+	insideStart = time.Date(insideStart.Year(), insideStart.Month(), insideStart.Day(), 11, 0, 0, 0, zone)
+	inside := agentSlot("inside-hours", insideStart.UTC().Format(time.RFC3339), insideStart.Add(time.Hour).UTC().Format(time.RFC3339))
 	state = proState()
 	state.Job.Appointment = &inside
-	state.Job.AppointmentConfirmation = &AppointmentConfirmation{Status: "pending", DueAt: "2026-10-22T08:00:00Z", Appointment: inside}
+	state.Job.AppointmentConfirmation = &AppointmentConfirmation{Status: "pending", DueAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339), Appointment: inside}
 	c = &converse{t: t, state: state, m: m, role: "professional"}
 	c.settle()
 	if len(c.log) != 2 || c.log[0] != "confirm-visit" || c.log[1] != "tell-confirmed" {
