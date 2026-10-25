@@ -166,6 +166,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/request-photos", s.protect(true, identity.Customer)(http.HandlerFunc(s.requestPhotoUploadHandler)))
 	mux.Handle("/api/request-photos/{id}", s.protect(false, identity.Customer, identity.Professional)(http.HandlerFunc(s.requestPhotoGetHandler)))
 	mux.Handle("/api/evidence/review", s.protect(true, identity.Customer)(http.HandlerFunc(s.evidenceReviewHandler)))
+	mux.Handle("/api/professional/dashboard", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalDashboardHandler)))
 	mux.Handle("/api/professional/profile", s.protect(false, identity.Professional)(http.HandlerFunc(s.professionalProfileHandler)))
 	mux.Handle("/api/professional/paypal/onboarding", s.protect(false, identity.Professional)(http.HandlerFunc(s.paypalSellerOnboardingHandler)))
 	mux.Handle("/api/professional/paypal/status", s.protect(false, identity.Professional)(http.HandlerFunc(s.paypalSellerStatusHandler)))

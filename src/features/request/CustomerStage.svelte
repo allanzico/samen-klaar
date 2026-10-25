@@ -42,7 +42,7 @@
             <p class="helper">{t('Leave all unchecked to compare the newest files.')}</p>
           </fieldset>
         {/if}
-        <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} onclick={() => actions.reviewEvidence(selected)}>{job.evidenceReview ? t('Check again') : t('Compare photos')}</button>
+        <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} aria-busy={app.reviewingEvidence} onclick={() => actions.reviewEvidence(selected)}>{app.reviewingEvidence ? t('Comparing photos…') : job.evidenceReview ? t('Check again') : t('Compare photos')}</button>
         {#if job.evidenceReview}
           <div class="found">
             <p class="eyebrow">{t('What the assistant found')}</p>

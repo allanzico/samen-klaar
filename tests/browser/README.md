@@ -40,3 +40,9 @@ At 390 × 844 and desktop width, the expanded history used document scrolling wi
 
 
 Verified 21 October 2026 (professional confirmation): repeated agent runs with saved address, budget and automatic visit booking leave the request unassigned. The browser stays on the professional’s service, price and details through background updates and reload; **Choose Fixture and continue** is the explicit selection. Only after clicking it does the address question appear. Before plan approval, **Request options → Choose another professional** returns to review. Returning clears both parties’ old active assistant questions, and old persisted questions cannot interrupt an unassigned request. The workflow rejects assistant-originated professional selection.
+
+## Professional dashboard
+
+Open `http://127.0.0.1:5191/tests/browser/dashboard.html` on the fixture Vite server. It renders the real professional jobs page at desktop and 390px phone widths with synthetic data; the phone view uses Dutch. Check separate EUR/USD earnings, pending payments and visit/job counts. The normal, empty and error controls switch fixtures. Error simulates one failed stats request; Retry restores the overview while the jobs list remains available. This fixture contacts no payment, email or AI provider.
+
+Verified 25 October 2026: English desktop and Dutch 390px phone layouts render the separate currency totals and work counts. A failed refresh leaves the jobs list and previous totals visible, Retry restores the overview, and the empty state shows zero totals. Browser console warnings/errors: none. Fixtures use synthetic data only.

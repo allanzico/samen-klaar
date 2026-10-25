@@ -1,4 +1,4 @@
-import type { CustomerProfile, AgentActivity, AgentEscalation, AgentMandate, AuthSession, CaseNote, ConsumerPolicy, CoordinationTask, EvidenceRequirement, OperatorCaseDetail, ServiceEvidencePolicy, AvailabilitySlot, Location, NegotiationInput, NotificationDeliveryHealth, OperatorCase, PayPalPayoutSetupStatus, ProfessionalApplication, ProfessionalProfile, ProfessionalProfileInput, ProfessionalReviewChecks, ProviderConfig, UserNotification, WorkspaceRole, WorkspaceState, WorkspaceSummary } from './types';
+import type { CustomerProfile, AgentActivity, AgentEscalation, AgentMandate, AuthSession, CaseNote, ConsumerPolicy, CoordinationTask, EvidenceRequirement, OperatorCaseDetail, ServiceEvidencePolicy, AvailabilitySlot, Location, NegotiationInput, NotificationDeliveryHealth, OperatorCase, PayPalPayoutSetupStatus, ProfessionalApplication, ProfessionalProfile, ProfessionalProfileInput, ProfessionalReviewChecks, ProviderConfig, UserNotification, WorkspaceRole, WorkspaceState, WorkspaceSummary, ProfessionalDashboard } from './types';
 import type { AdminLocationPage, AdminUserAction, AdminUserDetail, AdminUserFilter, AdminUserPage } from './operator-admin';
 
 async function fetchResponse(url: string, init?: RequestInit): Promise<Response> {
@@ -53,6 +53,7 @@ export const api = {
   config: () => request<ProviderConfig>('/api/config', { signal: AbortSignal.timeout(5000) }),
   session: () => request<AuthSession>('/api/auth/session', { signal: AbortSignal.timeout(5000) }),
   workspaces: (cursor = '') => request<{ workspaces: WorkspaceSummary[]; nextCursor?: string; openRequests?: number; openRequestLimit?: number }>(`/api/workspaces${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  professionalDashboard: (signal?: AbortSignal) => request<ProfessionalDashboard>('/api/professional/dashboard', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) }),
   notifications: () => request<{ notifications: UserNotification[] }>('/api/notifications'),
   markNotificationRead: (id: number) => post<{ status: string }>('/api/notifications/read', { id }),
   createWorkspace: () => post<{ workspace: WorkspaceState }>('/api/workspaces', {}),
@@ -112,5 +113,18 @@ export const api = {
   caseDetail: (workspaceId: string, kind: string) => request<OperatorCaseDetail>(`/api/operator/cases/${encodeURIComponent(workspaceId)}?kind=${encodeURIComponent(kind)}`),
   updateCase: (workspaceId: string, kind: string, input: { action: string; recipient?: string; note?: string; workItemId?: string }) =>
     post<OperatorCaseDetail>(`/api/operator/cases/${encodeURIComponent(workspaceId)}?kind=${encodeURIComponent(kind)}`, { Action: input.action, Recipient: input.recipient ?? '', Note: input.note ?? '', WorkItemID: input.workItemId ?? '' }),
-  reviewEvidence: (workspaceId: string | null, assetIds: string[] = []) => post<WorkspaceState>(`/api/evidence/review?workspaceId=${encodeURIComponent(workspaceId ?? '')}`, { assetIds })
+  reviewEvidence: async (workspaceId: string | null, assetIds: string[] = []) => {
+    const response = await fetchResponse(`/api/evidence/review?workspaceId=${encodeURIComponent(workspaceId ?? '')}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assetIds }), signal: AbortSignal.timeout(90000)
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      let code: unknown;
+      try { code = JSON.parse(body)?.code; } catch { /* Older servers return plain text. */ }
+      if (code === 'EVIDENCE_IMAGE_UNSUPPORTED') throw new Error('This photo could not be read for comparison. Try a smaller JPEG, PNG or WebP image.');
+      if (response.status >= 500 || code === 'EVIDENCE_COMPARISON_UNAVAILABLE') throw new Error('We couldn’t compare these photos. Try again, or review the completion record yourself.');
+      throw new Error(body);
+    }
+    return response.json() as Promise<WorkspaceState>;
+  }
 };

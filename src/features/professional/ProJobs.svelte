@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
+  import ProOverview from './ProOverview.svelte';
   import Pill from '../../ui/Pill.svelte';
   import DeleteRequestDialog from '../request/DeleteRequestDialog.svelte';
   import type { AppActions, AppState, WorkspaceSummary } from '../../lib/types';
@@ -53,6 +54,7 @@
 
 <div class="jobs">
   <h1 class="page-title jobs-title">{t('Your jobs')}</h1>
+  <ProOverview workspaces={app.workspaces} currency={app.professionalProfile?.currency ?? 'EUR'}/>
   {#if error}<div class="banner banner--error" role="alert"><Icon name="alert"/><p>{t(error)}</p></div>{/if}
   {#if app.workspaces.length}
     <div class="filter-tabs compact" role="tablist" aria-label={t('Filter jobs')}>

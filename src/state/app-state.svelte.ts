@@ -25,6 +25,7 @@ export function createAppState(): AppState {
     newConversation: false,
     clarificationAnswer: '',
     paypalStatus: 'not_started',
+    reviewingEvidence: false,
     evidenceFile: null
   });
   return state;

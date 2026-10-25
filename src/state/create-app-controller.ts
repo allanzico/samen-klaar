@@ -378,6 +378,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     if (app.pending || app.role !== 'customer') return;
     stateGeneration++;
     app.pending = true;
+    app.reviewingEvidence = true;
     app.error = '';
     try {
       app.serverState = await api.reviewEvidence(app.workspaceId, assetIds);
@@ -385,6 +386,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       app.error = error instanceof Error ? error.message.trim() : 'SamenKlaar could not check these files right now.';
     } finally {
       app.pending = false;
+      app.reviewingEvidence = false;
     }
   }
 

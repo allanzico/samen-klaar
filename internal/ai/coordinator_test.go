@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,12 +24,20 @@ func TestEvidenceCoverageUsesWorkIDsAfterRepeatedPriceAdjustments(t *testing.T) 
 		{Label: "Agreed price adjustment", Basis: "Customer and professional agreed: second offer"},
 		{Label: "Replace valve", Basis: "Professional proposal · customer-approved change"},
 	}}}
-	files := []workflow.EvidenceBlob{{ID: "asset", ContentType: "image/png", Data: []byte("image")}}
+	files := []workflow.EvidenceBlob{{ID: "asset", ContentType: "image/png", Data: generatedReviewPNG(t, 64, 64)}}
 	output := map[string]any{"summary": "Review", "limitations": "Images cannot prove quality", "coverage": []map[string]any{
 		{"scopeItem": "work-1", "evidenceIds": []string{"asset"}, "coverage": "documented", "observation": "Valve visible"},
 		{"scopeItem": "work-5", "evidenceIds": []string{"asset"}, "coverage": "unclear", "observation": "Second task unclear"},
 	}}
 	client := modelFixture(func(request GenerationRequest) []byte {
+		properties := request.Schema["properties"].(map[string]any)
+		finding := properties["coverage"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+		itemIDs := finding["scopeItem"].(map[string]any)["enum"].([]string)
+		fileIDs := finding["evidenceIds"].(map[string]any)["items"].(map[string]any)["enum"].([]string)
+		if !slices.Equal(itemIDs, []string{"work-1", "work-5"}) || !slices.Equal(fileIDs, []string{"asset"}) {
+			t.Errorf("response schema permits unexpected work or evidence references")
+		}
+
 		if !strings.Contains(request.Prompt, "work-1 (Replace valve)") || !strings.Contains(request.Prompt, "work-5 (Replace valve)") || strings.Contains(request.Prompt, "Agreed price adjustment") {
 			t.Errorf("prompt did not isolate stable work items: %q", request.Prompt)
 		}

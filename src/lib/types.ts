@@ -190,6 +190,14 @@ export type WorkspaceSummary = {
   canDelete?: boolean;
 };
 
+export type ProfessionalDashboard = {
+  balances: { currency: string; receivedMinor: number; awaitingPaymentMinor: number }[];
+  upcomingVisits: number;
+  completedJobs: number;
+  awaitingConfirmation: number;
+  asOf: string;
+};
+
 export type ProviderConfig = {
   appName: string;
   locationSearchAvailable?: boolean;
@@ -227,6 +235,7 @@ export type AppState = {
   clarificationAnswer: string;
   paypalStatus: string;
   evidenceFile: File | null;
+  reviewingEvidence?: boolean;
 };
 
 export type AppActions = {

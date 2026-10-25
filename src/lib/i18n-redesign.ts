@@ -1,6 +1,22 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Comparing photos…": "Foto’s vergelijken…",
+  "We couldn’t compare these photos. Try again, or review the completion record yourself.": "We konden deze foto’s niet vergelijken. Probeer opnieuw of beoordeel zelf de documentatie van het afgeronde werk.",
+  "This photo could not be read for comparison. Try a smaller JPEG, PNG or WebP image.": "Deze foto kon niet worden gelezen voor de vergelijking. Probeer een kleinere JPEG-, PNG- of WebP-afbeelding.",
+
+  "Your work at a glance": "Je werk in één oogopslag",
+  "Your stats could not be refreshed. Your jobs are still available.": "Je statistieken konden niet worden vernieuwd. Je klussen zijn nog beschikbaar.",
+  "Earnings": "Inkomsten",
+  "All time, before PayPal fees": "Totaal, vóór PayPal-kosten",
+  "Awaiting payment": "Wacht op betaling",
+  "Approved work, not yet paid": "Goedgekeurd werk, nog niet betaald",
+  "Upcoming visits": "Komende afspraken",
+  "Completed jobs": "Afgeronde klussen",
+  "To confirm": "Te bevestigen",
+  "Refunded payments and payments under refund or reversal review are excluded from earnings.": "Terugbetaalde betalingen en betalingen met een terugbetaling of terugboeking in behandeling tellen niet mee als inkomsten.",
+  "Loading your stats…": "Je statistieken laden…",
+
   "Choose {name} and continue": "Kies {name} en ga verder",
   "Choose {name}": "Kies {name}",
   "You choose the professional. Your assistant then helps with the plan and visit.": "Jij kiest de vakpersoon. Daarna helpt je assistent met het plan en de afspraak.",

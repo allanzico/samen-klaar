@@ -3,10 +3,14 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	coreai "github.com/allanzico/samen-klaar/internal/ai"
 	"github.com/allanzico/samen-klaar/internal/workflow"
 )
 
@@ -14,6 +18,43 @@ type evidenceStorageFixture map[string][]byte
 
 func (s evidenceStorageFixture) Put(context.Context, string, string, string, []byte) error {
 	return nil
+}
+
+type failedReviewFixture struct {
+	intakeStub
+	failure error
+}
+
+func (s *failedReviewFixture) ReviewEvidence(context.Context, workflow.Job, []workflow.EvidenceBlob) (*workflow.EvidenceReview, error) {
+	return nil, s.failure
+}
+
+func TestPhotoComparisonFailureReturnsSafeCodeAndPreservesCompletion(t *testing.T) {
+	for _, tc := range []struct {
+		failure error
+		status  int
+		code    string
+	}{
+		{errors.Join(coreai.ErrEvidenceProvider, errors.New("private-provider-diagnostic")), http.StatusBadGateway, "EVIDENCE_COMPARISON_UNAVAILABLE"},
+		{coreai.ErrEvidenceReviewInvalid, http.StatusBadGateway, "EVIDENCE_COMPARISON_UNAVAILABLE"},
+		{coreai.ErrEvidenceImage, http.StatusUnprocessableEntity, "EVIDENCE_IMAGE_UNSUPPORTED"},
+	} {
+		state := workflow.NewState()
+		state.Job = workflow.Job{ID: "comparison-fixture", EvidenceSubmitted: true, Evidence: []workflow.Evidence{{AssetID: "generated", ContentType: "image/png"}}}
+		store := workflow.NewMemoryStore(state)
+		handler := New(Dependencies{Store: store, Sessions: customerSession(), AppBaseURL: "http://example.test", AI: &failedReviewFixture{failure: tc.failure}, Evidence: evidenceStorageFixture{"generated": []byte("fixture")}}).Handler()
+		r := httptest.NewRequest(http.MethodPost, "/api/evidence/review", strings.NewReader(`{"assetIds":["generated"]}`))
+		addTestOrigin(r)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, r)
+		if response.Code != tc.status || !strings.Contains(response.Body.String(), tc.code) || strings.Contains(response.Body.String(), "private-provider-diagnostic") {
+			t.Fatalf("comparison response=%d %s", response.Code, response.Body.String())
+		}
+		retained, err := store.Load(context.Background(), "test-customer")
+		if err != nil || !retained.Job.EvidenceSubmitted || len(retained.Job.Evidence) != 1 || retained.Job.CompletionApproved || retained.Job.EvidenceReview != nil {
+			t.Fatal("failed comparison altered completion or evidence")
+		}
+	}
 }
 func (s evidenceStorageFixture) Get(_ context.Context, _, id string) (io.ReadCloser, string, error) {
 	return io.NopCloser(bytes.NewReader(s[id])), "image/png", nil

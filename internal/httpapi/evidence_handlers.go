@@ -5,11 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	coreai "github.com/allanzico/samen-klaar/internal/ai"
 	"github.com/allanzico/samen-klaar/internal/workflow"
 )
 
@@ -190,7 +193,20 @@ func (s *Server) evidenceReviewHandler(w http.ResponseWriter, r *http.Request) {
 	jobForReview.Location = nil
 	review, err := s.ai.ReviewEvidence(ctx, jobForReview, files)
 	if err != nil {
-		http.Error(w, "SamenKlaar could not check these files right now. Please try again.", http.StatusBadGateway)
+		code, stage, status := "EVIDENCE_COMPARISON_UNAVAILABLE", "comparison", http.StatusBadGateway
+		switch {
+		case errors.Is(err, coreai.ErrEvidenceImage):
+			code, stage, status = "EVIDENCE_IMAGE_UNSUPPORTED", "image", http.StatusUnprocessableEntity
+		case errors.Is(err, coreai.ErrEvidenceProvider):
+			stage = "provider"
+		case errors.Is(err, coreai.ErrEvidenceReviewInvalid):
+			stage = "response"
+		}
+		// Never log provider bodies, uploaded content, contact details or keys.
+		slog.Warn("Evidence comparison failed", "code", code, "stage", stage)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{"code": code})
 		return
 	}
 	state, err = s.applyAction(ctx, principal.User.ID, string(principal.ActiveRole), Action{Action: "record-evidence-review", Actor: string(principal.ActiveRole), EvidenceReview: review, ExpectedScope: state.Job.ScopeVersion, ExpectedEvidenceRound: workflow.EvidenceRound(state.Job)}, r.URL.Query().Get("workspaceId"))

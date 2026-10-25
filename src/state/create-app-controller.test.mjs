@@ -323,3 +323,28 @@ test('customer profile has its own URL and preserves the saved request when retu
   assert.equal(app.serverState.job.quote.totalMinor, 8000);
   assert.equal(window.location.pathname, '/requests/A');
 });
+
+test('photo comparison keeps the completion record and gives a specific safe recovery message', async () => {
+  for (const [status, code, expected] of [
+    [502, 'EVIDENCE_COMPARISON_UNAVAILABLE', /review the completion record yourself/],
+    [422, 'EVIDENCE_IMAGE_UNSUPPORTED', /smaller JPEG, PNG or WebP/],
+    [502, 'private-provider-diagnostic', /review the completion record yourself/]
+  ]) {
+    let finish;
+    const { app, actions } = setup(async (url) => {
+      assert.match(url, /^\/api\/evidence\/review\?workspaceId=A$/);
+      return new Promise(resolve => { finish = resolve; });
+    });
+    const original = app.serverState;
+    const checking = actions.reviewEvidence(['generated-photo']);
+    assert.equal(app.reviewingEvidence, true);
+    assert.equal(app.pending, true);
+    finish({ ...response(JSON.stringify({ code, detail:'private-provider-diagnostic' }), false), status });
+    await checking;
+    assert.match(app.error, expected);
+    assert.ok(!app.error.includes('private-provider-diagnostic'));
+    assert.equal(app.serverState, original);
+    assert.equal(app.reviewingEvidence, false);
+    assert.equal(app.pending, false);
+  }
+});
