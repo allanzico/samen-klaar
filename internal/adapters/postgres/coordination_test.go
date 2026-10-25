@@ -156,7 +156,7 @@ func TestCoordinationUncertaintyEscalatesWithoutRepeatedQuestions(t *testing.T) 
 	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertOutboxCount(t, ctx, store, state.Job.ID, "completion-note-overdue", 0)
+	assertInAppNotificationCount(t, ctx, store, state.Job.ID, "completion-note-overdue", 0)
 }
 
 func TestCoordinationQueuedWorkIsStaleAfterScopeRoundOrCancellation(t *testing.T) {

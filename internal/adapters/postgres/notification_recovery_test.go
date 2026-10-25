@@ -45,7 +45,7 @@ func TestConfiguredDeliveryDrainsMoreThanOneRecoveryBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := directory.pool.Exec(ctx, `INSERT INTO notification_outbox(job_id,event_key,event_type,recipient_role,status)
-		SELECT $1,$1||':'||g::text,'send-message','customer','adapter_unconfigured' FROM generate_series(1,250) g`, state.Job.ID); err != nil {
+		SELECT $1,$1||':'||g::text,'confirm-payment','customer','adapter_unconfigured' FROM generate_series(1,250) g`, state.Job.ID); err != nil {
 		t.Fatal(err)
 	}
 	defer directory.pool.Exec(context.Background(), `DELETE FROM notification_outbox WHERE job_id=$1`, state.Job.ID)

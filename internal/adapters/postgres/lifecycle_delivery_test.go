@@ -25,7 +25,7 @@ func (s *lifecycleSender) Send(_ context.Context, message mailadapter.Message) e
 	return nil
 }
 
-func enqueueReminderFixture(t *testing.T, ctx context.Context, store *Store, state workflow.State, event string) NotificationArgs {
+func enqueueLegacyReminderFixture(t *testing.T, ctx context.Context, store *Store, state workflow.State, event string) NotificationArgs {
 	t.Helper()
 	persistLifecycleState(t, ctx, store, state)
 	var args NotificationArgs
@@ -45,13 +45,17 @@ func enqueueReminderFixture(t *testing.T, ctx context.Context, store *Store, sta
 	if err := enqueueNotificationTx(ctx, tx, nil, args); err != nil {
 		t.Fatal(err)
 	}
+	// Emulate a routine intent left by a release that emailed every notification.
+	if _, err := tx.Exec(ctx, `INSERT INTO notification_outbox(job_id,event_key,event_type,recipient_role,status) VALUES ($1,$2,$3,$4,'queued')`, args.JobID, args.EventKey, args.EventType, args.RecipientRole); err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return args
 }
 
-func TestActionableReminderRechecksDecisionScopeDisputeAndCancellationBeforeRetry(t *testing.T) {
+func TestLegacyRemindersStayInAppBeforeAndAfterStateChanges(t *testing.T) {
 	ctx, store := accountTestStore(t)
 	store.stopBackgroundLoops()
 	for _, change := range []string{"complete", "scope", "dispute", "cancel", "replace-submission"} {
@@ -63,11 +67,11 @@ func TestActionableReminderRechecksDecisionScopeDisputeAndCancellationBeforeRetr
 			state.Job.EvidenceSubmitted = true
 			state.Job.DetailAdded = true
 			state.Job.EvidenceSubmittedAt = time.Now().Add(-25 * time.Hour).UTC().Format(time.RFC3339)
-			args := enqueueReminderFixture(t, ctx, store, state, "completion-review-reminder")
+			args := enqueueLegacyReminderFixture(t, ctx, store, state, "completion-review-reminder")
 			sender := &lifecycleSender{fail: true}
 			worker := NotificationWorker{pool: store.pool, sender: sender, appBaseURL: "https://example.test"}
-			if err := worker.Work(ctx, &river.Job[NotificationArgs]{Args: args}); err == nil {
-				t.Fatal("fixture did not exercise failed delivery")
+			if err := worker.Work(ctx, &river.Job[NotificationArgs]{Args: args}); err != nil {
+				t.Fatal(err)
 			}
 			switch change {
 			case "complete":
@@ -86,8 +90,8 @@ func TestActionableReminderRechecksDecisionScopeDisputeAndCancellationBeforeRetr
 			if err := worker.Work(ctx, &river.Job[NotificationArgs]{Args: args}); err != nil {
 				t.Fatal(err)
 			}
-			if len(sender.messages) != 1 {
-				t.Fatalf("obsolete retry sent another email: %d", len(sender.messages))
+			if len(sender.messages) != 0 {
+				t.Fatalf("routine reminder sent email: %d", len(sender.messages))
 			}
 			var status string
 			if err := store.pool.QueryRow(ctx, `SELECT status FROM notification_outbox WHERE job_id=$1 AND event_key=$2`, args.JobID, args.EventKey).Scan(&status); err != nil || status != "obsolete" {
@@ -132,7 +136,10 @@ func TestAppointmentReminderDoesNotAnnounceReplacedVisit(t *testing.T) {
 	args.JobID = state.Job.ID
 	args.EventType = "appointment-reminder"
 	args.RecipientRole = "customer"
-	if err := store.pool.QueryRow(ctx, `SELECT event_key FROM notification_outbox WHERE job_id=$1 AND event_type=$2 AND recipient_role='customer'`, args.JobID, args.EventType).Scan(&args.EventKey); err != nil {
+	if err := store.pool.QueryRow(ctx, `SELECT event_key FROM in_app_notifications WHERE job_id=$1 AND event_type=$2 AND recipient_role='customer'`, args.JobID, args.EventType).Scan(&args.EventKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `INSERT INTO notification_outbox(job_id,event_key,event_type,recipient_role,status) VALUES ($1,$2,$3,$4,'queued')`, args.JobID, args.EventKey, args.EventType, args.RecipientRole); err != nil {
 		t.Fatal(err)
 	}
 	state.Job.Appointment.StartUTC = start.Add(2 * time.Hour).Format(time.RFC3339)
@@ -166,7 +173,7 @@ func TestNotificationLanguageUsesRecipientPreferenceAndKeepsHistoricalEvents(t *
 	sender := &lifecycleSender{}
 	worker := NotificationWorker{pool: store.pool, sender: sender}
 	for _, role := range []string{"customer", "professional"} {
-		args := NotificationArgs{JobID: state.Job.ID, EventKey: state.Job.ID + ":history:" + role, EventType: "send-message", RecipientRole: role}
+		args := NotificationArgs{JobID: state.Job.ID, EventKey: state.Job.ID + ":history:" + role, EventType: "cancel-request", RecipientRole: role}
 		tx, err := store.pool.Begin(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -182,7 +189,7 @@ func TestNotificationLanguageUsesRecipientPreferenceAndKeepsHistoricalEvents(t *
 			t.Fatal(err)
 		}
 	}
-	if len(sender.messages) != 2 || sender.messages[0].Subject != "Nieuw bericht over je aanvraag" || !strings.Contains(sender.messages[0].Body, "Open je aanvraag:") || sender.messages[1].Subject != "New message about your service request" {
+	if len(sender.messages) != 2 || sender.messages[0].Subject != "Update over de annulering van je aanvraag" || !strings.Contains(sender.messages[0].Body, "Open je aanvraag:") || sender.messages[1].Subject != "Service request cancellation update" {
 		t.Fatalf("recipient languages/history = %+v", sender.messages)
 	}
 	user, err := store.UpsertIdentity(ctx, "account-test", "locale-retained-"+customer, "", "Locale test")

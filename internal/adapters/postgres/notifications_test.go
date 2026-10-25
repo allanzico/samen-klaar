@@ -12,6 +12,10 @@ import (
 
 func TestNotificationDeliveryHealthCountsActionableStatuses(t *testing.T) {
 	ctx, store := accountTestStore(t)
+	store.stopBackgroundLoops()
+	if err := store.river.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
 	before, err := store.NotificationDeliveryHealth(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -30,9 +34,14 @@ func TestNotificationDeliveryHealthCountsActionableStatuses(t *testing.T) {
 		}
 		key := prefix + status
 		if _, err := store.pool.Exec(ctx, `INSERT INTO notification_outbox (job_id,event_key,event_type,recipient_role,status,updated_at)
-			VALUES ($1,$2,'send-message','customer',$3,$4)`, key, key, status, updatedAt); err != nil {
+			VALUES ($1,$2,'confirm-payment','customer',$3,$4)`, key, key, status, updatedAt); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := store.pool.Exec(ctx, `INSERT INTO notification_outbox (job_id,event_key,event_type,recipient_role,status,updated_at)
+        SELECT $1,$1||':'||s,'send-message','customer',s,now()-interval '20 minutes'
+        FROM unnest(ARRAY['failed','adapter_unconfigured','sending']) s`, prefix+"routine"); err != nil {
+		t.Fatal(err)
 	}
 	health, err := store.NotificationDeliveryHealth(ctx)
 	if err != nil {
@@ -60,7 +69,7 @@ func TestNotificationEnqueueSkipsDeletedProfessionalRecipient(t *testing.T) {
 	}
 	defer tx.Rollback(ctx)
 	if err := enqueueNotificationTx(ctx, tx, nil, NotificationArgs{
-		JobID: jobID, EventKey: jobID + ":event", EventType: "send-message", RecipientRole: string(identity.Professional),
+		JobID: jobID, EventKey: jobID + ":event", EventType: "book-appointment", RecipientRole: string(identity.Professional),
 	}); err != nil {
 		t.Fatalf("historical missing recipient blocked the event: %v", err)
 	}

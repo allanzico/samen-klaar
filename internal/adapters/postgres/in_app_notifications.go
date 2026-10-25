@@ -67,6 +67,9 @@ func enqueueNotificationTx(ctx context.Context, tx pgx.Tx, riverClient *river.Cl
 	if err != nil {
 		return err
 	}
+	if !notificationUsesEmail(args.EventType) {
+		return nil
+	}
 	// A deleted recipient can remain referenced by a historical workspace
 	// snapshot. Keep the outbox intent for delivery monitoring, but do not create
 	// an inbox row referencing an account that no longer exists.

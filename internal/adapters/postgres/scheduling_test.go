@@ -39,7 +39,7 @@ func TestLifecycleSchedulerQueuesRemindersOnceAndEscalatesStalledWork(t *testing
 	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertOutboxCount(t, ctx, store, jobID, "appointment-reminder", 2)
+	assertInAppNotificationCount(t, ctx, store, jobID, "appointment-reminder", 2)
 
 	state.Job.WorkStarted = true
 	state.Job.WorkStartedAt = now.Add(-26 * time.Hour).Format(time.RFC3339)
@@ -49,7 +49,7 @@ func TestLifecycleSchedulerQueuesRemindersOnceAndEscalatesStalledWork(t *testing
 	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertOutboxCount(t, ctx, store, jobID, "evidence-overdue", 1)
+	assertInAppNotificationCount(t, ctx, store, jobID, "evidence-overdue", 1)
 	if cases, err := store.ListWorkExceptions(ctx); err != nil {
 		t.Fatal(err)
 	} else if !hasOperatorCase(cases, "stalled-job", state.WorkspaceID) {
@@ -64,7 +64,7 @@ func TestLifecycleSchedulerQueuesRemindersOnceAndEscalatesStalledWork(t *testing
 	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertOutboxCount(t, ctx, store, jobID, "completion-review-reminder", 1)
+	assertInAppNotificationCount(t, ctx, store, jobID, "completion-review-reminder", 1)
 
 	state.Job.CompletionApproved = true
 	state.Job.CompletionApprovedAt = now.Add(-25 * time.Hour).Format(time.RFC3339)
@@ -73,13 +73,14 @@ func TestLifecycleSchedulerQueuesRemindersOnceAndEscalatesStalledWork(t *testing
 	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertOutboxCount(t, ctx, store, jobID, "payment-approval-reminder", 1)
+	assertInAppNotificationCount(t, ctx, store, jobID, "payment-approval-reminder", 1)
 }
 
 func TestLifecycleSchedulerAdvancesPastFirstHundredJobs(t *testing.T) {
 	ctx, store := accountTestStore(t)
 	store.stopBackgroundLoops()
 	customer := accountFixture(t, ctx, store)
+	professional := accountFixture(t, ctx, store)
 	start := time.Now().UTC().Add(12 * time.Hour).Format(time.RFC3339)
 	end := time.Now().UTC().Add(13 * time.Hour).Format(time.RFC3339)
 	jobPrefix := "batch-" + rand.Text()
@@ -89,7 +90,7 @@ func TestLifecycleSchedulerAdvancesPastFirstHundredJobs(t *testing.T) {
 	})
 	for i := 0; i < 101; i++ {
 		state := workflow.NewState()
-		state.Job = workflow.Job{ID: jobPrefix + "-" + string(rune(1000+i)), ScopeVersion: 1,
+		state.Job = workflow.Job{ID: jobPrefix + "-" + string(rune(1000+i)), ScopeVersion: 1, ProfessionalAccountID: professional,
 			Appointment:             &workflow.Appointment{SlotID: jobPrefix + "-slot-" + string(rune(1000+i)), StartUTC: start, EndUTC: end},
 			AppointmentConfirmation: &workflow.AppointmentConfirmation{Status: "confirmed"}}
 		data, err := json.Marshal(state)
@@ -119,7 +120,7 @@ func TestLifecycleSchedulerAdvancesPastFirstHundredJobs(t *testing.T) {
 		}
 	}
 	var count int
-	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE job_id LIKE $1 AND event_type='appointment-reminder'`, jobPrefix+"%").Scan(&count); err != nil {
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM in_app_notifications WHERE job_id LIKE $1 AND event_type='appointment-reminder'`, jobPrefix+"%").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 202 {
@@ -138,11 +139,11 @@ func persistLifecycleState(t *testing.T, ctx context.Context, store *Store, stat
 	}
 }
 
-func assertOutboxCount(t *testing.T, ctx context.Context, store *Store, jobID, eventType string, expected int) {
+func assertInAppNotificationCount(t *testing.T, ctx context.Context, store *Store, jobID, eventType string, expected int) {
 	t.Helper()
 	var count int
-	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE job_id=$1 AND event_type=$2`, jobID, eventType).Scan(&count); err != nil || count != expected {
-		t.Fatalf("outbox %s count=%d, err=%v; want %d", eventType, count, err, expected)
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM in_app_notifications WHERE job_id=$1 AND event_type=$2`, jobID, eventType).Scan(&count); err != nil || count != expected {
+		t.Fatalf("in-app %s count=%d, err=%v; want %d", eventType, count, err, expected)
 	}
 }
 
@@ -219,7 +220,7 @@ func TestLifecycleSchedulerCoversRemainingWaitsOnceAndEscalates(t *testing.T) {
 	}
 	for i, tc := range tests {
 		state := states[i]
-		assertOutboxCount(t, ctx, store, state.Job.ID, tc.event, 1)
+		assertInAppNotificationCount(t, ctx, store, state.Job.ID, tc.event, 1)
 		found := false
 		for _, item := range cases {
 			if item.WorkspaceID == state.WorkspaceID && item.Kind == "stalled-job" && item.Status == tc.event && item.ReportedAt == started {
@@ -247,7 +248,7 @@ func TestUnclearCurrentEvidenceReachesOperatorWithoutApprovalChasing(t *testing.
 	if err := store.scheduleLifecycleNotifications(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertOutboxCount(t, ctx, store, state.Job.ID, "completion-review-reminder", 0)
+	assertInAppNotificationCount(t, ctx, store, state.Job.ID, "completion-review-reminder", 0)
 	cases, err := store.ListWorkExceptions(ctx)
 	if err != nil || !hasOperatorCase(cases, "missing-evidence", state.WorkspaceID) {
 		t.Fatalf("unclear evidence has no operator path: %+v, %v", cases, err)

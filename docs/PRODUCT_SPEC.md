@@ -58,7 +58,7 @@ Run account-isolation and end-to-end acceptance across separate customer, profes
 
 #### Phase 6 — Agent-managed requests
 
-Assistants for customers and professionals: a pure decision engine, a bounded runner, versioned limits, an audit log and open questions with an emailed notice; price and visit-time negotiation between the two assistants; the customer's chat (address, budget, availability, offered times, booking after a yes, move and cancel in free text, asking before approving finished work); the professional's private chat (asking before acting outside their settings, reporting what it agreed, the customer's approval and payment status); free-text reading by the AI provider with a built-in fallback; short bot names. Delivered in four slices on 17 and 18 October 2026; see [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+Assistants for customers and professionals: a pure decision engine, a bounded runner, versioned limits, an audit log and open questions with an in-app notice; price and visit-time negotiation between the two assistants; the customer's chat (address, budget, availability, offered times, booking after a yes, move and cancel in free text, asking before approving finished work); the professional's private chat (asking before acting outside their settings, reporting what it agreed, the customer's approval and payment status); free-text reading by the AI provider with a built-in fallback; short bot names. Delivered in four slices on 17 and 18 October 2026; see [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 #### Phase 7 — Agent-made payment holds (blocked)
 

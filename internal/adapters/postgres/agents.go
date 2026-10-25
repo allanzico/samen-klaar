@@ -191,7 +191,7 @@ func (s *Store) SyncAgentEscalation(ctx context.Context, workspaceID, accountID,
 			return false, err
 		}
 		opened = true
-		// Tell the person by email and in the app, in the same transaction as the question itself.
+		// Tell the person in the app, in the same transaction as the question itself.
 		var requestID string
 		if err := tx.QueryRow(ctx, `SELECT `+notificationRequestID("w")+` FROM account_workspaces w WHERE w.id=$1`, workspaceID).Scan(&requestID); err != nil {
 			return false, err

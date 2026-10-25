@@ -29,7 +29,7 @@ type NotificationArgs struct {
 }
 
 // agentQuestionEvent is the notification sent when an agent stops and asks its person. Its event key is
-// "agent-question:<escalation id>", so one email is sent per question and a stale one is dropped.
+// "agent-question:<escalation id>" deduplicates its in-app notice; questions do not send email.
 const agentQuestionEvent = "agent-question"
 
 // notificationRequestID is the identity a notification uses for its request: the job once there is one,
@@ -44,7 +44,7 @@ func (s *Store) NotificationDeliveryHealth(ctx context.Context) (workflow.Notifi
 		SELECT COUNT(*) FILTER (WHERE status='failed'),
 		       COUNT(*) FILTER (WHERE status='adapter_unconfigured'),
 		       COUNT(*) FILTER (WHERE status='sending' AND updated_at < now() - interval '15 minutes')
-		FROM notification_outbox`).Scan(&health.Failed, &health.Unconfigured, &health.Stalled)
+		FROM notification_outbox WHERE event_type = ANY($1::text[])`, emailNotificationEvents).Scan(&health.Failed, &health.Unconfigured, &health.Stalled)
 	return health, err
 }
 
@@ -70,6 +70,15 @@ func (w *NotificationWorker) Work(ctx context.Context, job *river.Job[Notificati
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// River may still contain routine notifications queued by an older release.
+	// Apply policy before loading any recipient or invoking a delivery adapter.
+	if !notificationUsesEmail(args.EventType) {
+		if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='obsolete',last_error='in_app_only',updated_at=now()
+			WHERE job_id=$1 AND event_key=$2 AND status NOT IN ('sent','obsolete')`, args.JobID, args.EventKey); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
 	var emailAddress, displayName, workspaceID, locale string
 	var raw []byte
 	err = tx.QueryRow(ctx, `SELECT COALESCE(account.email,''),COALESCE(account.display_name,''),workspace.id,COALESCE(account.locale,'en'),workspace.state_json
@@ -307,14 +316,20 @@ func requeueUndeliveredNotifications(ctx context.Context, store *Store) error {
 }
 
 func requeueNotificationOutbox(ctx context.Context, store *Store) (int, error) {
-	if store.sender == nil || store.river == nil {
-		return 0, nil
-	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// Retire the routine backlog even when SMTP is unconfigured. Preserve sent
+	// history and the independent in-app inbox.
+	if _, err := tx.Exec(ctx, `UPDATE notification_outbox SET status='obsolete',last_error='in_app_only',updated_at=now()
+		WHERE status IN ('queued','failed','adapter_unconfigured','sending') AND NOT (event_type = ANY($1::text[]))`, emailNotificationEvents); err != nil {
+		return 0, err
+	}
+	if store.sender == nil || store.river == nil {
+		return 0, tx.Commit(ctx)
+	}
 	// SMTP cannot provide exactly-once delivery across a process crash after
 	// acceptance but before the outbox is marked sent. Reclaim old claims so a
 	// notification is not silently lost; deterministic Message-IDs let mail
@@ -324,11 +339,11 @@ func requeueNotificationOutbox(ctx context.Context, store *Store) (int, error) {
 		return 0, err
 	}
 	rows, err := tx.Query(ctx, `SELECT job_id, event_key, event_type, recipient_role FROM notification_outbox
-		WHERE status='adapter_unconfigured'
+		WHERE event_type = ANY($1::text[]) AND (status='adapter_unconfigured'
 		   OR status='failed' AND (
 		      last_error='delivery_interrupted'
-		      OR last_error='delivery_failed' AND attempts < 5 AND updated_at < now()-interval '5 minutes')
-		ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED`)
+		      OR last_error='delivery_failed' AND attempts < 5 AND updated_at < now()-interval '5 minutes'))
+		ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED`, emailNotificationEvents)
 	if err != nil {
 		return 0, err
 	}

@@ -126,12 +126,16 @@ func TestPostgresRiverRecordsQueuedNotificationWithoutClaimingDelivery(t *testin
 	if _, err := store.pool.Exec(ctx, `UPDATE account_workspaces SET state_json = $2 WHERE id = $1`, state.WorkspaceID, stateBytes); err != nil {
 		t.Fatal(err)
 	}
-	var nextRevision int64
-	if err := store.pool.QueryRow(ctx, `SELECT revision + 1 FROM account_workspaces WHERE id = $1`, state.WorkspaceID).Scan(&nextRevision); err != nil {
+	eventKey := jobID + ":confirm-payment"
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	eventKey := fmt.Sprintf("%s:%d:request-details", jobID, nextRevision)
-	if _, err := store.ApplyWorkspace(ctx, accountID, "customer", state.WorkspaceID, workflow.Action{Action: "request-details", Actor: "customer"}); err != nil {
+	defer tx.Rollback(ctx)
+	if err := enqueueNotificationTx(ctx, tx, store.river, NotificationArgs{JobID: jobID, EventKey: eventKey, EventType: "confirm-payment", RecipientRole: "customer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 

@@ -18,6 +18,16 @@ When translating framework-style settings, combine `MAIL_HOST` and `MAIL_PORT` i
 
 Values are literal; use the actual display name rather than a framework expression such as `${APP_NAME}`. For Mailtrap live sending, use its documented `api` SMTP username and a sending token authorized for the sender domain. Sandbox credentials and domain permissions are separate.
 
+## Which events send email
+
+Email is an explicit allowlist, shared by enqueueing, delivery, recovery and delivery-health reporting. It covers booking requests and confirmations, declined/expired visits, agreed visit changes and cancellations, completion submissions needing review, completed payments/refunds, payment problems, reported work issues and operator case decisions/contact.
+
+Chat messages, assistant questions, coordination updates, price/date negotiations, intermediate plan approvals, reviews and reminders stay in the app. Every event still creates its usual in-app notification. Unknown event types default to in-app only; adding a new notification does not automatically add email.
+
+On startup and recovery, pending routine email intents left by older releases are marked obsolete, even without SMTP configured. Already queued workers also enforce the policy before delivery. Sent email history and in-app notifications are retained. Important email retries and stable Message-IDs still apply; SMTP delivery remains at-least-once after a crash.
+
+Signup verification, sign-in and password-reset emails are managed separately by Auth0. This job notification policy does not disable those account emails or add duplicate welcome messages.
+
 ## Send one diagnostic
 
 With Go installed:
@@ -34,6 +44,6 @@ This sends one clearly labelled message through the application's SMTP adapter. 
 
 - Docker: set the canonical values in ignored `.env.production`; `make init-prod`/`make deploy-prod` import missing or empty mail settings into `.secrets/prod/app.env`. Existing nonempty deployment values stay authoritative and must be edited there when rotating credentials.
 - Render: add these settings to the application's linked environment group and redeploy. Import only mail settings when other production settings are managed separately; never commit a credential file. SMTP settings stay server-side.
-- Deploying a configured sender enables ordinary notification workers, including delivery of still-actionable queued notifications. The diagnostic command alone does not enable or drain that queue.
+- Deploying a configured sender enables ordinary notification workers, including delivery of eligible important queued notifications. The diagnostic command alone does not enable or drain that queue.
 
 Use a live sending relay and an authorized sender domain for real inbox delivery. A sandbox relay captures messages in its own test inbox. SPF, DKIM and DMARC are configured with the mail provider/domain, not inferred by the application.

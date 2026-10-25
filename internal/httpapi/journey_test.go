@@ -723,8 +723,15 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		agentNotices := func(requestID, role string) int {
 			t.Helper()
 			var count int
-			if err := pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE job_id=$1 AND event_type='agent-question' AND recipient_role=$2`, requestID, role).Scan(&count); err != nil {
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM in_app_notifications WHERE job_id=$1 AND event_type='agent-question' AND recipient_role=$2`, requestID, role).Scan(&count); err != nil {
 				t.Fatal(err)
+			}
+			var emails int
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE job_id=$1 AND event_type='agent-question' AND recipient_role=$2`, requestID, role).Scan(&emails); err != nil {
+				t.Fatal(err)
+			}
+			if emails != 0 {
+				t.Fatal("an assistant question created an email intent")
 			}
 			return count
 		}
@@ -757,7 +764,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 			}, 200)
 		}
 
-		// The customer asks for a new time. Without auto-accept the professional's agent only asks (and emails);
+		// The customer asks for a new time. Without auto-accept the professional's agent only asks (with an in-app notice);
 		// once the professional allows it the agent accepts a time inside the hours.
 		moved := waitFor(runIntake(), confirmed)
 		request("professional", "PUT", "/api/agent/mandate", proMandateWith(true, false), 200)
@@ -804,7 +811,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		waitFor(declining.WorkspaceID, confirmed)
 
 		// The professional cancels: the customer's agent goes back to the matches, does not pick the same
-		// professional again, and tells its person by email and in the app that nobody else fits.
+		// professional again, and tells its person in the app that nobody else fits.
 		cancelled := waitFor(runIntake(), confirmed)
 		previousNotices := agentNotices(cancelled.WorkspaceID, "customer")
 		request("professional", "POST", "/api/actions", map[string]string{"workspaceId": cancelled.WorkspaceID, "action": "cancel-request", "value": "I cannot take this job after all."}, 200)

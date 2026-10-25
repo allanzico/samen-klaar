@@ -5,7 +5,7 @@ The two assistants handle a request between them (choose, negotiate, book, confi
 their own person in the chat, stopping to ask only when a step needs a human. People and assistants use the
 same named workflow actions and the same validation, so an assistant can never do something a button could not.
 
-**Status, 18 October 2026.** Delivered: decision engine, runner, mandates, audit log, escalations with email,
+**Status, 18 October 2026.** Delivered: decision engine, runner, mandates, audit log, escalations with in-app notices,
 visit and price negotiation, the customer's and the professional's chat dialogues (before and after booking),
 AI reading of free-form replies, bot names. Live-verified with the real AI provider for the customer's booking
 dialogue and the professional's confirm question. Blocked: agent-made payment holds (PayPal vaulting). Open:
@@ -84,7 +84,7 @@ in the customer's language (English or Dutch), and only the customer sees these 
 Negotiation steps between the two agents (price counters, visit proposals, agreements) leave a short
 line in the shared thread, localized for each reader, so both people can follow the exchange. Neither
 side can see the other's private chat with their assistant, and the professional never sees the
-customer's stated availability. A waiting question also shows as an open question (banner and email).
+customer's stated availability. A waiting question also shows as an open question (banner and in-app bell).
 
 Implementation: `agent_converse.go` (dialogue, pure), `availability.go` (parser and matching), the
 `agent-say` (server only) and `agent-reply` actions in `agent_dialog.go`, `State.AgentDialog`.
@@ -192,13 +192,11 @@ version in force.
 - `agent_decisions` is the audit log shown as the activity list. `agent_escalations` holds the one open
   question per request and person; it resolves itself when the agent can act again or the request
   changes.
-- **Escalation notices.** Opening an escalation (`SyncAgentEscalation`) enqueues an `agent-question`
-  notification in the same transaction, through the normal outbox and River pipeline
-  (`internal/adapters/postgres/notifications.go`): one email per question, in the recipient's saved
-  language (Dutch or English), plus a bell entry. The event key is `agent-question:<escalation id>`; a
-  question that has already been resolved when the email is about to go out is dropped as obsolete. Before a
-  professional is chosen there is no job yet, so the request id (the workspace) stands in for the job id.
-  Delivery health shows up in the operator queue like any other notification.
+- **Escalation notices.** Opening an escalation (`SyncAgentEscalation`) creates an `agent-question`
+  in-app notification in the same transaction. The event key is `agent-question:<escalation id>`;
+  questions do not create email intents. Before a professional is chosen there is no job yet, so the
+  request id (the workspace) stands in for the job id. Email is reserved for important booking,
+  completion, payment and case events; see [EMAIL.md](EMAIL.md).
 - `GET/PUT /api/agent/mandate`, `GET /api/agent/activity?workspaceId=`, `GET /api/agent/escalations`.
 - UI: "Assistant preferences" in the account menu (pause, ceiling, hours, address, hand over work approval),
   the assistant's open question as the first card on the request page with its quick replies, the thread with
@@ -220,7 +218,7 @@ version in force.
   touches an authorization; the assistant says so and does nothing.
 - **Cancelling after work started** and disputes are not the assistant's. A professional's own counter
   for a move outside their hours is not automatic (only for a first visit); their assistant asks them.
-- **Push notifications** for an agent question are not wired (email and the in-app bell are).
+- **Push notifications** for an agent question are not wired; questions use the in-app bell and banner only.
 - **Intake** (describing the problem) is still a conversation the customer has with the assistant; the
   customer agent starts when the match list appears.
 - Agents act on the earliest matching time and the first match inside the limit. Geographic profiles

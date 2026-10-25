@@ -60,7 +60,7 @@ func run() error {
 		return err
 	}
 	if emailSender == nil {
-		slog.Warn("email delivery is not configured; notification emails stay queued until SMTP_ADDR and SMTP_FROM are set")
+		slog.Warn("email delivery is not configured; important notification emails stay queued until SMTP_ADDR and SMTP_FROM are set")
 	}
 
 	providers := httpapi.ProviderConfig{
