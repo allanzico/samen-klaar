@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	emailadapter "github.com/allanzico/samen-klaar/internal/adapters/email"
 	"github.com/allanzico/samen-klaar/internal/adapters/postgres"
 )
 
@@ -38,8 +39,11 @@ func command(args []string) error {
 	if len(args) == 1 && (args[0] == "seed-pros" || args[0] == "import-seed-pros-auth0") {
 		return localDataCommand(args[0])
 	}
+	if len(args) > 0 && args[0] == "test-email" {
+		return testEmailCommand(args[1:], os.Stdin, os.Stdout)
+	}
 	if len(args) != 1 {
-		return errors.New("usage: api [check-config|migrate|healthcheck]")
+		return errors.New("usage: api [check-config|migrate|healthcheck|test-email [recipient]]")
 	}
 	switch args[0] {
 	case "check-config":
@@ -52,7 +56,7 @@ func command(args []string) error {
 		defer cancel()
 		return postgres.Migrate(ctx, os.Getenv("DATABASE_URL"))
 	default:
-		return errors.New("usage: api [check-config|migrate|healthcheck]")
+		return errors.New("usage: api [check-config|migrate|healthcheck|test-email [recipient]]")
 	}
 }
 
@@ -63,12 +67,12 @@ func checkConfig() error {
 	if mode != "development" && mode != "production" {
 		return errors.New("APP_ENV must be development or production")
 	}
+	if _, err := emailadapter.NewSMTPFromEnv(); err != nil {
+		return err
+	}
 	required := []string{"APP_BASE_URL", "DATABASE_URL", "AI_PROVIDER_KEY", "AI_MODEL", "AUTH0_ISSUER_URL", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "AUTH0_REDIRECT_URI", "CLOUDFLARE_R2_ACCESS_KEY_ID", "CLOUDFLARE_R2_SECRET_ACCESS_KEY", "CLOUDFLARE_R2_BUCKET", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"}
 	if mode == "production" {
 		required = append(required, "PAYPAL_WEBHOOK_ID", "PAYPAL_PLATFORM_MERCHANT_ID", "PAYPAL_PARTNER_ATTRIBUTION_ID")
-		if (strings.TrimSpace(os.Getenv("SMTP_USERNAME")) == "") != (strings.TrimSpace(os.Getenv("SMTP_PASSWORD")) == "") {
-			return errors.New("SMTP_USERNAME and SMTP_PASSWORD must be set together")
-		}
 	}
 	var missing []string
 	for _, key := range required {

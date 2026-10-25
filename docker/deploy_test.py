@@ -93,6 +93,7 @@ esac
         source.write_text(
             "AUTH0_ISSUER_URL=https://tenant.test/\nAUTH0_CLIENT_ID=imported-client\n"
             "AUTH0_CLIENT_SECRET=dummy-local-secret\nMAPBOX_ACCESS_TOKEN=test-mapbox-token\nDATABASE_URL=wrong-database\n"
+            "SMTP_ADDR=mail.example.test:2525\nSMTP_USERNAME=test-smtp-user\nSMTP_PASSWORD=test-smtp-password\nSMTP_FROM=notifications@example.test\nSMTP_FROM_NAME=Test Notifications\n"
             "APP_BASE_URL=http://wrong-origin\nAUTH0_REDIRECT_URI=http://wrong-callback\n"
         )
         result = subprocess.run(
@@ -108,8 +109,14 @@ esac
         self.assertEqual(settings["APP_BASE_URL"], "http://localhost:8090")
         self.assertEqual(settings["AUTH0_REDIRECT_URI"], "http://localhost:8090/api/auth/callback")
         self.assertEqual(settings["MAPBOX_ACCESS_TOKEN"], "test-mapbox-token")
+        self.assertEqual(settings["SMTP_ADDR"], "mail.example.test:2525")
+        self.assertEqual(settings["SMTP_USERNAME"], "test-smtp-user")
+        self.assertEqual(settings["SMTP_PASSWORD"], "test-smtp-password")
+        self.assertEqual(settings["SMTP_FROM"], "notifications@example.test")
+        self.assertEqual(settings["SMTP_FROM_NAME"], "Test Notifications")
         self.assertNotIn("test-mapbox-token", result.stdout + result.stderr)
         self.assertNotIn("dummy-local-secret", result.stdout + result.stderr)
+        self.assertNotIn("test-smtp-password", result.stdout + result.stderr)
         # An empty import file must not erase the active configuration.
         before = active.read_text()
         source.write_text("")

@@ -3,12 +3,15 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,6 +31,23 @@ type Sender interface {
 	Send(context.Context, Message) error
 }
 
+// DeliveryError exposes the failed stage and SMTP status without logging a
+// provider response that may quote credentials or recipient details.
+type DeliveryError struct {
+	Stage string
+	cause error
+}
+
+func (e *DeliveryError) Error() string {
+	var rejection *textproto.Error
+	if errors.As(e.cause, &rejection) {
+		return fmt.Sprintf("SMTP %s failed (status %d)", e.Stage, rejection.Code)
+	}
+	return "SMTP " + e.Stage + " failed"
+}
+
+func (e *DeliveryError) Unwrap() error { return e.cause }
+
 type SMTP struct {
 	address     string
 	host        string
@@ -45,6 +65,7 @@ func NewSMTPFromEnv() (*SMTP, error) {
 	username := strings.TrimSpace(os.Getenv("SMTP_USERNAME"))
 	password := os.Getenv("SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("SMTP_FROM"))
+	fromName := strings.TrimSpace(os.Getenv("SMTP_FROM_NAME"))
 	if address == "" && username == "" && password == "" {
 		return nil, nil
 	}
@@ -52,13 +73,21 @@ func NewSMTPFromEnv() (*SMTP, error) {
 		return nil, fmt.Errorf("SMTP_ADDR and SMTP_FROM are required, and SMTP_USERNAME/SMTP_PASSWORD must be provided together")
 	}
 	host, port, err := net.SplitHostPort(address)
-	if err != nil || host == "" {
+	portNumber, portError := strconv.Atoi(port)
+	if err != nil || host == "" || strings.ContainsAny(host, " \t\r\n/?#@") || portError != nil || portNumber < 1 || portNumber > 65535 {
 		return nil, fmt.Errorf("SMTP_ADDR must be a host:port address")
 	}
-	if _, err := mail.ParseAddress(from); err != nil {
+	sender, err := mail.ParseAddress(from)
+	if err != nil || unsafeHeader(from) {
 		return nil, fmt.Errorf("SMTP_FROM must be a valid email address")
 	}
-	return &SMTP{address: address, host: host, implicitTLS: port == "465", username: username, password: password, from: from}, nil
+	if unsafeHeader(fromName) {
+		return nil, fmt.Errorf("SMTP_FROM_NAME must not contain line breaks")
+	}
+	if fromName != "" {
+		sender.Name = fromName
+	}
+	return &SMTP{address: address, host: host, implicitTLS: portNumber == 465, username: username, password: password, from: sender.String()}, nil
 }
 
 func (s *SMTP) Send(ctx context.Context, message Message) error {
@@ -102,13 +131,13 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 
 	client, err := smtp.NewClient(conn, s.host)
 	if err != nil {
-		return fmt.Errorf("initialize notification mail session: %w", err)
+		return &DeliveryError{Stage: "session initialization", cause: err}
 	}
 	defer client.Close()
 	if !s.implicitTLS {
 		if ok, _ := client.Extension("STARTTLS"); ok {
 			if err := client.StartTLS(&tls.Config{ServerName: s.host, MinVersion: tls.VersionTLS12}); err != nil {
-				return fmt.Errorf("secure notification mail session: %w", err)
+				return &DeliveryError{Stage: "TLS negotiation", cause: err}
 			}
 		} else if !isLoopbackHost(s.host) {
 			return fmt.Errorf("notification mail server does not support STARTTLS")
@@ -119,24 +148,27 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 			return fmt.Errorf("notification mail server does not support authentication")
 		}
 		if err := client.Auth(smtp.PlainAuth("", s.username, s.password, s.host)); err != nil {
-			return fmt.Errorf("authenticate with notification mail server: %w", err)
+			return &DeliveryError{Stage: "authentication", cause: err}
 		}
 	}
 	if err := client.Mail(from.Address); err != nil {
-		return fmt.Errorf("set notification sender: %w", err)
+		return &DeliveryError{Stage: "sender", cause: err}
 	}
 	if err := client.Rcpt(to.Address); err != nil {
-		return fmt.Errorf("set notification recipient: %w", err)
+		return &DeliveryError{Stage: "recipient", cause: err}
 	}
 	writer, err := client.Data()
 	if err != nil {
-		return fmt.Errorf("start notification message: %w", err)
+		return &DeliveryError{Stage: "message submission", cause: err}
 	}
 	toHeader := to.Address
 	if strings.TrimSpace(message.ToName) != "" {
 		toHeader = (&mail.Address{Name: strings.TrimSpace(message.ToName), Address: to.Address}).String()
 	}
-	fromHeader := (&mail.Address{Name: "SamenKlaar", Address: from.Address}).String()
+	if from.Name == "" {
+		from.Name = "SamenKlaar"
+	}
+	fromHeader := from.String()
 	data := "To: " + toHeader + "\r\n" +
 		"From: " + fromHeader + "\r\n" +
 		"Subject: " + message.Subject + "\r\n" +
@@ -165,7 +197,7 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 		return fmt.Errorf("finish notification body: %w", err)
 	}
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("finish notification message: %w", err)
+		return &DeliveryError{Stage: "message acceptance", cause: err}
 	}
 	_ = client.Quit()
 	return nil

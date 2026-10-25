@@ -29,6 +29,7 @@ Test data is loaded explicitly, never at startup. Put `SEED_PASSWORD` and the Au
 - [Product spec](docs/PRODUCT_SPEC.md) and [implementation status](docs/IMPLEMENTATION.md)
 - [Architecture](docs/ARCHITECTURE.md) and [assistants](docs/AGENT_ARCHITECTURE.md)
 - [Payments](docs/PAYMENTS.md) and [design system](docs/DESIGN_SYSTEM.md)
+- [Email configuration and delivery testing](docs/EMAIL.md)
 
 ## Structure
 

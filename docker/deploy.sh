@@ -42,7 +42,13 @@ import_local_settings() {
     FILENAME == ARGV[1] { pos=index($0,"="); if(pos>0) values[substr($0,1,pos-1)]=substr($0,pos+1); next }
     { pos=index($0,"="); key=substr($0,1,pos-1); value=substr($0,pos+1); seen[key]=1;
       if(pos>0 && key!="DATABASE_URL" && key!="APP_BASE_URL" && key!="AUTH0_REDIRECT_URI" && !empty(values[key]) && (replace_existing=="true" || empty(value))) print key "=" values[key]; else print }
-    END { if (!seen["MAPBOX_ACCESS_TOKEN"]) print "MAPBOX_ACCESS_TOKEN=" values["MAPBOX_ACCESS_TOKEN"] }
+    END {
+      count=split("MAPBOX_ACCESS_TOKEN SMTP_ADDR SMTP_USERNAME SMTP_PASSWORD SMTP_FROM SMTP_FROM_NAME", optional_keys, " ");
+      for (i=1; i<=count; i++) {
+        key=optional_keys[i];
+        if (!seen[key]) print key "=" values[key];
+      }
+    }
   ' "$source_file" "$secrets/app.env" > "$import_file"
   if cmp -s "$import_file" "$secrets/app.env"; then
     rm "$import_file"
