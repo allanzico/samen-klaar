@@ -40,6 +40,20 @@ Create the output directory with owner-only access. The seed configuration conta
 
 The seed creates profiles and schedules; it does not connect PayPal accounts, invent payment readiness, create bookings, authorize holds or send notifications. Complete the normal seller connection before filming. Repeating the seed is not a destructive reset: begin each rehearsal with a new request. Do not reuse an old paid job as evidence for a new transaction.
 
+### Refresh access for preparation from a Mac
+
+The Render Blueprint deliberately makes `samenklaar-db` private (`ipAllowList: []`). The local `.env.production` also contains a private/container database hostname. A failed local connection is not evidence that the running production database needs a new password. The saved Auth0 import token was separately confirmed expired on 26 October 2026.
+
+1. Open Render → **samenklaar-db** → **Connect**, or the connection details on its **Info** page. Copy the **External Database URL** into ignored `.secrets/local/presentation.env` as `DATABASE_URL=...`. Keep TLS enabled for the external connection. Preserve the running service's internal database configuration.
+2. For preparation from this Mac, open the database's **Networking / Access Control** section and temporarily allow only the Mac's current public IPv4 address with `/32`, preserving any existing rules. Remove that temporary rule when preparation is finished. A job running inside Render's network can instead use the internal URL without changing external access. See [Render's connection and access-control documentation](https://render.com/docs/postgresql-creating-connecting).
+3. Open Auth0 → select the existing production tenant → **Applications → APIs → Auth0 Management API → API Explorer**. Obtain a fresh short-lived token for this one-off import using the existing authorized import application. Replace only `AUTH0_MANAGEMENT_TOKEN` in ignored `.secrets/local/seed.env`. Keep `AUTH0_CONNECTION_ID` and `SEED_PASSWORD` unchanged. The importer reads connection settings and creates/polls the import job; its token needs `read:connections`, `create:users` and `read:users`. See [Auth0's migration guide](https://auth0.com/blog/how-to-migrate-users-to-auth0-a-technical-guide/). Do not change the normal login application's client secret or callback URL.
+
+The local runner must load the external `DATABASE_URL` from `presentation.env` into its process environment before loading `.env.production`, because the application's config loader intentionally preserves existing process values. Do not paste either credential into chat or commit it. Recheck connectivity and token access before running the seed/import.
+
+### Matched presentation images
+
+The locally prepared `.deploy/presentation-assets/sink-repair/` folder contains a matched before/after image pair, provenance notes, the exact generation prompts and a scoped work-note template. Both images were generated with the built-in image tool; the second edits the first to preserve scene continuity. Use the leaking joint for intake and the corresponding dry joint for the fictional professional's completion illustration. Disclose that these are generated presentation fixtures. They do not demonstrate a real repair or a water test, and have not yet passed the actual completion checker. The work-note template leaves real test observations blank rather than inventing them. Keep the normal evidence and payment gates unchanged.
+
 ## PayPal preparation
 
 Use the existing platform sandbox REST application and two separate wallets:
