@@ -31,6 +31,8 @@ help:
 	@echo 'make check-flow                    Run workflow integration tests with disposable PostgreSQL'
 	@echo 'make seed-pros                     Seed ten named test professionals (see docs/SEED_PROFESSIONALS.md)'
 	@echo 'make import-seed-pros-auth0        Import those ten into the configured Auth0 tenant'
+	@echo 'make seed-demo                     Prepare ten comparable sink-repair professionals and a customer locally'
+	@echo 'make import-seed-demo-auth0        Import the demo identities into the configured Auth0 tenant'
 
 init-local init-prod deploy-local deploy-prod infra-local validate-local validate-prod migrate-local migrate-prod status-local status-prod logs-local logs-prod stop-local stop-prod backup-local backup-prod:
 	@./docker/deploy.sh $(word 1,$(subst -, ,$@)) $(word 2,$(subst -, ,$@))
@@ -49,6 +51,6 @@ check:
 check-flow:
 	@sh ./docker/verify-flow.sh
 
-.PHONY: seed-pros import-seed-pros-auth0
-seed-pros import-seed-pros-auth0:
+.PHONY: seed-pros import-seed-pros-auth0 seed-demo import-seed-demo-auth0
+seed-pros import-seed-pros-auth0 seed-demo import-seed-demo-auth0:
 	@sh ./docker/data.sh $@

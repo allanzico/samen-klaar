@@ -80,7 +80,7 @@ func Import(ctx context.Context, issuer, clientID, token, connection, output str
 	var manifest manifest
 	data, err := os.ReadFile(filepath.Join(output, "manifest.json"))
 	if err != nil || json.Unmarshal(data, &manifest) != nil {
-		return errors.New("run make seed-pros first")
+		return errors.New("prepare the matching seed-pros or seed-demo dataset first")
 	}
 	issuer = strings.TrimRight(issuer, "/") + "/"
 	if manifest.Issuer != issuer || manifest.Version != version {

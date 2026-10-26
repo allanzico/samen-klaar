@@ -72,6 +72,8 @@ type testPro struct {
 	lat, lon                       float64
 	price, callout                 int64
 	minutes                        int
+	person, materials              string
+	exclusions                     []string
 	week                           []workflow.WorkingRange
 	daysOffAhead                   int
 	mandate                        workflow.AgentMandate
@@ -119,6 +121,13 @@ func ProEmails() []string {
 		emails = append(emails, p.slug+"@"+prosDomain)
 	}
 	return emails
+}
+
+func (p testPro) accountName() string {
+	if p.person != "" {
+		return p.person
+	}
+	return p.name
 }
 
 func (p testPro) subject() string { return "relay-pro-" + p.slug }
@@ -196,6 +205,10 @@ func seedSchedule(ctx context.Context, tx pgx.Tx, p testPro, accountID string, a
 // weekly hours, generated free times and assistant settings. Existing schedules and account settings
 // are left alone, so it can be run again without resetting a professional’s choices.
 func RunPros(ctx context.Context, databaseURL, issuer, password, output string) error {
+	return runPros(ctx, databaseURL, issuer, password, output, testPros, false)
+}
+
+func runPros(ctx context.Context, databaseURL, issuer, password, output string, professionals []testPro, includeCustomer bool) error {
 	issuer = strings.TrimRight(issuer, "/") + "/"
 	if !strings.HasPrefix(issuer, "https://") || password == "" {
 		return errors.New("AUTH0_ISSUER_URL and SEED_PASSWORD are required")
@@ -209,9 +222,12 @@ func RunPros(ctx context.Context, databaseURL, issuer, password, output string) 
 		return errors.New("could not hash SEED_PASSWORD")
 	}
 	anchor := time.Now().UTC()
-	users := make([]authUser, 0, len(testPros))
-	for _, p := range testPros {
-		users = append(users, authUser{ID: p.subject(), Email: p.slug + "@" + prosDomain, Name: p.name, EmailVerified: true, PasswordHash: string(hash), Metadata: map[string]string{"relay_seed": version}})
+	users := make([]authUser, 0, len(professionals)+1)
+	for _, p := range professionals {
+		users = append(users, authUser{ID: p.subject(), Email: p.slug + "@" + prosDomain, Name: p.accountName(), EmailVerified: true, PasswordHash: string(hash), Metadata: map[string]string{"relay_seed": version}})
+	}
+	if includeCustomer {
+		users = append(users, authUser{ID: demoCustomerSubject, Email: DemoCustomerEmail, Name: DemoCustomerName, EmailVerified: true, PasswordHash: string(hash), Metadata: map[string]string{"relay_seed": version}})
 	}
 	const file = "auth0-users-001.json"
 	if err := writeJSON(filepath.Join(output, file), users); err != nil {
@@ -231,9 +247,9 @@ func RunPros(ctx context.Context, databaseURL, issuer, password, output string) 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	slots := 0
-	for _, p := range testPros {
+	for _, p := range professionals {
 		accountID, profileID, subject := "acct_pro_"+p.slug, "prof_pro_"+p.slug, "auth0|"+p.subject()
-		if _, err = tx.Exec(ctx, `INSERT INTO accounts (id,issuer,subject,email,display_name,preferred_role,locale) VALUES ($1,$2,$3,$4,$5,'professional',$6) ON CONFLICT (issuer,subject) DO NOTHING`, accountID, issuer, subject, p.slug+"@"+prosDomain, p.name, p.locale); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO accounts (id,issuer,subject,email,display_name,preferred_role,locale) VALUES ($1,$2,$3,$4,$5,'professional',$6) ON CONFLICT (issuer,subject) DO NOTHING`, accountID, issuer, subject, p.slug+"@"+prosDomain, p.accountName(), p.locale); err != nil {
 			return err
 		}
 		for _, role := range []string{"customer", "professional"} {
@@ -241,9 +257,14 @@ func RunPros(ctx context.Context, databaseURL, issuer, password, output string) 
 				return err
 			}
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO professional_profiles (id,account_id,display_name,category,service_name,service_description,service_area,latitude,longitude,currency,price_minor,callout_minor,duration_minutes,materials_policy,status)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'EUR',$10,$11,$12,'Materials quoted separately after customer approval.','active') ON CONFLICT (account_id) DO NOTHING`,
-			profileID, accountID, p.name, p.category, p.service, p.description, p.area, p.lat, p.lon, p.price, p.callout, p.minutes); err != nil {
+		materials := p.materials
+		if materials == "" {
+			materials = "Materials quoted separately after customer approval."
+		}
+		exclusions, _ := json.Marshal(append([]string{}, p.exclusions...))
+		if _, err = tx.Exec(ctx, `INSERT INTO professional_profiles (id,account_id,display_name,category,service_name,service_description,service_area,latitude,longitude,currency,price_minor,callout_minor,duration_minutes,materials_policy,exclusions_json,status)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'EUR',$10,$11,$12,$13,$14,'active') ON CONFLICT (account_id) DO NOTHING`,
+			profileID, accountID, p.name, p.category, p.service, p.description, p.area, p.lat, p.lon, p.price, p.callout, p.minutes, materials, exclusions); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO professional_review_checks (professional_profile_id,identity_business_status,paypal_onboarding_status,qualification_status,insurance_status) VALUES ($1,'verified','pending','verified','verified') ON CONFLICT DO NOTHING`, profileID); err != nil {
@@ -263,9 +284,17 @@ func RunPros(ctx context.Context, databaseURL, issuer, password, output string) 
 			return err
 		}
 	}
+	if includeCustomer {
+		if _, err = tx.Exec(ctx, `INSERT INTO accounts(id,issuer,subject,email,display_name,preferred_role,locale) VALUES($1,$2,$3,$4,$5,'customer','en') ON CONFLICT (issuer,subject) DO NOTHING`, demoCustomerID, issuer, "auth0|"+demoCustomerSubject, DemoCustomerEmail, DemoCustomerName); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO account_memberships(account_id,role,status) VALUES($1,'customer','active') ON CONFLICT DO NOTHING`, demoCustomerID); err != nil {
+			return err
+		}
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
-	fmt.Printf("{\"professionals\":%d,\"slots\":%d,\"auth0_import_files\":1,\"auth0_status\":\"prepared; import required before password login\"}\n", len(testPros), slots)
+	fmt.Printf("{\"professionals\":%d,\"accounts\":%d,\"slots\":%d,\"auth0_import_files\":1,\"auth0_status\":\"prepared; import required before password login\"}\n", len(professionals), len(users), slots)
 	return nil
 }

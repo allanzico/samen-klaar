@@ -24,6 +24,8 @@ Requirements: Docker with Compose, Make, OpenSSL, curl, and credentials for an A
 
 Test data is loaded explicitly, never at startup. Put `SEED_PASSWORD` and the Auth0 management settings in `.secrets/local/seed.env`, then run `make seed-pros` and `make import-seed-pros-auth0`. See [docs/SEED_PROFESSIONALS.md](docs/SEED_PROFESSIONALS.md).
 
+The [presentation plan](docs/HACKATHON_DEMO.md) describes ten comparable sink-repair professionals, the customer and receiving professional, PayPal preparation and the 2:50 recording script. Its separate seed commands require explicit origin-pinned opt-in when targeting a hosted application.
+
 ## Documentation
 
 - [Product spec](docs/PRODUCT_SPEC.md) and [implementation status](docs/IMPLEMENTATION.md)
