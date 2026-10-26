@@ -327,6 +327,8 @@ type Job struct {
 	RefundTransactionID        string                   `json:"refundTransactionId,omitempty"`
 	Evidence                   []Evidence               `json:"evidence"`
 	EvidenceReview             *EvidenceReview          `json:"evidenceReview,omitempty"`
+	CompletionCheck            *EvidenceReview          `json:"completionCheck,omitempty"`
+	CompletionRevision         bool                     `json:"completionRevision,omitempty"`
 	Review                     *JobReview               `json:"review,omitempty"`
 	Change                     *ScopeChange             `json:"change"`
 	Timeline                   []Event                  `json:"timeline"`
@@ -353,6 +355,8 @@ type State struct {
 }
 
 type Action struct {
+	CompletionCheckVerified          bool              `json:"-"`
+	CompletionCheckRequired          bool              `json:"-"`
 	AutonomyVersion                  int               `json:"-"`
 	ExpectedEvidenceFingerprint      string            `json:"-"`
 	ChoiceID                         string            `json:"choiceId,omitempty"`

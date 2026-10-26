@@ -214,8 +214,18 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 			if scenario == "expired-authorization" {
 				transport.expired.Store(true)
 			}
-			state = action("professional", "submit-evidence", "")
 			if ai.entered != nil {
+				result := make(chan *httptest.ResponseRecorder, 1)
+				payload, _ := json.Marshal(map[string]string{"workspaceId": state.WorkspaceID, "action": "submit-evidence"})
+				go func() {
+					r := httptest.NewRequest("POST", "/api/actions", bytes.NewReader(payload))
+					r.Header.Set("Origin", "http://example.test")
+					r.Header.Set("Test-Role", "professional")
+					r.Header.Set("Content-Type", "application/json")
+					w := httptest.NewRecorder()
+					handler.ServeHTTP(w, r)
+					result <- w
+				}()
 				select {
 				case <-ai.entered:
 				case <-ctx.Done():
@@ -223,6 +233,17 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 				}
 				state = action("customer", "set-booking-autonomy", "manual")
 				close(ai.resume)
+				select {
+				case response := <-result:
+					if response.Code != 200 {
+						t.Fatalf("checked submission: %d %s", response.Code, response.Body.String())
+					}
+					json.Unmarshal(response.Body.Bytes(), &state)
+				case <-ctx.Done():
+					t.Fatal("checked submission never finished")
+				}
+			} else {
+				state = action("professional", "submit-evidence", "")
 			}
 			for range 3 {
 				if err := server.RunAgents(ctx, state.WorkspaceID, true); err != nil {
@@ -233,8 +254,11 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if scenario == "unclear" && restored.CompletionAutomation != "needs_review" {
-				t.Fatalf("reload hid the reason automatic approval stopped: %q", restored.CompletionAutomation)
+			if scenario == "unclear" {
+				professionalDraft, err := store.LoadWorkspace(ctx, professional.ID, "professional", state.WorkspaceID)
+				if err != nil || restored.Job.EvidenceSubmitted || restored.CompletionAutomation != "" || restored.Job.CompletionCheck != nil || professionalDraft.Job.CompletionCheck == nil {
+					t.Fatal("unclear completion must stay with the professional after reload")
+				}
 			}
 			transport.mu.Lock()
 			captures, authorizes := transport.captures, transport.authorizes
@@ -246,8 +270,8 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 			if authorizes != 1 {
 				t.Fatalf("assistant created another authorization: %d", authorizes)
 			}
-			if scenario == "manual" && ai.calls.Load() != 0 {
-				t.Fatal("manual booking sent evidence to automatic review")
+			if ai.calls.Load() != 1 {
+				t.Fatal("completion should be checked once on the professional's side, without a repeated customer check")
 			}
 			if (scenario == "unclear" || scenario == "revoked-during-review") && (restored.Job.CompletionApproved || restored.Job.PaymentApprovedVersion != 0) {
 				t.Fatal("unsafe completion or payment approval")

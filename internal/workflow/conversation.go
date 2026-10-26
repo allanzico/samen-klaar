@@ -3,6 +3,19 @@ package workflow
 // ConversationForRole is the request as one participant may see it: the other side's private
 // exchanges with their assistant are removed, and a professional sees only their own thread.
 func ConversationForRole(state State, role string) State {
+	if role != "professional" || state.Job.CompletionCheck != nil && state.Job.CompletionCheck.EvidenceFingerprint != CompletionEvidenceFingerprint(state.Job) {
+		state.Job.CompletionCheck = nil
+	}
+	if role == "customer" && !state.Job.EvidenceSubmitted && !state.Job.CompletionApproved && !state.Job.Paid {
+		shared := []Evidence{}
+		for _, evidence := range state.Job.Evidence {
+			if !CurrentEvidence(state.Job, evidence) {
+				shared = append(shared, evidence)
+			}
+		}
+		state.Job.Evidence = shared
+		state.Job.EvidenceReview = nil
+	}
 	state.CompletionAutomation = ""
 	if role == "customer" && BookingAutonomyCurrent(state.Job) {
 		code := requestStatusCode(state, "customer")

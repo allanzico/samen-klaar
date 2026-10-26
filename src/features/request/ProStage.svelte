@@ -8,6 +8,7 @@
   import type { RequestCode } from '../../lib/request-status';
   import { firstName } from '../../lib/status-ui';
   import { t } from '../../lib/i18n.svelte';
+  import { isCurrentEvidence } from '../../lib/evidence';
 
   // The professional's main column above the conversation: the job from intake, proof, what was sent.
   let { app, actions, workspace, intake, code, work }: {
@@ -18,7 +19,9 @@
   const customer = $derived(firstName(job.customer) || t('the customer'));
   // With agreed documentation items, each file and note is added against its item (EvidenceRequirements).
   const itemised = $derived((job.workItems?.length ?? 0) > 0);
+  const itemisedNotes = $derived(job.workItems?.some(item=>item.kind==='note'));
   const photos = $derived(job.evidence.filter((item) => !!item.assetId));
+  const savedNote = $derived([...job.evidence].reverse().find(item=>item.kind==='note'&&isCurrentEvidence(job,item))?.description);
   const src = (assetId?: string) => `/api/evidence/${encodeURIComponent(assetId ?? '')}?workspaceId=${encodeURIComponent(app.workspaceId ?? '')}`;
   let dragging = $state(false);
   const planning = $derived(['quote', 'booking', 'review_price', 'waiting_price', 'review_date', 'waiting_date', 'choose_visit', 'authorize_booking', 'confirm_visit', 'booked'].includes(code));
@@ -52,6 +55,16 @@
 {:else if code === 'in_progress' || code === 'note_requested'}
   <section class="box proof" aria-labelledby="proof-title">
     <h2 id="proof-title" class="section-title">{code === 'note_requested' ? t('Describe the work completed') : t('Finish and send proof')}</h2>
+    <p class="secondary-text">{t('Show the completed repair clearly. Explain what you repaired or replaced, and what you checked afterward. “The work is complete” is not enough.')}</p>
+    {#if app.checkingCompletion}<p class="checking" role="status"><span class="spinner" aria-hidden="true"></span>{t('Checking photos and work note…')}</p>{/if}
+    {#if job.completionCheck && !job.evidenceSubmitted}
+      <section class="check-feedback" aria-labelledby="completion-check-title" role="status">
+        <h3 id="completion-check-title" class="small-title">{t('Improve this before sending')}</h3>
+        <p>{job.completionCheck.summary}</p>
+        <ul>{#each job.completionCheck.coverage.filter(item=>item.coverage!=='documented') as finding(finding.scopeItem)}<li>{finding.observation}</li>{/each}</ul>
+        <p class="helper">{t('Your draft has not been sent to the customer. Add clearer photos or a more specific work note, then check again.')}</p>
+      </section>
+    {/if}
     {#if code === 'in_progress'}
       <div class="tiles">
         {#each photos as photo, i (photo.assetId)}
@@ -69,17 +82,16 @@
       {#if itemised}<p class="secondary-text">{t('Add each agreed item in “Agreed completion documentation” below.')}</p>{/if}
       {#if !app.providerConfig?.evidenceUploadsAvailable}<Banner kind="warn" text={t('Photo uploads aren’t available right now.')}/>{/if}
     {/if}
-    {#if itemised}
+    {#if itemisedNotes}
       {#if job.detailAdded}<p class="saved"><Icon name="check-circle"/>{t('Work note saved.')}</p>{/if}
-    {:else if job.detailAdded}
-      <p class="saved"><Icon name="check-circle"/>{t('Work note saved.')}</p>
     {:else}
+      {#if savedNote}<div class="saved-note"><b>{t('Saved work note')}</b><p>{savedNote}</p></div>{/if}
       <div class="field">
-        <label for="work-note">{t('Completion work note')}</label>
+        <label for="work-note">{job.detailAdded?t('Add detail to your work note'):t('Completion work note')}</label>
         <textarea id="work-note" class="textarea" rows="4" minlength="12" maxlength="1200" bind:value={work.note} placeholder={t('What you did and what you checked.')} aria-describedby="work-note-help"></textarea>
-        <p id="work-note-help" class="field-help">{work.note.trim().length < 12 ? t('Write at least 12 characters to continue') : t('Saved with your proof. Don’t claim a photo proves safety.')}</p>
+        <p id="work-note-help" class="field-help">{job.detailAdded&&!work.note.trim() ? t('You can check the saved note, or add more detail above.') : work.note.trim().length < 12 ? t('Write at least 12 characters to continue') : t('Saved with your proof. Don’t claim a photo proves safety.')}</p>
       </div>
-      {#if code === 'in_progress'}<button type="button" class="btn btn-outline btn-sm save-note" disabled={app.pending || work.note.trim().length < 12} onclick={() => actions.act('add-evidence', work.note).then((ok) => { if (ok) work.note = ''; })}>{t('Save work note')}</button>{/if}
+      <p class="helper">{t('The check reads your saved note and any details you add here. Nothing is sent until the completion record passes.')}</p>
     {/if}
   </section>
   <AgreedLedger {job}/>
@@ -108,6 +120,10 @@
   .upload small { max-width: 18ch; font-size: 12px; color: var(--sk-muted); }
   .upload-phone { display: none; }
   .saved { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-  .save-note { justify-self: start; }
+  .saved-note { display:grid;gap:6px;overflow-wrap:anywhere; }
+  .check-feedback { display:grid;gap:10px; padding-block:16px; border-block:1px solid var(--sk-line); overflow-wrap:anywhere; }
+  .check-feedback ul { display:grid;gap:8px;list-style:disc;padding-inline-start:20px; }
+  .check-feedback:has(ul:empty) ul { display:none; }
+  .checking { display:flex;align-items:center;gap:10px; }
   @media (max-width: 639px) { .upload-web { display: none; } .upload-phone { display: inline; } .intake, .proof { padding: 18px 16px; } }
 </style>

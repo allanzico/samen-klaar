@@ -26,6 +26,7 @@ export function createAppState(): AppState {
     clarificationAnswer: '',
     paypalStatus: 'not_started',
     reviewingEvidence: false,
+    checkingCompletion: false,
     evidenceFile: null
   });
   return state;

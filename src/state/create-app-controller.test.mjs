@@ -365,3 +365,23 @@ test('editing a description or replying from a no-match result revises the reque
   assert.equal(app.draft,'');
  }
 });
+
+test('professional check shows progress and brings correction feedback into view without saying it was sent',async()=>{
+ let finish;
+ const {app}=setup(async(url)=>{
+  if(url==='/api/actions')return new Promise(resolve=>{finish=resolve});
+  if(url==='/api/workspaces')return response({workspaces:[]});
+  throw new Error(`unexpected ${url}`);
+ });
+ let target;const actions=createAppActions(app,async(_,id)=>{target=id});
+ app.role='professional';const checking=actions.act('submit-evidence');assert.equal(app.checkingCompletion,true);
+ finish(response({job:{id:'job-A',evidenceSubmitted:false,completionCheck:{summary:'Describe the repair and checks.'}}}));await checking;
+ assert.equal(app.serverState.job.evidenceSubmitted,false);assert.match(app.serverState.job.completionCheck.summary,/repair/);assert.equal(app.checkingCompletion,false);assert.equal(app.error,'');
+ assert.equal(target,'completion-check-title');
+});
+
+test('professional completion-check outage preserves the draft and exposes no provider diagnostic',async()=>{
+ const {app,actions}=setup(async()=>({...response('private-provider-diagnostic',false),status:503}));app.role='professional';
+ const original=app.serverState;await actions.act('submit-evidence');
+ assert.equal(app.serverState,original);assert.equal(app.checkingCompletion,false);assert.match(app.error,/draft is saved/);assert.ok(!app.error.includes('private-provider-diagnostic'));
+});

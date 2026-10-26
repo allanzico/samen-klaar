@@ -52,6 +52,7 @@ export function activityText(item: AgentActivity): string {
     case 'approve-delegated-payment': return t('Approved release of the agreed amount under your booking permission');
     case 'release-delegated-payment': return t('Released the authorized payment under your booking permission');
     case 'approve-work': return t('Approved the finished work for you');
+    case 'request-clearer-completion': return t('Asked the professional to improve the completion photos or work note');
     case 'confirm-visit': return t('Confirmed the visit on {start}', params);
     case 'find-another': return t('Went back to the matches to find another professional');
     default: return t('Took a step for you');

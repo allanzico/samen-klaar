@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,7 +41,19 @@ func (journeyAI) ReviewEvidence(_ context.Context, job workflow.Job, files []wor
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no uploaded evidence")
 	}
-	return &workflow.EvidenceReview{Summary: "The submitted photo and work note are ready for customer review.", Limitations: "This does not establish workmanship or safety.", Model: "contract-test", ReviewedAt: time.Now().UTC().Format(time.RFC3339)}, nil
+	review := &workflow.EvidenceReview{Summary: "The submitted photo and work note are ready for customer review.", Limitations: "This does not establish workmanship or safety.", Model: "contract-test", ReviewedAt: time.Now().UTC().Format(time.RFC3339)}
+	for _, item := range workflow.ReviewableWorkItems(job) {
+		ids := []string{}
+		for _, file := range files {
+			for _, evidence := range job.Evidence {
+				if evidence.AssetID == file.ID && (len(job.WorkItems) == 0 || slices.Contains(evidence.WorkItemIDs, item.ID)) {
+					ids = append(ids, file.ID)
+				}
+			}
+		}
+		review.Coverage = append(review.Coverage, workflow.EvidenceFinding{ScopeItem: item.ID, Coverage: "documented", EvidenceIDs: ids, Observation: "The fixture documents the agreed repair."})
+	}
+	return review, nil
 }
 
 type storedEvidence struct {
@@ -1600,9 +1613,10 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 	}
 	state = decodeState(uploaded)
 	asset := state.Job.Evidence[len(state.Job.Evidence)-1].AssetID
-	request("customer", "GET", "/api/evidence/"+asset+"?workspaceId="+id, nil, 200)
+	request("customer", "GET", "/api/evidence/"+asset+"?workspaceId="+id, nil, 404)
 	request("outsider", "GET", "/api/evidence/"+asset+"?workspaceId="+id, nil, 503)
 	state = act("professional", "submit-evidence", "", nil, 200)
+	request("customer", "GET", "/api/evidence/"+asset+"?workspaceId="+id, nil, 200)
 	if !state.Job.DetailAdded {
 		t.Fatal("completion discarded the work note")
 	}

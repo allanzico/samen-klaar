@@ -174,6 +174,7 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
     if (app.pending || app.loading || !app.workspaceId) return;
     stateGeneration++;
     app.pending = true;
+    app.checkingCompletion = action === 'submit-evidence';
     app.error = '';
     const checkoutAfterReply = action === 'agent-reply' && !app.serverState?.job.appointment && app.serverState?.job.paymentAuthorizationTiming === 'at_booking';
     try {
@@ -185,13 +186,14 @@ export function createAppActions(app: AppState, scrollToCurrent: ScrollToCurrent
       if (app.providerConfig?.paymentsAvailable) void loadPayPalStatus();
       // The assistant answers a moment later, on the server; look again soon instead of waiting for the next poll.
       if (action === 'agent-reply' || action === 'set-service-address') for (const delay of [1200, 3000, 6000, 10000]) window.setTimeout(() => void refresh(), delay);
-      try { await scrollToCurrent(true, action === 'select-match' ? 'current-plan' : app.serverState?.intake?.step === 'matches' ? 'recommended-service' : undefined); }
+      try { await scrollToCurrent(true, action === 'submit-evidence' && !app.serverState?.job.evidenceSubmitted && app.serverState?.job.completionCheck ? 'completion-check-title' : action === 'select-match' ? 'current-plan' : app.serverState?.intake?.step === 'matches' ? 'recommended-service' : undefined); }
       catch { /* The server action has already succeeded. */ }
       return true;
     } catch (error) {
       app.error = error instanceof Error ? error.message.trim() : 'That action could not be completed.';
     } finally {
       app.pending = false;
+      app.checkingCompletion = false;
     }
   }
 

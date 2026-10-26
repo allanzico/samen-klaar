@@ -18,6 +18,17 @@ func TestAppointmentDecisionsNotifyCustomer(t *testing.T) {
 	}
 }
 
+func TestCompletionDraftChecksDoNotNotifyTheCustomer(t *testing.T) {
+	for _, action := range []string{"add-evidence", "record-completion-check", "revise-completion"} {
+		if _, _, notify := notificationForAction(workflow.Action{Action: action, Actor: "professional"}, workflow.Job{ID: "job", WorkStarted: true}); notify {
+			t.Fatalf("draft action %s notified the customer", action)
+		}
+	}
+	if _, recipient, notify := notificationForAction(workflow.Action{Action: "submit-evidence", Actor: "professional"}, workflow.Job{ID: "job", EvidenceSubmitted: true}); !notify || recipient != "customer" {
+		t.Fatal("a passed completion submission should notify the customer")
+	}
+}
+
 func TestAgentQuestionNotificationCopy(t *testing.T) {
 	link := "https://app.example/?workspaceId=ws"
 	for locale, want := range map[string]struct{ subject, body string }{

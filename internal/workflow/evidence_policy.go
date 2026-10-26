@@ -106,6 +106,17 @@ func EvidenceGapResolved(job Job, id string) bool {
 	}
 	return false
 }
+
+// Changes to a sent record return it to its professional until the new draft passes checking.
+func reopenCompletionDraft(state *State) {
+	if state.Job.EvidenceSubmitted {
+		state.Job.EvidenceSubmitted = false
+		state.Job.EvidenceSubmittedAt = ""
+		state.Job.CompletionRevision = true
+		state.AgentDialog = nil
+	}
+}
+
 func MissingEvidence(job Job, includeNotes bool) []string {
 	missing := []string{}
 	for _, item := range job.WorkItems {

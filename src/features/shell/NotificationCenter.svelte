@@ -26,6 +26,7 @@
     'appointment-expired': 'The visit reservation expired',
     'appointment-reminder': 'Your visit is tomorrow',
     'submit-evidence': 'Work is ready for review',
+    'request-completion-correction': 'Add clearer completion photos or work details',
     'payment-approval-reminder': 'Payment needs your approval',
     'payment-review': 'A payment update needs review',
     'refund-completed': 'Your refund is complete',

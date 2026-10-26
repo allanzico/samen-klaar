@@ -77,6 +77,8 @@ export type PriceProposal = { id: string; status: string; actor: string; amountM
 export type DateProposal = { id: string; status: string; actor: string; note: string; appointment: Appointment };
 export type BookingAutonomy = { mode: 'automatic' | 'manual'; version: number; scopeVersion: number; amountMinor: number; currency: string; professionalAccountId: string; professionalProfileId: string; decidedAt: string };
 export type Job = {
+  completionCheck?: EvidenceReview | null;
+  completionRevision?: boolean;
   bookingAutonomyRequired?: boolean;
   bookingAutonomy?: BookingAutonomy;
   completionApprovedByAgent?: boolean;
@@ -246,6 +248,7 @@ export type AppState = {
   paypalStatus: string;
   evidenceFile: File | null;
   reviewingEvidence?: boolean;
+  checkingCompletion?: boolean;
 };
 
 export type AppActions = {

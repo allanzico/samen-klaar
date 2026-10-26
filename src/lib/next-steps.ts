@@ -167,7 +167,9 @@ export function customerStep(ctx: CustomerContext): StepView | null {
       };
     }
     case 'in_progress':
-      return { kind: 'info', tag: { variant: 'progress', label: t('In progress') }, title: t('{name} is working on it', { name: pro }), banner: { kind: 'info', text: t('Nothing extra without your yes. Extras come as offers.') }, after: after(1) };
+      return job.completionRevision
+        ? {kind:'waiting',tag:waitingTag,title:t('{name} is improving the completion record', {name:pro}),text:t('The professional needs to add clearer photos or work details before you are asked to approve. There is nothing for you to fix.')}
+        : { kind: 'info', tag: { variant: 'progress', label: t('In progress') }, title: t('{name} is working on it', { name: pro }), banner: { kind: 'info', text: t('Nothing extra without your yes. Extras come as offers.') }, after: after(1) };
     case 'review_change': {
       const change = job.change!;
       const newTotal = money(job.quote.totalMinor + change.amountMinor, job.quote.currency);
@@ -180,13 +182,16 @@ export function customerStep(ctx: CustomerContext): StepView | null {
       };
     }
     case 'review': {
+      if (workspace.completionAutomation === 'needs_review' || job.evidenceReview?.coverage.some(finding=>['unclear','not_shown'].includes(finding.coverage))) return {
+        kind:'waiting',tag:waitingTag,title:t('{name} needs to improve the completion record',{name:pro}),
+        text:t('The photos or work note need more detail. This is for the professional to fix before completion can be approved. No payment has been released.'),
+        secondary:{label:t('Request clearer photos or work note'),run:()=>actions.act('request-completion-correction')}
+      };
       if (automaticReleaseOn(job) && workspace.completionAutomation) {
         const blocked = ['agent_blocked', 'autonomy_review_needed'].includes(ctx.automationEscalation ?? '');
-        if (workspace.completionAutomation === 'needs_review' || blocked) return {
+        if (blocked) return {
           kind: 'your-turn', tag: yourTurn, title: t('Your assistant needs your review'),
-          text: blocked && workspace.completionAutomation !== 'needs_review'
-            ? t('Your assistant couldn’t finish the automatic check. No payment has been released. Review the completion record yourself to continue.')
-            : t('The completion photos or note leave agreed work unclear or missing. Your assistant stopped without approving the work or releasing payment. Read its findings below, then review the work yourself.'),
+          text: t('Your assistant couldn’t finish the automatic check. No payment has been released. Review the completion record yourself to continue.'),
           primary: { label: t('Review and approve yourself'), run: async () => { if (await actions.act('set-booking-autonomy','manual')) await actions.act('approve-completion'); } },
           secondary: { label: t('Something’s not right'), run: ctx.openReport },
           helper: t('Approving the work yourself does not release payment. You confirm payment separately.')
@@ -255,7 +260,7 @@ export function customerStep(ctx: CustomerContext): StepView | null {
 
 export type ProContext = {
   app: AppState; actions: AppActions; workspace: WorkspaceState; code: RequestCode;
-  noteReady: boolean; saveNote: () => unknown; openExtra: () => void;
+  noteReady: boolean; noteEditing?: boolean; saveNote: () => Promise<boolean>; openExtra: () => void;
 };
 
 export function proStep(ctx: ProContext): StepView | null {
@@ -337,11 +342,11 @@ export function proStep(ctx: ProContext): StepView | null {
     case 'in_progress': {
       const photos = job.evidence.filter((item) => item.assetId).length;
       const missing = missingItems(job);
-      const reason = !photos ? t('Add at least one photo to continue') : !job.detailAdded ? t('Add a work note to continue') : missing.length ? t('Still needed: {list}', { list: missing.map((entry) => entry.item.description).join(', ') }) : '';
+      const reason = !photos ? t('Add at least one photo to continue') : ctx.noteEditing && !noteReady ? t('Write at least 12 characters to continue') : !job.detailAdded && !noteReady ? t('Add a work note to continue') : missing.length ? t('Still needed: {list}', { list: missing.map((entry) => entry.item.description).join(', ') }) : '';
       return {
         kind: 'your-turn', tag: yourTurn, title: t('Finish and send proof'),
-        text: reason ? undefined : t(photos === 1 ? '1 photo and a work note are ready.' : '{count} photos and a work note are ready.', { count: photos }),
-        primary: { label: t('Send to {name}', { name: first }), run: () => actions.act('submit-evidence'), disabled: !!reason, reason },
+        text: t('We check your photos and work note before sending them to the customer. Fix any gaps here first.'),
+        primary: { label: app.checkingCompletion ? t('Checking photos and work note…') : t('Check and send to {name}', { name: first }), run: async () => { if (noteReady && !await saveNote()) return; await actions.act('submit-evidence'); }, disabled: !!reason, reason },
         secondary: canExtra ? { label: t('Propose extra work'), run: openExtra } : undefined,
         helper: t('{name} approves the work, then pays {amount}.', { name: first, amount: total })
       };
@@ -351,7 +356,7 @@ export function proStep(ctx: ProContext): StepView | null {
     case 'note_requested':
       return { kind: 'your-turn', tag: yourTurn, title: t('{name} asked for the work note', { name: first }), primary: { label: t('Add work note'), run: saveNote, disabled: !noteReady, reason: noteReady ? '' : t('Write at least 12 characters to continue') } };
     case 'review':
-      return { kind: 'waiting', tag: { variant: 'pending', label: t('Customer checking') }, title: t('Sent for approval'), text: t('{name} checks your proof, then pays.', { name: first }), after: [t('{name} approves the work', { name: first }), t('{name} pays {amount}', { name: first, amount: total })] };
+      return { kind: 'waiting', tag: { variant: 'pending', label: t('Customer checking') }, title: t('Sent for approval'), text: t('{name} checks your proof, then pays.', { name: first }), secondary:{label:t('Improve photos or work note'),run:()=>actions.act('revise-completion')}, after: [t('{name} approves the work', { name: first }), t('{name} pays {amount}', { name: first, amount: total })] };
     case 'payment':
       return { kind: 'waiting', tag: waitingTag, title: t('Waiting for {name} to pay', { name: first }), amount: total, text: t('{name} approved the work.', { name: first }) };
     case 'paid':

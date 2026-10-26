@@ -40,7 +40,9 @@
     const pane = document.getElementById('request-thread');
     if (!pane) return;
     const target = targetID ? document.getElementById(targetID) : document.getElementById('request-action');
-    const top = target ? window.scrollY + target.getBoundingClientRect().top - 80 : pane.dataset.chat === 'true' ? document.documentElement.scrollHeight : 0;
+    const action = document.getElementById('request-action');
+    const offset = targetID === 'completion-check-title' && action ? (Number.parseFloat(getComputedStyle(action).top) || 80) + action.getBoundingClientRect().height + 16 : 80;
+    const top = target ? window.scrollY + target.getBoundingClientRect().top - offset : pane.dataset.chat === 'true' ? document.documentElement.scrollHeight : 0;
     window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
   }
   const actions = createAppActions(app, scrollToCurrent);

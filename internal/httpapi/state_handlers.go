@@ -49,7 +49,11 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Please wait a moment before trying again", http.StatusTooManyRequests)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+	timeout := 35 * time.Second
+	if input.Action == "submit-evidence" {
+		timeout = 80 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 	state, status, err := s.runAction(ctx, principal, input)
 	if err != nil {
@@ -63,6 +67,12 @@ func (s *Server) actionHandler(w http.ResponseWriter, r *http.Request) {
 // runAction prepares and applies one workflow action for a signed-in principal: the same path whether a
 // person clicked a button or their agent acted within a mandate. It returns an HTTP status for errors.
 func (s *Server) runAction(ctx context.Context, principal identity.Principal, input Action) (State, int, error) {
+	if input.Action == "submit-evidence" {
+		return s.submitCheckedCompletion(ctx, principal, input)
+	}
+	if input.Action == "record-completion-check" {
+		return State{}, http.StatusForbidden, errors.New("completion checks are recorded by the server")
+	}
 	if (input.Action == "set-booking-autonomy" && strings.HasPrefix(input.Value, "automatic|") || input.Action == "agent-reply" && strings.HasPrefix(input.ChoiceID, "automatic|")) && (s.ai == nil || s.r2 == nil || s.paypal == nil || s.agents == nil) {
 		return State{}, http.StatusServiceUnavailable, errors.New("automatic review and payment release are not available; choose to review and pay yourself")
 	}
@@ -249,7 +259,7 @@ func (s *Server) runAction(ctx context.Context, principal identity.Principal, in
 
 func actionMayCallAI(action string) bool {
 	switch action {
-	case "start-intake", "revise-intake", "answer-intake", "set-location", "refresh-matches", "return-to-matches":
+	case "start-intake", "revise-intake", "answer-intake", "set-location", "refresh-matches", "return-to-matches", "submit-evidence":
 		return true
 	default:
 		return false

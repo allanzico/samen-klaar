@@ -60,8 +60,14 @@ export const api = {
   // Deletes a customer's unapproved request, or takes an unapproved job off a professional's list.
   deleteWorkspace: (workspaceId: string) => request<{ status: 'deleted' | 'removed' }>(`/api/workspaces/${encodeURIComponent(workspaceId)}`, { method: 'DELETE' }),
   state: (workspaceId?: string | null) => request<WorkspaceState>(`/api/state${workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`),
-  action: (workspaceId: string | null, action: string, value = '', location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number, paymentAuthorizationTiming?: 'after_completion' | 'at_booking') =>
-    post<WorkspaceState>('/api/actions', { workspaceId, action, value, location, changeAmountMinor, rating, ...negotiation, paymentAuthorizationTiming }),
+  action: async (workspaceId: string | null, action: string, value = '', location?: Location, changeAmountMinor?: number, negotiation?: NegotiationInput, rating?: number, paymentAuthorizationTiming?: 'after_completion' | 'at_booking') => {
+    try {
+      return await request<WorkspaceState>('/api/actions', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId,action,value,location,changeAmountMinor,rating,...negotiation,paymentAuthorizationTiming}),signal:AbortSignal.timeout(action==='submit-evidence'?90000:15000)});
+    } catch(error) {
+      if(action==='submit-evidence' && error instanceof Error && ['SamenKlaar is temporarily unavailable. Please try again.','The request took too long. Please try again.'].includes(error.message)) throw new Error('We couldn’t check your photos and work note. Your draft is saved. Try again before sending it to the customer.');
+      throw error;
+    }
+  },
   switchWorkspace: (role: WorkspaceRole) => post<{ path: string }>('/api/auth/role', { role }),
   beginProfessional: () => post<{ path: string }>('/api/professional/onboarding', {}),
   logout: () => post<{ logoutUrl: string }>('/api/auth/logout', {}),

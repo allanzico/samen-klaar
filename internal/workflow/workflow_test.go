@@ -72,6 +72,12 @@ func TestMissingEvidenceBlocksCompletionAndPayment(t *testing.T) {
 	if err := apply(&state, "add-evidence", "professional", "Checked the connection after running water for two minutes."); err != nil {
 		t.Fatal(err)
 	}
+	if state.Job.EvidenceSubmitted || !state.Job.CompletionRevision {
+		t.Fatal("a changed completion record must return to the professional")
+	}
+	if err := apply(&state, "submit-evidence", "professional", ""); err != nil {
+		t.Fatal(err)
+	}
 	if err := apply(&state, "approve-completion", "customer", ""); err != nil {
 		t.Fatal(err)
 	}

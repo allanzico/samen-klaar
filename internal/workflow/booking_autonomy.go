@@ -126,13 +126,22 @@ func ValidateAutonomousCompletion(job Job) error {
 	if !job.QuoteApproved || !job.WorkStarted || !job.EvidenceSubmitted || !job.DetailAdded || job.PaymentRefunded || job.Change != nil && job.Change.Status == "pending" || job.Dispute != nil && job.Dispute.Status != "resolved" {
 		return errors.New("completion needs customer review")
 	}
+	return ValidateReviewedCompletion(job, job.EvidenceReview)
+}
+
+// ValidateReviewedCompletion checks documentation coverage without granting completion
+// or payment authority. Both professional submission and delegated approval use it.
+func ValidateReviewedCompletion(job Job, review *EvidenceReview) error {
+	if !job.DetailAdded {
+		return errors.New("add a work note describing what you repaired and checked")
+	}
+	job.EvidenceReview = nil // A previous check must not block assessment of the current draft.
 	if err := ValidateCompletionEvidence(job, true); err != nil {
 		return err
 	}
-	review := job.EvidenceReview
 	items := ReviewableWorkItems(job)
 	if review == nil || review.ReviewedAt == "" || strings.TrimSpace(review.Summary) == "" || review.ScopeVersion != job.ScopeVersion || review.CompletionRound != EvidenceRound(job) || review.EvidenceFingerprint != CompletionEvidenceFingerprint(job) || len(items) == 0 || len(review.Coverage) != len(items) {
-		return errors.New("current completion photos must be checked before automatic approval")
+		return errors.New("the current photos and work note must be checked before sending completion")
 	}
 	seen := map[string]bool{}
 	for _, finding := range review.Coverage {

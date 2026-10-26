@@ -43,6 +43,7 @@
     } else if(action==='approve-and-book') { workspace.job.quoteApproved=true; workspace.job.appointment=workspace.availableSlots[0]; workspace.job.appointmentConfirmation={appointment:workspace.availableSlots[0],status:'pending',dueAt:new Date(Date.now()+7200000).toISOString()}; }
     else if(action==='set-payment-timing') workspace.job.paymentAuthorizationTiming=timing;
     else if(action==='approve-completion')workspace.job.completionApproved=true;
+    else if(action==='request-completion-correction'){workspace.job.evidenceSubmitted=false;workspace.job.completionRevision=true;workspace.completionAutomation=undefined;workspace.job.evidenceReview=null;}
     save(); return true;
   },beginPayPalCheckout:async()=>{},refresh:async()=>{},dismissError:()=>{},focusComposer:()=>{},openProposal:()=>{app.composeMode='price'},closeProposal:()=>{app.composeMode='message'}} as unknown as AppActions;
   setLocale(params.has('nl')?'nl':'en',false);

@@ -22,6 +22,25 @@ func autonomousFixture(t *testing.T) State {
 	return state
 }
 
+func TestUnclearLegacyCompletionReturnsToProfessionalWithoutCustomerApprovalTask(t *testing.T) {
+	state := autonomousFixture(t)
+	state.Job.EvidenceReview.Coverage[0].Coverage = "unclear"
+	decision := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: DefaultMandate("customer"), Now: time.Now()})
+	if decision.Kind != AgentAct || decision.Action == nil || decision.Action.Action != "request-completion-correction" {
+		t.Fatalf("unclear evidence was left with the customer: %+v", decision)
+	}
+	decision.Action.Actor, decision.Action.ByAgent = "customer", true
+	if err := Apply(&state, *decision.Action); err != nil {
+		t.Fatal(err)
+	}
+	if state.Job.EvidenceSubmitted || !state.Job.CompletionRevision || state.Job.CompletionCheck == nil || state.Job.CompletionApproved || state.Job.Paid {
+		t.Fatal("correction did not return safely to the professional")
+	}
+	if visible := ConversationForRole(state, "customer"); visible.Job.CompletionCheck != nil || requestStatusCode(visible, "customer") != "in_progress" {
+		t.Fatal("customer was given a private correction or an approval task")
+	}
+}
+
 func TestBookingAutonomyRequiresCustomerAndCurrentPrice(t *testing.T) {
 	for _, change := range []string{"assistant", "professional", "price", "scope", "profile"} {
 		t.Run(change, func(t *testing.T) {

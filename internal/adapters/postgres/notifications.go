@@ -414,9 +414,11 @@ func notificationForAction(input workflow.Action, job workflow.Job) (eventType, 
 			return input.Action, "professional", true
 		}
 		return input.Action, "customer", true
-	case "answer-clarification", "approve-quote", "book-appointment", "approve-and-book", "request-details", "approve-change", "decline-change", "approve-completion", "approve-payment", "confirm-payment", "set-service-address":
+	case "answer-clarification", "approve-quote", "book-appointment", "approve-and-book", "request-details", "request-completion-correction", "approve-change", "decline-change", "approve-completion", "approve-payment", "confirm-payment", "set-service-address":
 		return input.Action, "professional", true
-	case "confirm-appointment", "decline-appointment", "start-job", "submit-evidence", "add-evidence", "propose-change":
+	case "add-evidence":
+		return input.Action, "customer", job.EvidenceSubmitted
+	case "confirm-appointment", "decline-appointment", "start-job", "submit-evidence", "propose-change":
 		return input.Action, "customer", true
 	case "submit-review":
 		return input.Action, "professional", true

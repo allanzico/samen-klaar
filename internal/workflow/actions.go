@@ -274,13 +274,49 @@ func Apply(state *State, input Action) error {
 		if err := ValidateCompletionEvidence(*job, false); err != nil {
 			return err
 		}
+		if input.CompletionCheckRequired {
+			if input.ExpectedScope != job.ScopeVersion || input.ExpectedEvidenceFingerprint != CompletionEvidenceFingerprint(*job) {
+				return errors.New("the photos or work note changed during checking; check the current draft again")
+			}
+			if err := ValidateReviewedCompletion(*job, job.CompletionCheck); err != nil {
+				return err
+			}
+		}
 		job.EvidenceSubmitted = true
+		job.CompletionRevision = false
 		job.EvidenceSubmittedAt = time.Now().UTC().Format(time.RFC3339)
 		job.EvidenceReview = nil
+		if input.CompletionCheckRequired {
+			job.EvidenceReview = job.CompletionCheck
+		}
 		addEvent(job, "Professional submitted completion documentation", "done")
 		if !job.DetailAdded {
 			addEvent(job, "Completion work note still needed", "attention")
 		}
+	case "record-completion-check":
+		if !professional || !input.CompletionCheckVerified || input.EvidenceReview == nil || !job.WorkStarted || job.EvidenceSubmitted || job.CompletionApproved || job.Paid || input.ExpectedScope != job.ScopeVersion || input.ExpectedEvidenceFingerprint != CompletionEvidenceFingerprint(*job) {
+			return errors.New("the completion draft changed; check the current photos and work note again")
+		}
+		job.CompletionCheck = input.EvidenceReview
+	case "revise-completion":
+		if !professional || !job.WorkStarted || !job.EvidenceSubmitted || job.CompletionApproved || job.Paid || job.Dispute != nil && job.Dispute.Status == "open" {
+			return errors.New("completion can be revised before customer approval and payment")
+		}
+		reopenCompletionDraft(state)
+		job.EvidenceReview, job.CompletionCheck = nil, nil
+		addEvent(job, "Professional reopened the completion record to improve the photos or work note", "attention")
+	case "request-completion-correction":
+		if !customer || !job.EvidenceSubmitted || job.CompletionApproved || job.Paid || job.Dispute != nil && job.Dispute.Status == "open" {
+			return errors.New("completion details can be requested before approval and payment")
+		}
+		if input.ByAgent && (!BookingAutonomyCurrent(*job) || input.AutonomyVersion != job.BookingAutonomy.Version || input.ExpectedScope != job.ScopeVersion || input.ExpectedEvidenceFingerprint != CompletionEvidenceFingerprint(*job)) {
+			return errors.New("the booking permission or completion record changed")
+		}
+		feedback := job.EvidenceReview
+		reopenCompletionDraft(state)
+		job.CompletionCheck = feedback
+		job.EvidenceReview = nil
+		addEvent(job, "Professional asked to improve completion photos or work note before customer approval", "attention")
 	case "record-evidence":
 		if !professional || !job.WorkStarted || job.Paid || job.CompletionApproved || input.Evidence.AssetID == "" || input.Evidence.ContentType == "" {
 			return errors.New("a professional may upload supported evidence after work starts")
@@ -294,8 +330,10 @@ func Apply(state *State, input Action) error {
 		if err != nil {
 			return err
 		}
+		reopenCompletionDraft(state)
 		job.Evidence = append(job.Evidence, bound)
 		job.EvidenceReview = nil
+		job.CompletionCheck = nil
 		addEvent(job, "Professional uploaded completion evidence to private storage", "done")
 	case "record-evidence-review":
 		if !customer || !job.EvidenceSubmitted || job.Paid || input.EvidenceReview == nil || input.ExpectedScope != job.ScopeVersion || input.ExpectedEvidenceRound != 0 && input.ExpectedEvidenceRound != EvidenceRound(*job) {
@@ -327,8 +365,10 @@ func Apply(state *State, input Action) error {
 		}
 		job.DetailAdded = true
 		job.DetailAddedAt = time.Now().UTC().Format(time.RFC3339)
+		reopenCompletionDraft(state)
 		job.Evidence = append(job.Evidence, bound)
 		job.EvidenceReview = nil
+		job.CompletionCheck = nil
 		addEvent(job, "Professional added a completion work note", "done")
 	case "approve-completion":
 		if !customer || !job.EvidenceSubmitted || !job.DetailAdded || job.CompletionApproved {
@@ -445,6 +485,8 @@ func Apply(state *State, input Action) error {
 		job.EvidenceSubmitted = false
 		job.EvidenceSubmittedAt = ""
 		job.EvidenceReview = nil
+		job.CompletionCheck = nil
+		job.CompletionRevision = false
 		addEvent(job, "Customer approved scope v"+strconv.Itoa(job.ScopeVersion)+" · price and documentation updated", "done")
 		addEvent(job, "Any previous authorization was released · authorize the new total after approving the completed work", "attention")
 	case "decline-change":

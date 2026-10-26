@@ -73,7 +73,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   const work = $state({ note: savedWork.completionNote || '', changeDescription: savedWork.changeDescription || '', changePrice: savedWork.changePrice || '' });
   let workSaved = $state(true);
   $effect(() => { if (pro) workSaved = saveDraft(workKey, [work.note, work.changeDescription, work.changePrice].some(Boolean) ? JSON.stringify({ completionNote: work.note, changeDescription: work.changeDescription, changePrice: String(work.changePrice ?? '') }) : ''); });
-  async function saveNote() { if (await actions.act('add-evidence', work.note)) work.note = ''; }
+  async function saveNote() { if (await actions.act('add-evidence', work.note)) { work.note = ''; return true; } return false; }
 
   // Payment timing follows the saved choice per job; paying after the work is the default.
   $effect(() => {
@@ -85,7 +85,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   const automationEscalation = $derived(agentUi.escalations.find((item)=>item.workspaceId===workspace.workspaceId && item.role==='customer')?.code);
   const automationStopped = $derived(workspace.completionAutomation==='needs_review' || ['agent_blocked','autonomy_review_needed'].includes(automationEscalation ?? ''));
   const view = $derived(pro
-    ? proStep({ app, actions, workspace, code, noteReady: work.note.trim().length >= 12, saveNote, openExtra: () => { requestUi.extraWork = true; } })
+    ? proStep({ app, actions, workspace, code, noteReady: work.note.trim().length >= 12, noteEditing: !!work.note.trim(), saveNote, openExtra: () => { requestUi.extraWork = true; } })
     : customerStep({ app, actions, workspace, code, timing: requestUi.timing, slot, automationEscalation, openReport: () => { requestUi.reporting = true; }, openPolicy: () => { requestUi.policy = true; } }));
   const timingChoice = $derived(!pro && showTimingChoice(app, workspace, code));
 
@@ -170,7 +170,7 @@ import RelatedJobs from './RelatedJobs.svelte';
     {#if ui.step}<div class="request-progress"><div class="progress-web"><Stepper step={ui.step}/></div><div class="progress-phone"><Stepper step={ui.step} variant="strip"/></div></div>{/if}
 
       {#if !pro && job.appointment && job.bookingAutonomy && !job.paid}
-        <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? automationStopped ? t('Automatic review stopped for your decision. No payment has been released.') : t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
+        <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? job.completionRevision || workspace.completionAutomation==='needs_review' ? t('Automatic approval is paused while the professional improves the completion record.') : automationStopped ? t('Automatic review stopped for your decision. No payment has been released.') : t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
         {#if job.bookingAutonomy.mode==='automatic'}<button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={() => actions.act('set-booking-autonomy','manual')}>{t('Turn off automatic review and release')}</button>{/if}</div>
       {/if}
       <div class="content-pad"><PrebookingNavigation {app} {actions} {workspace}/></div>

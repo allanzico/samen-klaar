@@ -441,7 +441,7 @@ func decideCustomer(c AgentContext) AgentDecision {
 				return c.autonomyAction("check-completion-photos", "review-completion-evidence")
 			}
 			if err := ValidateAutonomousCompletion(job); err != nil {
-				return escalate("autonomy_review_needed", nil)
+				return c.autonomyAction("request-clearer-completion", "request-completion-correction")
 			}
 			return c.autonomyAction("approve-work", "approve-completion")
 		}

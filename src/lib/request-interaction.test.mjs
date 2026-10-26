@@ -109,7 +109,7 @@ globalThis.$state = (value) => value;
 const stepBundle = await build({entryPoints:['src/lib/next-steps.ts'],bundle:true,platform:'node',format:'cjs',write:false});
 const stepModule = {exports:{}};
 new Function('module','exports',stepBundle.outputFiles[0].text)(stepModule,stepModule.exports);
-const {customerStep} = stepModule.exports;
+const {customerStep,proStep} = stepModule.exports;
 const completionContext = () => ({
   app:{paypalStatus:'authorized',providerConfig:{paymentsAvailable:true}}, actions:{}, code:'review',
   workspace:{workspaceId:'fixture',completionAutomation:'checking',availableSlots:[],job:{
@@ -124,12 +124,13 @@ test('automatic completion checking does not ask the customer to approve the wor
   assert.match(view.title,/assistant.*checking/i);
   assert.equal(view.primary,undefined);
 });
-test('unclear automatic review explains the fallback before offering personal approval',()=>{
+test('unclear automatic review puts corrections with the professional instead of offering invalid approval',()=>{
   const ctx=completionContext();ctx.workspace.completionAutomation='needs_review';
   const view=customerStep(ctx);
-  assert.match(view.title,/assistant needs your review/i);
-  assert.match(view.text,/unclear|missing/i);
-  assert.match(view.primary.label,/yourself/i);
+  assert.match(view.title,/needs to improve/i);
+  assert.match(view.text,/professional to fix/i);
+  assert.equal(view.primary,undefined);
+  assert.match(view.secondary.label,/clearer photos/i);
 });
 test('a failed automated check exposes a manual fallback instead of waiting forever',()=>{
   const ctx=completionContext();ctx.automationEscalation='agent_blocked';
@@ -142,7 +143,7 @@ test('ordinary manual completion keeps the existing approval action',()=>{
   assert.equal(customerStep(ctx).primary.label,'Approve the work');
 });
 test('personal fallback revokes automatic payment authority before approving completion',async()=>{
-  const ctx=completionContext();ctx.workspace.completionAutomation='needs_review';
+  const ctx=completionContext();ctx.automationEscalation='agent_blocked';
   const calls=[];ctx.actions.act=async(...args)=>{calls.push(args);return true};
   await customerStep(ctx).primary.run();
   assert.deepEqual(calls,[['set-booking-autonomy','manual'],['approve-completion']]);
@@ -164,4 +165,16 @@ test('a below-limit offer says when it is waiting for the professional personall
   const view=customerStep(ctx);
   assert.match(view.text,/personally/i);
   assert.match(view.title,/review your offer/i);
+});
+
+test('professional submission saves new note details before checking and never skips a failed save',async()=>{
+ const ctx=completionContext();ctx.code='in_progress';ctx.noteReady=true;ctx.noteEditing=true;ctx.workspace.job.customer='Test customer';ctx.workspace.job.evidence=[{assetId:'photo'}];
+ const calls=[];ctx.saveNote=async()=>{calls.push('save-note');return true};ctx.actions.act=async(action)=>calls.push(action);
+ const view=proStep(ctx);assert.match(view.primary.label,/Check and send/);await view.primary.run();assert.deepEqual(calls,['save-note','submit-evidence']);
+ calls.length=0;ctx.saveNote=async()=>{calls.push('save-note');return false};await proStep(ctx).primary.run();assert.deepEqual(calls,['save-note']);
+ ctx.noteReady=false;assert.equal(proStep(ctx).primary.disabled,true);
+});
+test('professional correction keeps the customer waiting without an approval task',()=>{
+ const ctx=completionContext();ctx.code='in_progress';ctx.workspace.job.completionRevision=true;
+ const view=customerStep(ctx);assert.equal(view.kind,'waiting');assert.equal(view.primary,undefined);assert.match(view.text,/nothing for you to fix/i);
 });
