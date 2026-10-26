@@ -29,8 +29,10 @@
 </script>
 
 <section class="record" aria-labelledby={headingId}>
-  <p class="meta">{t('Scope {version}',{version:job.scopeVersion})} · {job.paymentRefunded?t('Refunded'):job.paid?t('Paid'):t('Payment not captured')}</p>
-  {#if job.completionApprovedAt}<p class="meta">{t('Completion approved')}: {job.completionApprovedAt}</p>{/if}
+  {#if scope === 'all'}
+    <p class="meta">{t('Scope {version}',{version:job.scopeVersion})} · {job.paymentRefunded?t('Refunded'):job.paid?t('Paid'):t('Payment not captured')}</p>
+    {#if job.completionApprovedAt}<p class="meta">{t('Completion approved')}: {job.completionApprovedAt}</p>{/if}
+  {/if}
   <div class="record-head"><h2 id={headingId} class="section-title">{title}</h2>{#if fact}<Pill variant="fact" label={fact}/>{/if}</div>
   {#if photos.length}
     <div class="photos">

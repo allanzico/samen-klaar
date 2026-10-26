@@ -21,6 +21,8 @@
   initial.job.evidence=[{kind:'document',assetId:'synthetic-file',contentType:'application/pdf',scopeVersion:1,completionRound:1,label:'Synthetic completion file',description:'Fixture attachment; no real file is transmitted.'},{kind:'note',label:'Professional work note',description:'The work is complete.',scopeVersion:1,completionRound:1}];
   if(paid){
     Object.assign(initial.job,{paid:true,evidenceSubmitted:true,completionApproved:true,completionRevision:false,completionApprovedByAgent:true,paymentApprovedByAgent:true,paymentApprovedVersion:1,paymentTransactionId:'SYNTHETIC-CAPTURE-EXAMPLE',completionApprovedAt:'2026-10-26T10:15:00Z',paymentApprovedAt:'2026-10-26T10:16:00Z',serviceDescription:'Repair the accessible leaking sink connection'});
+    initial.job.appointment={slotId:'synthetic-visit',startUtc:'2026-10-26T08:00:00Z',endUtc:'2026-10-26T09:00:00Z',startsAt:'Mon 26 Oct, 09:00',timezone:'Europe/Amsterdam'};
+    initial.job.appointmentConfirmation={status:'confirmed',appointment:initial.job.appointment};
     initial.job.evidence[1].description='Synthetic example: cleaned the accessible trap union, reseated the existing washer and reassembled the connection. Ran water for three minutes, drained the bowl twice and checked the joint with dry tissue. No fresh drips were observed in this fictional scenario. No additional materials charged.';
     initial.job.evidence.push({kind:'note',label:'Earlier note',description:'Earlier synthetic completion attempt — more detail was required.',scopeVersion:1,completionRound:0});
     initial.job.completionRound=2;

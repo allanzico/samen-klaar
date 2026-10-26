@@ -40,6 +40,7 @@ test('both finished stages show factual scope, work notes, approval and payment 
     for (const text of ['Job completion report', 'Repair the accessible sink connection', 'Reseated the washer', 'No additional materials charged', 'Concealed pipework', 'Customer’s assistant', 'SYNTHETIC-CAPTURE', '1 document', '26 Oct 2026']) assert.ok(html.includes(text), `${role}: missing ${text}`);
     assert.ok(html.indexOf('Reseated the washer') < html.indexOf('<details'), 'the accepted work note should be visible without expanding history');
     assert.match(html, /<details[\s\S]*Previous attempt needs more documentation/);
+    assert.doesNotMatch(html.slice(html.indexOf('<details')), /Completion approved:/, 'earlier documentation must not inherit the accepted attempt’s approval timestamp');
     assert.doesNotMatch(html, /NaN|Invalid Date|0 photos/);
   }
 });
