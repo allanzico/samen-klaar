@@ -182,6 +182,60 @@ func TestProfessionalAgentConfirmsOnlyInsideMandate(t *testing.T) {
 	}
 }
 
+func TestProfessionalAssistantWaitsForBookingAuthorizationBeforeConfirming(t *testing.T) {
+	for _, autoConfirm := range []bool{true, false} {
+		for _, dialogMode := range []bool{true, false} {
+			state := proState()
+			state.Job.ScopeVersion = 2
+			slot := agentSlot("visit", "2026-10-20T09:00:00Z", "2026-10-20T10:00:00Z")
+			state.Job.Appointment = &slot
+			state.Job.AppointmentConfirmation = &AppointmentConfirmation{Status: "pending", Appointment: slot}
+			state.Job.PaymentAuthorizationTiming = PaymentAuthorizationAtBooking
+			if !dialogMode {
+				state.Intake = nil
+			}
+			mandate := professionalMandate()
+			mandate.AutoConfirmVisits = autoConfirm
+			for _, authorizedVersion := range []int{0, 1} {
+				state.Job.PaymentAuthorizedVersion = authorizedVersion
+				decision := DecideAgent(AgentContext{State: state, Role: "professional", Mandate: mandate, Now: agentNow})
+				if decision.Kind != AgentWait || decision.Action != nil {
+					t.Fatalf("assistant must wait during checkout (auto=%v dialog=%v authorization=%d): kind=%s code=%s", autoConfirm, dialogMode, authorizedVersion, decision.Kind, decision.Code)
+				}
+			}
+			state.Job.PaymentAuthorizedVersion = state.Job.ScopeVersion
+			decision := DecideAgent(AgentContext{State: state, Role: "professional", Mandate: mandate, Now: agentNow})
+			if autoConfirm && (decision.Action == nil || decision.Action.Action != "confirm-appointment") {
+				t.Fatal("the assistant did not resume confirmation after authorization")
+			}
+			if !autoConfirm && decision.Kind == AgentWait {
+				t.Fatal("the professional was not asked to confirm after authorization")
+			}
+		}
+	}
+}
+
+func TestSavedProfessionalConfirmationReplyWaitsForBookingAuthorization(t *testing.T) {
+	state := proState()
+	state.Job.ScopeVersion = 1
+	slot := agentSlot("visit", "2026-10-20T09:00:00Z", "2026-10-20T10:00:00Z")
+	state.Job.Appointment = &slot
+	state.Job.AppointmentConfirmation = &AppointmentConfirmation{Status: "pending", Appointment: slot}
+	state.Job.PaymentAuthorizationTiming = PaymentAuthorizationAtBooking
+	state.ProDialog = &AgentDialog{Stage: "confirm", Pending: "confirm-appointment", Asked: 1}
+	state.Intake.Messages = []Message{{Seq: 1, Role: "agent", Audience: "professional", Text: "Shall I confirm?"}, {Seq: 2, Role: "professional", Audience: "professional", Text: "Yes", Choice: "yes"}}
+	mandate := professionalMandate()
+	mandate.AutoConfirmVisits = false
+	if decision := DecideAgent(AgentContext{State: state, Role: "professional", Mandate: mandate, Now: agentNow}); decision.Kind != AgentWait {
+		t.Fatal("a saved yes reply attempted confirmation during checkout")
+	}
+	state.Job.PaymentAuthorizedVersion = 1
+	decision := DecideAgent(AgentContext{State: state, Role: "professional", Mandate: mandate, Now: agentNow})
+	if decision.Action == nil || decision.Action.Action != "confirm-appointment" {
+		t.Fatal("the saved reply did not resume confirmation after authorization")
+	}
+}
+
 func TestAgentNeverJudgesWorkOrPays(t *testing.T) {
 	state := quotedState(9000)
 	state.Job.EvidenceSubmitted = true

@@ -8,7 +8,9 @@
   const params=new URLSearchParams(location.search);
   const mobile=params.has('mobile-check');
   const customer=params.has('customer');
-  const storageKey=`completion-fixture-${customer?'customer':'professional'}`;
+  const paid=params.has('paid');
+  const frameParams=new URLSearchParams(params);frameParams.delete('mobile-check');frameParams.set('frame','');frameParams.set('nl','');
+  const storageKey=`completion-fixture-${customer?'customer':'professional'}-${paid?'paid':'draft'}`;
   const app=createAppState();
   app.role=customer?'customer':'professional';app.workspaceId='completion-fixture';
   app.session={configured:true,authenticated:true,activeRole:app.role,account:{id:customer?'fixture-customer':'fixture-professional'}};
@@ -17,6 +19,13 @@
   Object.assign(initial.job,{id:'completion-fixture-job',title:'Repair the kitchen sink',description:'Repair a leaking sink connection',professional:'Test professional',professionalAccountId:'fixture-professional',professionalProfileId:'fixture-service',customer:'Test customer',quoteApproved:true,workStarted:true,detailAdded:true,completionRevision:customer});
   initial.job.quote={...initial.job.quote,totalMinor:12500,lines:[{label:'Repair the sink connection',amountMinor:12500,basis:'Agreed work'}]};
   initial.job.evidence=[{kind:'document',assetId:'synthetic-file',contentType:'application/pdf',scopeVersion:1,completionRound:1,label:'Synthetic completion file',description:'Fixture attachment; no real file is transmitted.'},{kind:'note',label:'Professional work note',description:'The work is complete.',scopeVersion:1,completionRound:1}];
+  if(paid){
+    Object.assign(initial.job,{paid:true,evidenceSubmitted:true,completionApproved:true,completionRevision:false,completionApprovedByAgent:true,paymentApprovedByAgent:true,paymentApprovedVersion:1,paymentTransactionId:'SYNTHETIC-CAPTURE-EXAMPLE',completionApprovedAt:'2026-10-26T10:15:00Z',paymentApprovedAt:'2026-10-26T10:16:00Z',serviceDescription:'Repair the accessible leaking sink connection'});
+    initial.job.evidence[1].description='Synthetic example: cleaned the accessible trap union, reseated the existing washer and reassembled the connection. Ran water for three minutes, drained the bowl twice and checked the joint with dry tissue. No fresh drips were observed in this fictional scenario. No additional materials charged.';
+    initial.job.evidence.push({kind:'note',label:'Earlier note',description:'Earlier synthetic completion attempt — more detail was required.',scopeVersion:1,completionRound:0});
+    initial.job.completionRound=2;
+    initial.job.evidence[0].completionRound=2;initial.job.evidence[1].completionRound=2;
+  }
   initial.intake={step:'selected',description:'Repair the kitchen sink',detail:'The connection leaks',category:'Plumbing',route:'catalog',question:'',options:[],messages:[],urgency:'Flexible',budget:'Show the price',matches:[],location:null,needsReview:false};
   let workspace=$state<WorkspaceState>(JSON.parse(sessionStorage.getItem(storageKey)||'null')||initial);
   $effect(()=>{app.serverState=workspace});
@@ -43,9 +52,9 @@
   setLocale(params.has('nl')?'nl':'en',false);
 </script>
 {#if mobile}
- <main class="mobile-check"><h1>390px professional completion check</h1><iframe title="Mobile completion" width="390" height="740" src="?frame&nl"></iframe></main>
+ <main class="mobile-check"><h1>390px professional completion check</h1><iframe title="Mobile completion" width="390" height="740" src={`?${frameParams}`}></iframe></main>
 {:else}
- <nav class="fixture-controls"><span>Synthetic completion UI</span><button class="btn btn-quiet btn-sm" onclick={reset}>Reset fixture</button><a href="?nl">Nederlands</a><a href="?offline">Check unavailable</a><a href="?customer">Customer waiting</a></nav>
+ <nav class="fixture-controls"><span>Synthetic completion UI</span><button class="btn btn-quiet btn-sm" onclick={reset}>Reset fixture</button><a href="?nl">Nederlands</a><a href="?offline">Check unavailable</a><a href="?customer">Customer waiting</a><a href="?paid">Finished example</a><a href="?paid&customer">Customer report</a></nav>
  <RequestPage {app} {actions} {workspace} onBack={()=>{}}/>
 {/if}
 <style>

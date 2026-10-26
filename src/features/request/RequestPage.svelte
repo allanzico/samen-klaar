@@ -90,7 +90,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   const timingChoice = $derived(!pro && showTimingChoice(app, workspace, code));
 
   const customerPages = ['review_professional', 'quote', 'booking', 'choose_visit', 'review', 'payment', 'paid', 'refunded', 'refund_pending', 'dispute_review', 'cancellation_review'];
-  const proPages = ['in_progress', 'note_requested', 'review', 'payment', 'paid', 'dispute_review'];
+  const proPages = ['in_progress', 'note_requested', 'review', 'payment', 'paid', 'refund_pending', 'refunded', 'dispute_review'];
   const stagePage = $derived(hasJob && (pro ? proPages : customerPages).includes(code) && !(code === 'booking' && !!job.appointment));
   const showComposer = $derived(workspace.intake?.step !== 'professional_review' && !guided && (pro ? hasJob : intake?.step !== 'location' && (!workspace.cancelled || hasJob)));
   const canCancel = $derived(hasJob && canCancelRequest(workspace));

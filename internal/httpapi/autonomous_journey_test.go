@@ -195,6 +195,29 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 			var slot struct{ ID string }
 			json.Unmarshal(publishJourneyTime(t, store, professional.ID, workflow.Appointment{StartUTC: starts.Format(time.RFC3339), EndUTC: starts.Add(time.Hour).Format(time.RFC3339), Timezone: "UTC"}), &slot)
 			state = action("customer", "approve-and-book", slot.ID)
+			// Background refreshes during checkout must not attempt confirmation,
+			// log rejected actions, or create an escalation for the professional.
+			originalMandate, err := store.AgentMandate(ctx, professional.ID, "professional")
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkoutMandate := workflow.DefaultMandate("professional")
+			checkoutMandate.AcceptOutsideHours = true
+			if _, err := store.SaveAgentMandate(ctx, professional.ID, "professional", checkoutMandate); err != nil {
+				t.Fatal(err)
+			}
+			for range 3 {
+				if err := server.RunAgents(ctx, state.WorkspaceID, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			activity, err := store.AgentActivity(ctx, state.WorkspaceID, professional.ID, "professional", 20)
+			if err != nil || len(activity) != 0 {
+				t.Fatalf("professional assistant acted or failed during checkout: entries=%d error=%v", len(activity), err)
+			}
+			if _, err := store.SaveAgentMandate(ctx, professional.ID, "professional", originalMandate); err != nil {
+				t.Fatal(err)
+			}
 			var order struct {
 				OrderID string `json:"orderId"`
 			}

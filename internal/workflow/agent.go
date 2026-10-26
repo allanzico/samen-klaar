@@ -523,6 +523,11 @@ func decideProfessional(c AgentContext) AgentDecision {
 		if appt == nil {
 			return wait()
 		}
+		// Checkout is an expected wait, not a failed professional confirmation.
+		// Resume from the persisted authorization when the buyer returns from PayPal.
+		if job.PaymentAuthorizationTiming == PaymentAuthorizationAtBooking && job.PaymentAuthorizedVersion != job.ScopeVersion {
+			return wait()
+		}
 		outside := !c.professionalVisitAllowed(*appt)
 		if m.AutoConfirmVisits && !outside {
 			return act("confirm-visit", Action{Action: "confirm-appointment"}, map[string]string{"start": appt.StartUTC, "end": appt.EndUTC})

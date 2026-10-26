@@ -5,26 +5,33 @@
   import type { Job } from '../../lib/types';
   import { firstName } from '../../lib/status-ui';
   import { t } from '../../lib/i18n.svelte';
+  import { isCurrentEvidence } from '../../lib/evidence';
 
   // The completion record: photos open a viewer, documents open privately, the note is a quote.
-  let { job, workspaceId, title, viewer }: { job: Job; workspaceId: string | null; title: string; viewer: 'customer' | 'professional' } = $props();
+  let { job, workspaceId, title, viewer, scope = 'all' }: { job: Job; workspaceId: string | null; title: string; viewer: 'customer' | 'professional'; scope?: 'all' | 'current' | 'earlier' } = $props();
+  const headingId = $props.id();
   const pro = $derived(firstName(job.professional));
-  const files = $derived(job.evidence.filter((item) => !!item.assetId));
+  const evidence = $derived(job.evidence.filter(item => scope === 'all' || isCurrentEvidence(job, item) === (scope === 'current')));
+  const files = $derived(evidence.filter((item) => !!item.assetId));
   const photos = $derived(files.filter((item) => item.kind === 'photo' || item.contentType?.startsWith('image/')));
   const documents = $derived(files.filter((item) => !photos.includes(item)));
-  const notes = $derived(job.evidence.filter((item) => item.kind === 'note'));
+  const notes = $derived(evidence.filter((item) => item.kind === 'note'));
   const src = (assetId?: string) => `/api/evidence/${encodeURIComponent(assetId ?? '')}?workspaceId=${encodeURIComponent(workspaceId ?? '')}`;
-  const fact = $derived(photos.length === 1 ? (notes.length ? t('1 photo and a note') : t('1 photo')) : notes.length ? t('{count} photos and a note', { count: photos.length }) : t('{count} photos', { count: photos.length }));
+  const fact = $derived([
+    photos.length ? (photos.length === 1 ? t('1 photo') : t('{count} photos', { count: photos.length })) : '',
+    documents.length ? (documents.length === 1 ? t('1 document') : t('{count} documents', { count: documents.length })) : '',
+    notes.length ? t('Work note') : ''
+  ].filter(Boolean).join(' · '));
 
   let open = $state(false);
   let index = $state(0);
   function show(i: number) { index = i; open = true; }
 </script>
 
-<section class="record" aria-labelledby="record-title">
+<section class="record" aria-labelledby={headingId}>
   <p class="meta">{t('Scope {version}',{version:job.scopeVersion})} · {job.paymentRefunded?t('Refunded'):job.paid?t('Paid'):t('Payment not captured')}</p>
   {#if job.completionApprovedAt}<p class="meta">{t('Completion approved')}: {job.completionApprovedAt}</p>{/if}
-  <div class="record-head"><h2 id="record-title" class="section-title">{title}</h2><Pill variant="fact" label={fact}/></div>
+  <div class="record-head"><h2 id={headingId} class="section-title">{title}</h2>{#if fact}<Pill variant="fact" label={fact}/>{/if}</div>
   {#if photos.length}
     <div class="photos">
       {#each photos as photo, i (photo.assetId)}

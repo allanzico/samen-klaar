@@ -5,6 +5,7 @@
   import EvidenceRecord from './EvidenceRecord.svelte';
   import AgreedLedger from './AgreedLedger.svelte';
   import JobReview from './JobReview.svelte';
+  import CompletedJobReport from './CompletedJobReport.svelte';
   import type { AppActions, AppState, WorkspaceState } from '../../lib/types';
   import type { RequestCode } from '../../lib/request-status';
   import { firstName } from '../../lib/status-ui';
@@ -65,17 +66,8 @@
 {:else if code === 'paid' || code === 'refund_pending' || code === 'refunded'}
   <div class="stack">
     {#if code === 'refunded'}<Banner kind="success" text={t('Your refund is complete. {amount} goes back to your PayPal.', { amount: money(job.quote.totalMinor, job.quote.currency) })}/>{/if}
-    <section class="box paid" aria-label={t('What you paid')}>
-      <p class="secondary-text">{code === 'paid' ? t('Paid') : t('What you paid')}</p>
-      <p class="amount paid-amount">{money(job.quote.totalMinor, job.quote.currency)}</p>
-    </section>
+    <CompletedJobReport {job} workspaceId={app.workspaceId} viewer="customer" status={code}/>
     <JobReview {app} {actions} {job}/>
-    {#if job.evidence.length}
-      <details class="disclosure box history">
-        <summary>{t('Job history and photos')}</summary>
-        <EvidenceRecord {job} workspaceId={app.workspaceId} title={t('{name}’s completion record', { name: pro })} viewer="customer"/>
-      </details>
-    {/if}
   </div>
 {:else if code === 'dispute_review' && job.dispute}
   <div class="stack">
@@ -106,8 +98,6 @@
   .found { display: grid; gap: 8px; width: 100%; }
   .found-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px 0; }
   .found-row small { display: block; color: var(--sk-muted); font-size: 13px; }
-  .paid { padding: 20px 22px; }
-  .paid-amount { font-size: 26px; }
   .history { padding: 8px 22px 18px; }
   .report { display: grid; gap: 10px; padding: 20px 22px; }
 </style>

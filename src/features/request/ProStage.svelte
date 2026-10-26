@@ -4,6 +4,7 @@
   import EvidenceRecord from './EvidenceRecord.svelte';
   import AgreedLedger from './AgreedLedger.svelte';
   import JobReview from './JobReview.svelte';
+  import CompletedJobReport from './CompletedJobReport.svelte';
   import type { AppActions, AppState, Intake, WorkspaceState } from '../../lib/types';
   import type { RequestCode } from '../../lib/request-status';
   import { firstName } from '../../lib/status-ui';
@@ -100,7 +101,8 @@
   {#if code === 'dispute_review' && job.dispute}
     <section class="box intake" aria-labelledby="report-title"><h2 id="report-title" class="small-title">{t('{name}’s report', { name: customer })}</h2><p class="quote">{job.dispute.reason}</p></section>
   {/if}
-{:else if code === 'paid'}
+{:else if code === 'paid' || code === 'refund_pending' || code === 'refunded'}
+  <CompletedJobReport {job} workspaceId={app.workspaceId} viewer="professional" status={code}/>
   <JobReview {app} {actions} {job}/>
 {:else if code === 'cancelled' && workspace.cancellationReview?.reason}
   <section class="box intake"><h2 class="small-title">{t('{name}’s note', { name: customer })}</h2><p class="quote">{workspace.cancellationReview.reason}</p></section>

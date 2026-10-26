@@ -1,6 +1,19 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Job completion report": "Opleverrapport",
+  "Agreed work": "Afgesproken werk",
+  "Refund pending": "Terugbetaling in behandeling",
+  "Payment status": "Betaalstatus",
+  "Completion approved by": "Afronding goedgekeurd door",
+  "Payment release approved by": "Vrijgave van betaling goedgekeurd door",
+  "Customer’s assistant": "Assistent van de klant",
+  "PayPal payment reference": "PayPal-betalingskenmerk",
+  "PayPal refund reference": "PayPal-terugbetalingskenmerk",
+  "No completion documentation is recorded for this agreement.": "Voor deze afspraak is geen opleverdocumentatie vastgelegd.",
+  "Earlier completion documentation": "Eerdere opleverdocumentatie",
+  "1 document": "1 document",
+  "{count} documents": "{count} documenten",
   "Add clearer completion photos or work details": "Voeg duidelijkere opleverfoto’s of werkdetails toe",
   "You can check the saved note, or add more detail above.": "Je kunt de opgeslagen notitie laten controleren of hierboven meer details toevoegen.",
   "Automatic approval is paused while the professional improves the completion record.": "Automatische goedkeuring is gepauzeerd terwijl de vakpersoon de opleverdocumentatie aanvult.",
