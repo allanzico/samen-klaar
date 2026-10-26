@@ -86,7 +86,7 @@ The positive completion sequence needs relevant, consistent photos of the same s
 
 Record clean customer and professional browser sessions at a readable desktop size. Remove unrelated tabs, notifications and private autofill suggestions. Use restrained role labels and zooms, an English voice-over and subtitles. The video should identify the transaction as a sandbox demonstration without adding test-mode banners to the product. Preserve the raw takes locally for revisions. Deliver the first cut as a 1080p MP4 plus SRT captions and this script; review that cut before publishing.
 
-A short AI narration preview was generated with the existing Gemini configuration and saved locally under ignored `.deploy/demo-artifacts/voice-preview.wav`. Review its pace and name pronunciation before generating the complete narration. The first provider attempt failed temporarily and the later retry succeeded; no customer content was sent for voice generation.
+The requested narration uses an adult male English voice with a warm, clear, professional delivery. The selected preview voice is Gemini **Charon**; review its pace and name pronunciation before generating the complete narration. Audio and voice settings stay locally under ignored `.deploy/demo-artifacts/`. No customer content is sent for voice generation.
 
 ## Readiness gate
 
