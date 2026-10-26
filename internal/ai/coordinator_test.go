@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/allanzico/samen-klaar/internal/workflow"
 )
@@ -14,6 +15,53 @@ type modelFixture func(GenerationRequest) []byte
 
 func (f modelFixture) GenerateJSON(_ context.Context, request GenerationRequest) ([]byte, error) {
 	return f(request), nil
+}
+
+func TestEvidenceReviewBoundsVerboseTextWithoutDiscardingValidFindings(t *testing.T) {
+	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Repair the sink connection"}}}}
+	files := []workflow.EvidenceBlob{{ID: "generated", ContentType: "image/png", Data: generatedReviewPNG(t, 64, 64)}}
+	for _, coverage := range []string{"unclear", "documented"} {
+		t.Run(coverage, func(t *testing.T) {
+			output := map[string]any{"summary": strings.Repeat("De foto toont een aansluiting, maar de reparatie is niet duidelijk. ", 20), "limitations": strings.Repeat("Een foto kan vakmanschap of veiligheid niet bevestigen. ", 20), "coverage": []map[string]any{{"scopeItem": "work-1", "evidenceIds": []string{"generated"}, "coverage": coverage, "observation": strings.Repeat("Voeg een duidelijkere foto en een beschrijving van de uitgevoerde controle toe. ", 20)}}}
+			client := modelFixture(func(GenerationRequest) []byte { data, _ := json.Marshal(output); return data })
+			review, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files)
+			if err != nil {
+				t.Fatalf("verbose valid findings were discarded: %v", err)
+			}
+			for _, text := range []string{review.Summary, review.Limitations, review.Coverage[0].Observation} {
+				if !utf8.ValidString(text) || utf8.RuneCountInString(text) > 500 {
+					t.Fatal("display text is not bounded valid Unicode")
+				}
+			}
+			if utf8.RuneCountInString(review.Coverage[0].Observation) > 400 || review.Coverage[0].Coverage != coverage || review.Coverage[0].ScopeItem != "work-1" || review.Coverage[0].EvidenceIDs[0] != "generated" {
+				t.Fatal("bounding display text changed the evidence decision or references")
+			}
+			output["coverage"].([]map[string]any)[0]["scopeItem"] = "unknown"
+			if _, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files); err == nil {
+				t.Fatal("verbose output bypassed work-item validation")
+			}
+			finding := output["coverage"].([]map[string]any)[0]
+			finding["scopeItem"] = "work-1"
+			finding["evidenceIds"] = []string{"unknown-file"}
+			if _, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files); err == nil {
+				t.Fatal("verbose output bypassed file-reference validation")
+			}
+		})
+	}
+}
+
+func TestEvidenceReviewTextLimitsCountCharactersInsteadOfUTF8Bytes(t *testing.T) {
+	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Repair the sink connection"}}}}
+	files := []workflow.EvidenceBlob{{ID: "generated", ContentType: "image/png", Data: generatedReviewPNG(t, 32, 32)}}
+	summary, observation := strings.Repeat("é", 500), strings.Repeat("界", 400)
+	client := modelFixture(func(GenerationRequest) []byte {
+		data, _ := json.Marshal(map[string]any{"summary": summary, "limitations": "Photos cannot establish workmanship or safety.", "coverage": []map[string]any{{"scopeItem": "work-1", "evidenceIds": []string{"generated"}, "coverage": "unclear", "observation": observation}}})
+		return data
+	})
+	review, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files)
+	if err != nil || review.Summary != summary || review.Coverage[0].Observation != observation {
+		t.Fatalf("text within character limits was discarded or damaged: %v", err)
+	}
 }
 
 func TestEvidenceCoverageUsesWorkIDsAfterRepeatedPriceAdjustments(t *testing.T) {

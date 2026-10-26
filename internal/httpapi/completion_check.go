@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
+	coreai "github.com/allanzico/samen-klaar/internal/ai"
 	"github.com/allanzico/samen-klaar/internal/identity"
 	"github.com/allanzico/samen-klaar/internal/workflow"
 )
@@ -34,6 +36,7 @@ func (s *Server) submitCheckedCompletion(ctx context.Context, principal identity
 		return State{}, http.StatusConflict, err
 	}
 	if s.ai == nil || s.r2 == nil {
+		slog.Warn("Professional completion check failed", "code", "COMPLETION_CHECK_UNAVAILABLE", "stage", "configuration")
 		return State{}, http.StatusServiceUnavailable, errors.New("completion checking is unavailable; your draft has not been sent")
 	}
 	fingerprint := workflow.CompletionEvidenceFingerprint(job)
@@ -41,11 +44,24 @@ func (s *Server) submitCheckedCompletion(ctx context.Context, principal identity
 	if check == nil || check.EvidenceFingerprint != fingerprint {
 		files, loadErr := loadEvidenceReviewFiles(ctx, s.r2, job, nil)
 		if loadErr != nil {
+			slog.Warn("Professional completion check failed", "code", "COMPLETION_CHECK_UNAVAILABLE", "stage", "files", "status", loadErr.status)
 			return State{}, loadErr.status, errors.New("the completion photos could not be loaded; your draft has not been sent")
 		}
 		draft.ServiceAddress, draft.Location, draft.ServiceLocation = "", nil, nil
 		check, err = s.ai.ReviewEvidence(ctx, draft, files)
 		if err != nil || check == nil {
+			stage := "comparison"
+			switch {
+			case errors.Is(err, coreai.ErrEvidenceImage):
+				stage = "image"
+			case errors.Is(err, coreai.ErrEvidenceReviewInvalid), check == nil && err == nil:
+				stage = "response"
+			case errors.Is(err, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded):
+				stage = "timeout"
+			case errors.Is(err, coreai.ErrEvidenceProvider):
+				stage = "provider"
+			}
+			slog.Warn("Professional completion check failed", "code", "COMPLETION_CHECK_UNAVAILABLE", "stage", stage)
 			return State{}, http.StatusBadGateway, errors.New("completion checking could not finish; your draft has not been sent")
 		}
 		workflow.BindEvidenceReview(job, check)

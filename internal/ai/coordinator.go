@@ -117,14 +117,14 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 		Attachments:     attachments,
 		MaxOutputTokens: 4096,
 		Schema: objectSchema(map[string]any{
-			"summary": map[string]any{"type": "string", "description": "A concise summary, at most 500 UTF-8 bytes."},
+			"summary": map[string]any{"type": "string", "description": "A concise summary, at most 500 characters."},
 			"coverage": map[string]any{"type": "array", "items": objectSchema(map[string]any{
 				"scopeItem":   map[string]any{"type": "string", "enum": scopeIDs},
 				"evidenceIds": map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": fileIDs}},
 				"coverage":    map[string]any{"type": "string", "enum": []string{"documented", "not_shown", "unclear"}},
-				"observation": map[string]any{"type": "string", "description": "A concise observation, at most 400 UTF-8 bytes."},
+				"observation": map[string]any{"type": "string", "description": "A concise observation, at most 400 characters."},
 			}, "scopeItem", "evidenceIds", "coverage", "observation")},
-			"limitations": map[string]any{"type": "string", "description": "Concise limitations, at most 500 UTF-8 bytes."},
+			"limitations": map[string]any{"type": "string", "description": "Concise limitations, at most 500 characters."},
 		}, "summary", "coverage", "limitations"),
 	}
 	data, err := c.client.GenerateJSON(ctx, request)
@@ -135,7 +135,11 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 	if err := json.Unmarshal(data, &review); err != nil {
 		return nil, ErrEvidenceReviewInvalid
 	}
-	if strings.TrimSpace(review.Summary) == "" || len(review.Summary) > 500 || len(review.Limitations) > 500 || len(review.Coverage) != len(scopeItems) {
+	// Length is a presentation constraint, not a reason to discard otherwise
+	// valid evidence findings. Keep Unicode intact and validate decisions/IDs below.
+	review.Summary = boundedReviewText(review.Summary, 500)
+	review.Limitations = boundedReviewText(review.Limitations, 500)
+	if strings.TrimSpace(review.Summary) == "" || len(review.Coverage) != len(scopeItems) {
 		return nil, ErrEvidenceReviewInvalid
 	}
 	allowedFiles := map[string]bool{}
@@ -147,7 +151,8 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 		finding := &review.Coverage[i]
 		finding.Coverage = canonicalEnum(finding.Coverage, "documented", "not_shown", "unclear")
 		itemKey := strings.TrimSpace(finding.ScopeItem)
-		if !allowedItems[itemKey] || seenItems[itemKey] || len(finding.Observation) > 400 || finding.Coverage != "documented" && finding.Coverage != "not_shown" && finding.Coverage != "unclear" {
+		finding.Observation = boundedReviewText(finding.Observation, 400)
+		if !allowedItems[itemKey] || seenItems[itemKey] || finding.Coverage != "documented" && finding.Coverage != "not_shown" && finding.Coverage != "unclear" {
 			return nil, ErrEvidenceReviewInvalid
 		}
 		seenItems[itemKey] = true
@@ -162,6 +167,14 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 	review.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
 	review.Limitations = strings.TrimSpace(review.Limitations)
 	return &review, nil
+}
+
+func boundedReviewText(value string, limit int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit-1]) + "…"
 }
 
 func canonicalEnum(value string, choices ...string) string {

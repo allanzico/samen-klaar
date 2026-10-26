@@ -1,15 +1,71 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	coreai "github.com/allanzico/samen-klaar/internal/ai"
 	"github.com/allanzico/samen-klaar/internal/identity"
 	"github.com/allanzico/samen-klaar/internal/workflow"
 )
+
+type completionModelFixture func(coreai.GenerationRequest) []byte
+
+func (f completionModelFixture) GenerateJSON(_ context.Context, request coreai.GenerationRequest) ([]byte, error) {
+	return f(request), nil
+}
+
+func TestProfessionalCompletionAcceptsVerboseValidProviderFeedback(t *testing.T) {
+	var imageBytes bytes.Buffer
+	if err := png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 32, 32))); err != nil {
+		t.Fatal(err)
+	}
+	model := completionModelFixture(func(coreai.GenerationRequest) []byte {
+		data, _ := json.Marshal(map[string]any{"summary": strings.Repeat("De foto documenteert de reparatie nog niet duidelijk genoeg. ", 20), "limitations": "A photo cannot establish workmanship or safety.", "coverage": []map[string]any{{"scopeItem": "work-1", "coverage": "unclear", "evidenceIds": []string{"generated"}, "observation": strings.Repeat("Beschrijf de uitgevoerde reparatie en controles in de werknotitie. ", 20)}}})
+		return data
+	})
+	store := workflow.NewMemoryStore(professionalCompletionDraft())
+	server := New(Dependencies{Store: store, AI: coreai.New("fixture", "fixture", model), Evidence: evidenceStorageFixture{"generated": imageBytes.Bytes()}})
+	state, status, err := server.runAction(context.Background(), professionalPrincipal(), Action{Action: "submit-evidence", Actor: "professional"})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("valid correction feedback became an unavailable error: %d %v", status, err)
+	}
+	if state.Job.CompletionCheck == nil || state.Job.EvidenceSubmitted || state.Job.CompletionApproved || state.Job.Paid {
+		t.Fatal("unclear findings must stay as professional correction feedback")
+	}
+}
+
+func TestProfessionalCompletionFailureLogsOnlySafeStage(t *testing.T) {
+	for _, tc := range []struct {
+		cause error
+		stage string
+	}{{coreai.ErrEvidenceProvider, "provider"}, {coreai.ErrEvidenceReviewInvalid, "response"}, {coreai.ErrEvidenceImage, "image"}} {
+		t.Run(tc.stage, func(t *testing.T) {
+			var output bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+			defer slog.SetDefault(previous)
+			ai := &failedReviewFixture{failure: errors.Join(tc.cause, errors.New("private-provider-diagnostic"))}
+			server := New(Dependencies{Store: workflow.NewMemoryStore(professionalCompletionDraft()), AI: ai, Evidence: evidenceStorageFixture{"generated": []byte("synthetic photo")}})
+			_, status, err := server.runAction(context.Background(), professionalPrincipal(), Action{Action: "submit-evidence", Actor: "professional"})
+			if err == nil || status != http.StatusBadGateway || !strings.Contains(output.String(), "stage="+tc.stage) {
+				t.Fatalf("missing safe failure stage: %d %v", status, err)
+			}
+			if strings.Contains(output.String(), "private-provider-diagnostic") || strings.Contains(output.String(), "Public test address") || strings.Contains(err.Error(), "private-provider-diagnostic") {
+				t.Fatal("diagnostics exposed provider or private job content")
+			}
+		})
+	}
+}
 
 type completionCheckAI struct {
 	intakeStub

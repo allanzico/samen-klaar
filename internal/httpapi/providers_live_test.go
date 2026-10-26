@@ -51,7 +51,10 @@ func TestLiveProviders(t *testing.T) {
 		}
 		job := workflow.Job{Description: "Repair a leaking connection under the sink", Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Repair leaking sink connection"}}}}
 		review, err := ai.ReviewEvidence(ctx, job, []workflow.EvidenceBlob{{ID: "generated-test-image", ContentType: "image/png", Label: "Generated test image, not a work photograph", Data: picture.Bytes()}})
-		if err != nil || review == nil || len(review.Coverage) != 1 {
+		if err != nil {
+			t.Fatalf("Configured AI evidence review failed: %v", err)
+		}
+		if review == nil || len(review.Coverage) != 1 {
 			t.Fatal("Configured AI evidence review failed validation")
 		}
 		t.Log("Configured AI returned a validated evidence-coverage review for generated test content")
