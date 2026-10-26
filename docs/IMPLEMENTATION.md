@@ -175,7 +175,11 @@ New bookings require an explicit automatic or manual choice. Automatic permissio
 
 Migration 030 records versioned consent snapshots. Review fingerprints and capture-claim validation prevent stale uploads, changed terms, revoked permission, paused/inactive customers, disputes or expired holds from starting a new automatic capture. Synthetic persisted journeys cover automatic and manual modes, unclear evidence, revocation during review, expired authorization and a lost capture response. These tests do not prove external provider, wallet or production settlement behavior.
 
-Validation for this slice: the full Go suite with disposable PostgreSQL, frontend test scripts, Svelte diagnostics, vet and production builds passed. The booking UI fixture compiles; interactive desktop/mobile inspection remains pending because Work browser access was disabled. No external provider calls or funds movements were made for these new journeys.
+Validation for this slice: the full Go suite with disposable PostgreSQL, frontend test scripts, Svelte diagnostics, vet and production builds passed. Native Chrome inspection on 26 October covers the synthetic desktop and 390px Dutch booking/review layouts. No external provider calls or funds movements were made for these new journeys.
+
+Completion review now projects the current server-validated checking, personal-review or release state into the customer action card. Pending automatic checks do not ask for manual approval. Unclear evidence explains the stop prominently and retains the findings even when a new comparison is unavailable. Choosing personal approval first revokes automatic release, then approves completion; payment remains a separate customer action. Regression tests exercise pending and failed checks, unclear evidence after reload, manual takeover, documented release and expired holds.
+
+Price offers explain before submission that a lower offer can require the professional personally. A public wait flag identifies that current proposal without exposing the professional’s private dialog or price limit; replacement and settled proposals clear the flag. The existing bounded negotiation remains unchanged. Review cards have spacing below them, and sticky action wrappers inherit the page underneath without a gray background or shadow.
 
 ## Intake recovery and reversible professional review — 25 October 2026
 

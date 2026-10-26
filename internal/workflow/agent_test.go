@@ -729,6 +729,14 @@ func TestProfessionalAssistantAsksAboutAPriceBelowTheFloor(t *testing.T) {
 	if d.Kind != AgentAct || d.Action.Action != "agent-say" || !contains(d.Action.Value, "onder je laagste prijs van € 81,00") {
 		t.Fatalf("expected a Dutch question about the price, got %+v %q", d, d.Action.Value)
 	}
+	d.Action.Actor, d.Action.ByAgent = "professional", true
+	if err := Apply(&c.state, *d.Action); err != nil {
+		t.Fatal(err)
+	}
+	view := ConversationForRole(c.state, "customer")
+	if !view.Job.PriceProposal.ProfessionalReviewRequired || view.ProDialog != nil {
+		t.Fatal("the customer must see a personal-review wait status without the professional's private price question")
+	}
 }
 
 func TestReplyIntentSanitizeKeepsAModelInsideTheConversation(t *testing.T) {

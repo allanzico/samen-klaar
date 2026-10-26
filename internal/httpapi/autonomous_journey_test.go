@@ -233,6 +233,9 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if scenario == "unclear" && restored.CompletionAutomation != "needs_review" {
+				t.Fatalf("reload hid the reason automatic approval stopped: %q", restored.CompletionAutomation)
+			}
 			transport.mu.Lock()
 			captures, authorizes := transport.captures, transport.authorizes
 			transport.mu.Unlock()

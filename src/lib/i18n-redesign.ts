@@ -1,6 +1,23 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Waiting for {name} to review your offer": "Wachten totdat {name} je bod beoordeelt",
+  "{name} needs to review this offer personally. Their assistant cannot accept it automatically. The price stays {amount} until they reply.": "{name} moet dit bod zelf beoordelen. De assistent kan het niet automatisch accepteren. De prijs blijft {amount} totdat de vakpersoon antwoordt.",
+  "Their assistant may accept or counter within its limits. A lower offer may need {name} to reply personally. The price stays {amount} until accepted.": "De assistent kan binnen de ingestelde grenzen accepteren of een tegenbod doen. Bij een lager bod moet {name} mogelijk zelf reageren. De prijs blijft {amount} totdat het bod is geaccepteerd.",
+  "Their assistant can negotiate within its limits. A lower offer may need the professional’s personal approval, so you may have to wait for their reply.": "De assistent kan binnen de ingestelde grenzen onderhandelen. Een lager bod moet de vakpersoon mogelijk zelf goedkeuren. Je moet dan wachten op een persoonlijk antwoord.",
+  "Your assistant needs your review": "Je assistent heeft jouw beoordeling nodig",
+  "Your assistant couldn’t finish the automatic check. No payment has been released. Review the completion record yourself to continue.": "Je assistent kon de automatische controle niet afronden. Er is geen betaling vrijgegeven. Beoordeel zelf de opleverdocumentatie om verder te gaan.",
+  "The completion photos or note leave agreed work unclear or missing. Your assistant stopped without approving the work or releasing payment. Read its findings below, then review the work yourself.": "De opleverfoto’s of notitie laten afgesproken werk onduidelijk of niet zien. Je assistent is gestopt zonder het werk goed te keuren of de betaling vrij te geven. Lees hieronder de bevindingen en beoordeel het werk zelf.",
+  "Review and approve yourself": "Zelf beoordelen en goedkeuren",
+  "Approving the work yourself does not release payment. You confirm payment separately.": "Zelf het werk goedkeuren geeft de betaling niet vrij. Je bevestigt de betaling apart.",
+  "Automatic review": "Automatische controle",
+  "Your assistant is checking the completion record": "Je assistent controleert de opleverdocumentatie",
+  "It checks the photos and note against the agreed work. Documented work can be approved and paid from your existing PayPal hold. Anything unclear comes back to you.": "Je assistent vergelijkt de foto’s en notitie met het afgesproken werk. Gedocumenteerd werk kan worden goedgekeurd en betaald uit je bestaande PayPal-reservering. Bij onduidelijkheid beslis jij.",
+  "Review myself instead": "Liever zelf beoordelen",
+  "Automatic payment": "Automatische betaling",
+  "Your assistant is releasing the authorized payment": "Je assistent geeft de geautoriseerde betaling vrij",
+  "The completion record passed the automatic check. Your existing PayPal hold is being used; no new payment approval is needed.": "De opleverdocumentatie heeft de automatische controle doorstaan. Je bestaande PayPal-reservering wordt gebruikt. Opnieuw toestemming geven voor de betaling is niet nodig.",
+  "Automatic review stopped for your decision. No payment has been released.": "De automatische controle is gestopt zodat jij kunt beslissen. Er is geen betaling vrijgegeven.",
   "Back to price and options": "Terug naar prijs en opties",
   "Review the price and payment options": "Bekijk de prijs en betaalopties",
   "Take your time. Make an offer, or continue when you are ready to plan the visit. No visit is booked.": "Neem de tijd. Doe een bod of ga door wanneer je klaar bent om het bezoek te plannen. Er is geen bezoek geboekt.",

@@ -104,3 +104,64 @@ test('price and autonomy review stays manual until Continue, without hiding late
  w.job.appointment={slotId:'booked'};
  assert.equal(requestInteraction(w,'customer').address,true);
 });
+
+globalThis.$state = (value) => value;
+const stepBundle = await build({entryPoints:['src/lib/next-steps.ts'],bundle:true,platform:'node',format:'cjs',write:false});
+const stepModule = {exports:{}};
+new Function('module','exports',stepBundle.outputFiles[0].text)(stepModule,stepModule.exports);
+const {customerStep} = stepModule.exports;
+const completionContext = () => ({
+  app:{paypalStatus:'authorized',providerConfig:{paymentsAvailable:true}}, actions:{}, code:'review',
+  workspace:{workspaceId:'fixture',completionAutomation:'checking',availableSlots:[],job:{
+    id:'job',professional:'Test professional',professionalAccountId:'pro',professionalProfileId:'service',
+    scopeVersion:1,detailAdded:true,quote:{totalMinor:12500,currency:'EUR'},
+    bookingAutonomy:{mode:'automatic',decidedAt:'2026-10-26T10:00:00Z',scopeVersion:1,amountMinor:12500,currency:'EUR',professionalAccountId:'pro',professionalProfileId:'service'}
+  }}
+});
+test('automatic completion checking does not ask the customer to approve the work',()=>{
+  const view=customerStep(completionContext());
+  assert.equal(view.kind,'waiting');
+  assert.match(view.title,/assistant.*checking/i);
+  assert.equal(view.primary,undefined);
+});
+test('unclear automatic review explains the fallback before offering personal approval',()=>{
+  const ctx=completionContext();ctx.workspace.completionAutomation='needs_review';
+  const view=customerStep(ctx);
+  assert.match(view.title,/assistant needs your review/i);
+  assert.match(view.text,/unclear|missing/i);
+  assert.match(view.primary.label,/yourself/i);
+});
+test('a failed automated check exposes a manual fallback instead of waiting forever',()=>{
+  const ctx=completionContext();ctx.automationEscalation='agent_blocked';
+  const view=customerStep(ctx);
+  assert.equal(view.kind,'your-turn');
+  assert.match(view.text,/couldn.t finish/i);
+});
+test('ordinary manual completion keeps the existing approval action',()=>{
+  const ctx=completionContext();ctx.workspace.completionAutomation='';ctx.workspace.job.bookingAutonomy.mode='manual';
+  assert.equal(customerStep(ctx).primary.label,'Approve the work');
+});
+test('personal fallback revokes automatic payment authority before approving completion',async()=>{
+  const ctx=completionContext();ctx.workspace.completionAutomation='needs_review';
+  const calls=[];ctx.actions.act=async(...args)=>{calls.push(args);return true};
+  await customerStep(ctx).primary.run();
+  assert.deepEqual(calls,[['set-booking-autonomy','manual'],['approve-completion']]);
+  calls.length=0;ctx.actions.act=async(...args)=>{calls.push(args);return false};
+  await customerStep(ctx).primary.run();
+  assert.deepEqual(calls,[['set-booking-autonomy','manual']]);
+});
+test('documented automatic completion waits for payment release without a second payment button',()=>{
+  const ctx=completionContext();ctx.code='payment';ctx.workspace.completionAutomation='releasing';ctx.workspace.job.completionApprovedByAgent=true;
+  assert.equal(customerStep(ctx).kind,'waiting');
+  assert.equal(customerStep(ctx).primary,undefined);
+  ctx.app.paypalStatus='expired';
+  assert.equal(customerStep(ctx).kind,'your-turn');
+  assert.match(customerStep(ctx).banner.title,/expired/i);
+});
+test('a below-limit offer says when it is waiting for the professional personally',()=>{
+  const ctx=completionContext();ctx.code='waiting_price';
+  ctx.workspace.job.priceProposal={id:'offer',status:'pending',actor:'customer',amountMinor:9500,professionalReviewRequired:true};
+  const view=customerStep(ctx);
+  assert.match(view.text,/personally/i);
+  assert.match(view.title,/review your offer/i);
+});

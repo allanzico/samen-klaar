@@ -259,6 +259,9 @@ type PriceProposal struct {
 	AmountMinor  int64  `json:"amountMinor"`
 	Note         string `json:"note"`
 	ScopeVersion int    `json:"scopeVersion"`
+
+	// Display-only projection; never exposes the professional's private price floor or dialog.
+	ProfessionalReviewRequired bool `json:"professionalReviewRequired,omitempty"`
 }
 
 type DateProposal struct {
@@ -344,6 +347,9 @@ type State struct {
 	AgentDialog *AgentDialog `json:"agentDialog,omitempty"`
 	// ProDialog is the professional's private conversation with their assistant.
 	ProDialog *AgentDialog `json:"proDialog,omitempty"`
+
+	// Recomputed for the customer from the current completion record; grants no authority.
+	CompletionAutomation string `json:"completionAutomation,omitempty"`
 }
 
 type Action struct {

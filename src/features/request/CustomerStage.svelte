@@ -30,9 +30,9 @@
   <div class="stack">
     <EvidenceRecord {job} workspaceId={app.workspaceId} title={t('{name}’s completion record', { name: pro })} viewer="customer"/>
     <AgreedLedger {job}/>
-    {#if app.providerConfig?.guidedReviewAvailable && files.length}
+    {#if job.evidenceReview || app.providerConfig?.guidedReviewAvailable && files.length}
       <section class="box eyes" aria-labelledby="eyes-title">
-        <h2 id="eyes-title" class="small-title">{t('Want a second pair of eyes?')}</h2>
+        <h2 id="eyes-title" class="small-title">{job.evidenceReview ? t('What the assistant found') : t('Want a second pair of eyes?')}</h2>
         <p class="secondary-text">{t('The assistant compares the photos with what you agreed and points out gaps. It can’t confirm workmanship or safety.')}</p>
         {#if files.length > 1}
           <fieldset class="pick"><legend class="field-label">{t('Files to compare (up to five)')}</legend>
@@ -42,10 +42,9 @@
             <p class="helper">{t('Leave all unchecked to compare the newest files.')}</p>
           </fieldset>
         {/if}
-        <button type="button" class="btn btn-outline btn-sm" disabled={app.pending} aria-busy={app.reviewingEvidence} onclick={() => actions.reviewEvidence(selected)}>{app.reviewingEvidence ? t('Comparing photos…') : job.evidenceReview ? t('Check again') : t('Compare photos')}</button>
+        {#if app.providerConfig?.guidedReviewAvailable && files.length}<button type="button" class="btn btn-outline btn-sm" disabled={app.pending} aria-busy={app.reviewingEvidence} onclick={() => actions.reviewEvidence(selected)}>{app.reviewingEvidence ? t('Comparing photos…') : job.evidenceReview ? t('Check again') : t('Compare photos')}</button>{/if}
         {#if job.evidenceReview}
           <div class="found">
-            <p class="eyebrow">{t('What the assistant found')}</p>
             <p>{job.evidenceReview.summary}</p>
             <ul class="rows">
               {#each job.evidenceReview.coverage as item (item.scopeItem)}

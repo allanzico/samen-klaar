@@ -73,7 +73,7 @@ export type UserNotification = { id: number; eventType: string; workspaceId: str
 
 export type Appointment = { slotId: string; startsAt: string; timezone: string; startUtc: string; endUtc: string };
 export type NegotiationInput = { policyKind?: string; policyVersion?: string; workItemIds?: string[]; priceAmountMinor?: number; proposedAppointment?: Partial<Appointment>; proposalId?: string; choiceId?: string };
-export type PriceProposal = { id: string; status: string; actor: string; amountMinor: number; note: string; scopeVersion: number };
+export type PriceProposal = { id: string; status: string; actor: string; amountMinor: number; note: string; scopeVersion: number; professionalReviewRequired?: boolean };
 export type DateProposal = { id: string; status: string; actor: string; note: string; appointment: Appointment };
 export type BookingAutonomy = { mode: 'automatic' | 'manual'; version: number; scopeVersion: number; amountMinor: number; currency: string; professionalAccountId: string; professionalProfileId: string; decidedAt: string };
 export type Job = {
@@ -166,6 +166,7 @@ export type RequestPhoto = { assetId: string; contentType: string; label: string
 export type AgentChoice = { id: string; label: string };
 export type AgentDialog = { rejectedDates?: string[]; stage?: string; awaiting: boolean; asked?: number; pending?: string; pendingId?: string; choices?: AgentChoice[] };
 export type WorkspaceState = {
+  completionAutomation?: 'checking' | 'needs_review' | 'releasing';
   agentDialog?: AgentDialog;
   proDialog?: AgentDialog;
   requestPhotos?: RequestPhoto[];

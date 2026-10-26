@@ -113,6 +113,7 @@
           <textarea id="proposal-note" class="textarea" rows="2" required minlength="3" maxlength="500" bind:value={priceNote} disabled={app.pending} placeholder={t('Explain your offer.')}></textarea>
         </div>
         <p id="proposal-help" class="helper">{t('{name} must accept before the price changes.', { name: recipient || t('The other person') })}</p>
+        {#if app.role === 'customer'}<p class="helper">{t('Their assistant can negotiate within its limits. A lower offer may need the professional’s personal approval, so you may have to wait for their reply.')}</p>{/if}
       {:else}
         <div class="visit-grid">
           <div class="field"><label for="proposal-start">{t('Date')}</label><input id="proposal-start" class="input" type="date" min={today} bind:value={date} onchange={updateVisit} required disabled={app.pending} aria-invalid={error ? 'true' : undefined} aria-describedby="proposal-help proposal-error"/></div>

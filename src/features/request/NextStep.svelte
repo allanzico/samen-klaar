@@ -64,7 +64,7 @@
 <style>
   .next-step { display: grid; gap: 14px; padding: 22px; border-radius: var(--sk-r-box); }
   .next-step:not(.turn-panel) { background: var(--sk-surface); border: 1px solid var(--sk-line); }
-  .actions-only { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: var(--sk-surface); border: 1px solid var(--sk-turn-line); box-shadow: var(--sk-shadow-pop); padding: 10px 14px; }
+  .actions-only { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: var(--sk-surface); border: 1px solid var(--sk-turn-line); padding: 10px 14px; }
   .actions-only .actions { display: flex; align-items: center; flex-wrap: wrap; flex: 1; gap: 8px 14px; }
   .actions-only .quiet { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin: 0; }
   .actions-only .reason { margin-top: 4px; font-size: 12px; max-width: 280px; }

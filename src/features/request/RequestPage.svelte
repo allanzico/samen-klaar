@@ -10,6 +10,7 @@
   import BookingAutonomyChoice from './BookingAutonomyChoice.svelte';
   import PrebookingNavigation from './PrebookingNavigation.svelte';
   import { automaticReleaseOn } from '../../lib/booking-autonomy';
+  import { agentUi } from '../../lib/agent.svelte';
   import AfterThis from './AfterThis.svelte';
   import Thread from './Thread.svelte';
 import EvidenceRequirements from './EvidenceRequirements.svelte';
@@ -81,9 +82,11 @@ import RelatedJobs from './RelatedJobs.svelte';
   });
 
   const slot = $derived(effectiveSlot(workspace.availableSlots, !(job.location && !job.serviceAddress)));
+  const automationEscalation = $derived(agentUi.escalations.find((item)=>item.workspaceId===workspace.workspaceId && item.role==='customer')?.code);
+  const automationStopped = $derived(workspace.completionAutomation==='needs_review' || ['agent_blocked','autonomy_review_needed'].includes(automationEscalation ?? ''));
   const view = $derived(pro
     ? proStep({ app, actions, workspace, code, noteReady: work.note.trim().length >= 12, saveNote, openExtra: () => { requestUi.extraWork = true; } })
-    : customerStep({ app, actions, workspace, code, timing: requestUi.timing, slot, openReport: () => { requestUi.reporting = true; }, openPolicy: () => { requestUi.policy = true; } }));
+    : customerStep({ app, actions, workspace, code, timing: requestUi.timing, slot, automationEscalation, openReport: () => { requestUi.reporting = true; }, openPolicy: () => { requestUi.policy = true; } }));
   const timingChoice = $derived(!pro && showTimingChoice(app, workspace, code));
 
   const customerPages = ['review_professional', 'quote', 'booking', 'choose_visit', 'review', 'payment', 'paid', 'refunded', 'refund_pending', 'dispute_review', 'cancellation_review'];
@@ -167,7 +170,7 @@ import RelatedJobs from './RelatedJobs.svelte';
     {#if ui.step}<div class="request-progress"><div class="progress-web"><Stepper step={ui.step}/></div><div class="progress-phone"><Stepper step={ui.step} variant="strip"/></div></div>{/if}
 
       {#if !pro && job.appointment && job.bookingAutonomy && !job.paid}
-        <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
+        <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? automationStopped ? t('Automatic review stopped for your decision. No payment has been released.') : t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
         {#if job.bookingAutonomy.mode==='automatic'}<button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={() => actions.act('set-booking-autonomy','manual')}>{t('Turn off automatic review and release')}</button>{/if}</div>
       {/if}
       <div class="content-pad"><PrebookingNavigation {app} {actions} {workspace}/></div>
@@ -221,11 +224,12 @@ import RelatedJobs from './RelatedJobs.svelte';
 <style>
   .request-page { --sk-request-progress-h: 0px; display: flex; align-items: flex-start; min-height: calc(100svh - var(--sk-topbar-h)); }
   .request-page.with-progress { --sk-request-progress-h: 68px; }
-  .request-progress { position: sticky; top: var(--sk-topbar-h); z-index: 25; height: var(--sk-request-progress-h); box-sizing: border-box; padding: 12px 40px; background: var(--sk-surface); border-bottom: 1px solid var(--sk-line); }
+  .request-progress { position: sticky; top: var(--sk-topbar-h); z-index: 25; height: var(--sk-request-progress-h); box-sizing: border-box; padding: 12px 40px; background: inherit; border-bottom: 1px solid var(--sk-line); }
   .progress-phone { display: none; }
-  .step-context { padding-top: 12px; }
+  .content-pad.step-context { padding-top: 12px; padding-bottom: 20px; }
   .rail-col { position: sticky; top: var(--sk-topbar-h); display: flex; flex: 0 0 248px; height: calc(100svh - var(--sk-topbar-h)); }
   .main-col { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: calc(100svh - var(--sk-topbar-h)); background: var(--sk-ground); }
+  .main-col.page { background: var(--sk-surface); }
   .main-col.page .web-head, .main-col.page .conversation-flow { background: var(--sk-surface); }
   .aside-col { position: sticky; top: var(--sk-topbar-h); display: flex; flex-direction: column; gap: 22px; flex: 0 1 320px; min-width: 280px; max-height: calc(100svh - var(--sk-topbar-h)); padding: 24px; overflow-y: auto; background: var(--sk-surface); border-left: 1px solid var(--sk-line); }
   .main-col.page ~ .aside-col { background: var(--sk-ground); border-left: 0; }
@@ -244,7 +248,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   .content { display: grid; gap: 24px; align-content: start; padding-top: 24px; padding-bottom: 28px; }
   .main-col.page .content > :global(*) { max-width: 820px; }
   .dock-step { padding-top: 16px; }
-  .floating { position: sticky; top: calc(var(--sk-topbar-h) + var(--sk-request-progress-h)); z-index: 24; padding-top: 12px; padding-bottom: 12px; background: var(--sk-ground); }
+  .content-pad.floating { position: sticky; top: calc(var(--sk-topbar-h) + var(--sk-request-progress-h)); z-index: 24; padding-top: 12px; padding-bottom: 12px; background: transparent; }
   .ask-slot { padding-top: 16px; }
   .ask-slot:empty { display: none; }
   .replying { display: flex; align-items: center; gap: 10px; max-width: 820px; margin: 0 auto; padding: 16px 0; color: var(--sk-muted); }
@@ -290,5 +294,6 @@ import RelatedJobs from './RelatedJobs.svelte';
     .content { gap: 18px; padding-top: 16px; }
     .composer-row { padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); border-top: 0.5px solid var(--sk-line); }
     .main-col.page .web-head, .main-col.page .conversation-flow { background: var(--sk-ground); }
+    .main-col.page { background: var(--sk-ground); }
   }
 </style>

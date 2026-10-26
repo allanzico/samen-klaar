@@ -22,6 +22,7 @@ const CAPTURE_UNCERTAIN = ['capture_uncertain', 'authorization_uncertain', 'orde
 export type CustomerContext = {
   app: AppState; actions: AppActions; workspace: WorkspaceState; code: RequestCode;
   timing: PaymentTiming; slot?: Appointment; openReport: () => void; openPolicy: () => void;
+  automationEscalation?: string;
 };
 
 export function showTimingChoice(app: AppState, workspace: WorkspaceState, code: RequestCode): boolean {
@@ -118,8 +119,10 @@ export function customerStep(ctx: CustomerContext): StepView | null {
     case 'waiting_price': {
       const offer = job.priceProposal!;
       return {
-        kind: 'waiting', tag: waitingTag, title: t('Waiting for {name}', { name: pro }), amount: money(offer.amountMinor, job.quote.currency),
-        text: t('The price stays {amount} until {name} accepts.', { amount: total, name: pro }),
+        kind: 'waiting', tag: waitingTag, title: t('Waiting for {name} to review your offer', { name: pro }), amount: money(offer.amountMinor, job.quote.currency),
+        text: offer.professionalReviewRequired
+          ? t('{name} needs to review this offer personally. Their assistant cannot accept it automatically. The price stays {amount} until they reply.', { name: pro, amount: total })
+          : t('Their assistant may accept or counter within its limits. A lower offer may need {name} to reply personally. The price stays {amount} until accepted.', { name: pro, amount: total }),
         primary: job.quoteApproved ? undefined : { label: t('Book for {amount}', { amount: total }), disabled: true, reason: t('Waiting for {name} to answer your {amount} offer', { name: pro, amount: money(offer.amountMinor, job.quote.currency) }) },
         quiet: [{ label: t('Change my offer'), run: () => actions.openProposal('price') }, { label: t('Withdraw offer'), run: () => actions.act('withdraw-price', '', undefined, undefined, { proposalId: offer.id }) }]
       };
@@ -177,6 +180,23 @@ export function customerStep(ctx: CustomerContext): StepView | null {
       };
     }
     case 'review': {
+      if (automaticReleaseOn(job) && workspace.completionAutomation) {
+        const blocked = ['agent_blocked', 'autonomy_review_needed'].includes(ctx.automationEscalation ?? '');
+        if (workspace.completionAutomation === 'needs_review' || blocked) return {
+          kind: 'your-turn', tag: yourTurn, title: t('Your assistant needs your review'),
+          text: blocked && workspace.completionAutomation !== 'needs_review'
+            ? t('Your assistant couldn’t finish the automatic check. No payment has been released. Review the completion record yourself to continue.')
+            : t('The completion photos or note leave agreed work unclear or missing. Your assistant stopped without approving the work or releasing payment. Read its findings below, then review the work yourself.'),
+          primary: { label: t('Review and approve yourself'), run: async () => { if (await actions.act('set-booking-autonomy','manual')) await actions.act('approve-completion'); } },
+          secondary: { label: t('Something’s not right'), run: ctx.openReport },
+          helper: t('Approving the work yourself does not release payment. You confirm payment separately.')
+        };
+        return {
+          kind: 'waiting', tag: {variant:'pending',label:t('Automatic review')}, title: t('Your assistant is checking the completion record'),
+          text: t('It checks the photos and note against the agreed work. Documented work can be approved and paid from your existing PayPal hold. Anything unclear comes back to you.'),
+          secondary: {label:t('Review myself instead'), run:()=>actions.act('set-booking-autonomy','manual')}
+        };
+      }
       if (!job.detailAdded) {
         return job.detailsRequested
           ? { kind: 'waiting', tag: { variant: 'waiting', label: t('Requested') }, title: t('Waiting for {name} to add the work note', { name: pro }), primary: { label: t('Approve the work'), disabled: true, reason: t('Available once the work note is added') } }
@@ -192,6 +212,11 @@ export function customerStep(ctx: CustomerContext): StepView | null {
     case 'payment': {
       const expired = app.paypalStatus === 'expired';
       const banner = expired ? { kind: 'warn' as const, title: t('Your PayPal hold expired'), text: t('Nothing was charged. Approve a new hold for the same amount and professional to pay.') } : undefined;
+      if (automaticReleaseOn(job) && job.completionApprovedByAgent && workspace.completionAutomation === 'releasing' && !expired && !['agent_blocked','autonomy_review_needed'].includes(ctx.automationEscalation ?? '')) return {
+        kind:'waiting',tag:{variant:'pending',label:t('Automatic payment')},title:t('Your assistant is releasing the authorized payment'),amount:total,
+        text:t('The completion record passed the automatic check. Your existing PayPal hold is being used; no new payment approval is needed.'),
+        secondary:{label:t('Check payment status'),run:()=>actions.reconcilePayPal()}
+      };
       if (!app.providerConfig?.paymentsAvailable) {
         return job.paymentApprovedVersion !== job.scopeVersion
           ? { kind: 'your-turn', tag: yourTurn, title: t('Pay {name}', { name: pro }), amount: total, primary: { label: t('Approve {amount}', { amount: total }), run: () => actions.act('approve-payment') } }
