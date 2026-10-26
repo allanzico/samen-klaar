@@ -11,6 +11,7 @@
   import { initials } from '../../lib/trade';
   import { effectiveSlot, requestUi } from '../../lib/request-ui.svelte';
   import { t } from '../../lib/i18n.svelte';
+  import { reviewingPlan } from '../../lib/prebooking';
 
   // C01–C03 and C14: the plan card, then "To book, confirm three things" (price, address, time).
   let { app, actions, workspace, code, reviewOnly = false }: { app: AppState; actions: AppActions; workspace: WorkspaceState; code: RequestCode; reviewOnly?: boolean } = $props();
@@ -19,7 +20,7 @@
   const slots = $derived(workspace.availableSlots);
   const needsAddress = $derived(!!job.location && !job.serviceAddress);
   const slot = $derived(effectiveSlot(slots, !needsAddress));
-  const planPage = $derived(code === 'quote' || reviewOnly);
+  const planPage = $derived(code === 'quote' || reviewOnly || reviewingPlan(workspace));
   const assessment = $derived(job.intakeRoute === 'assessment');
 
   let address = $state('');
@@ -84,7 +85,7 @@
       </details>
     </section>
 
-    {#if !reviewOnly}<section class="box checklist" aria-labelledby="checklist-title">
+    {#if !reviewOnly && !reviewingPlan(workspace)}<section class="box checklist" aria-labelledby="checklist-title">
       <h2 id="checklist-title" class="section-title">{t('To book, confirm three things')}</h2>
       <ol class="rows">
         <li class="check done">

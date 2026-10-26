@@ -1,7 +1,6 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
   import Pill from '../../ui/Pill.svelte';
-  import Stepper from '../../ui/Stepper.svelte';
   import type { AppActions, AppState, Intake } from '../../lib/types';
   import { money, dayTime, time, shortDay } from '../../lib/format';
   import { coverTitle, initials, tradeName, tradeOf } from '../../lib/trade';
@@ -81,7 +80,6 @@
     {:else if best}
       <h1 class="match-title">{coverTitle(trade, matches.length, area)}</h1>
       <p class="secondary-text">{t('Prices include call-out.')}</p>
-      <Stepper step={2}/>
       <article class="box pick" aria-labelledby="pick-name">
         <div class="pick-top"><p class="eyebrow small">{t('Our pick for you')}</p><div class="tags">{#each tags(best, 0) as tag (tag.label)}<Pill variant={tag.variant} label={tag.label} icon={tag.icon} small/>{/each}</div></div>
         <div class="person"><span class="avatar avatar-48" aria-hidden="true">{initials(best.name)}</span><div><h2 id="pick-name">{best.name}</h2><p class="secondary-text">{t('{trade} in {area}', { trade: t(best.category), area: best.area || area })}</p></div></div>

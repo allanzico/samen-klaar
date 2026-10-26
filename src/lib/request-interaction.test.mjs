@@ -97,3 +97,10 @@ test('stale assistant questions cannot cover the professional review step',()=>{
  assert.equal(requestInteraction(w,'customer'),undefined);
  assert.equal(requestReplyKey(w,'customer'),'');
 });
+
+test('price and autonomy review stays manual until Continue, without hiding later booked dialogs',()=>{
+ const w=workspace();w.intake.step='plan_review';w.job.evidence=[];
+ assert.equal(requestInteraction(w,'customer'),undefined);
+ w.job.appointment={slotId:'booked'};
+ assert.equal(requestInteraction(w,'customer').address,true);
+});

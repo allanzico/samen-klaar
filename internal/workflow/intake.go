@@ -250,18 +250,26 @@ func applyIntakeInput(state *State, input Action) error {
 	i.Question = intakeText(i.Locale, i.Question)
 	intakeOptions(i, i.Options)
 
-	if input.Action == "confirm-professional" || input.Action == "review-professional" {
+	if input.Action == "confirm-professional" || input.Action == "review-professional" || input.Action == "start-planning" || input.Action == "review-planning" {
 		if input.ByAgent || state.Job.ID == "" || input.Value != state.Job.ID || !CanReviseUnbookedRequest(*state) {
 			return errors.New("review the current professional before continuing; a booked visit cannot be changed here")
 		}
 		state.AgentDialog, state.ProDialog = nil, nil
-		if input.Action == "review-professional" {
+		if input.Action == "start-planning" {
+			if i.Step != "plan_review" || BookingAutonomyChoiceNeeded(state.Job) {
+				return errors.New("review the price and choose who checks completion before continuing")
+			}
+			ask(i, "selected", "You chose to plan the visit. Nothing is booked until you confirm a visit time.")
+		} else if input.Action == "review-planning" {
+			state.Job.QuoteApproved = false
+			ask(i, "plan_review", "Review the price and payment options, or make an offer. Continue when you are ready to plan the visit.")
+		} else if input.Action == "review-professional" {
 			ask(i, "professional_review", "Review this professional’s service and price. You can choose someone else; nothing is booked yet.")
 		} else {
 			if i.Step != "professional_review" {
 				return errors.New("this professional has already been reviewed")
 			}
-			ask(i, "selected", "You chose to continue with this professional. Next, agree the address, price and visit. Nothing is booked yet.")
+			ask(i, "plan_review", "Review the price and payment options, or make an offer. Continue when you are ready to plan the visit.")
 		}
 		return nil
 	}

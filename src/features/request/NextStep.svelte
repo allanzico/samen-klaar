@@ -7,8 +7,8 @@
 
   // Renders one next step. "aside" is the web column; "dock" sits above the composer
   // below 1280 px and on phones, where it becomes the turn card.
-  let { view, pending, placement, extra, demoted = false }: { view: StepView; pending: boolean; placement: 'aside' | 'dock'; extra?: Snippet<[string]>; demoted?: boolean } = $props();
-  const headingId = $derived(`next-step-${placement}`);
+  let { view, pending, placement, extra, demoted = false, display = 'all' }: { view: StepView; pending: boolean; placement: 'aside' | 'dock'; extra?: Snippet<[string]>; demoted?: boolean; display?: 'all' | 'actions' | 'details' } = $props();
+  const headingId = $derived(`next-step-${placement}-${display}`);
 </script>
 
 {#snippet button(btn: StepButton, style: 'main' | 'alt' | 'quiet')}
@@ -22,11 +22,12 @@
   {#if btn.reason}<p class="reason" id="{headingId}-{style}-reason">{btn.reason}</p>{/if}
 {/snippet}
 
-<section class="next-step {view.kind} {placement}" class:turn-panel={view.kind === 'your-turn'} aria-labelledby={headingId}>
+<section class="next-step {view.kind} {placement}" class:turn-panel={view.kind === 'your-turn'} class:actions-only={display === 'actions'} aria-labelledby={headingId}>
+  {#if display !== 'actions'}
   {#if view.banner}<Banner kind={view.banner.kind} title={view.banner.title} text={view.banner.text}/>{/if}
   {#if demoted}<p class="helper demoted">{t('Your assistant is asking you this too. Either way works.')}</p>{/if}
   <div class="head">
-    <Pill variant={view.tag.variant} label={view.tag.label}/>
+    {#if display !== 'details'}<Pill variant={view.tag.variant} label={view.tag.label}/>{/if}
     <h2 id={headingId}>{view.title}</h2>
     {#if view.amount}<p class="amount step-amount" class:when={!/^[+€$£]|^\d/.test(view.amount.trim())}>{view.amount}</p>{/if}
     {#if view.text}<p class="step-text">{view.text}</p>{/if}
@@ -43,16 +44,19 @@
     </div>
   {/if}
   {@render extra?.(placement)}
-  {#if view.primary || view.secondary || view.quiet?.length || view.helper || view.danger}
+  {/if}
+  {#if display === 'details' && view.helper}<p class="helper">{view.helper}</p>{/if}
+  {#if display === 'actions'}<div class="action-label"><Pill variant={view.tag.variant} label={view.tag.label}/><h2 id={headingId} class="sr-only">{view.title}</h2></div>{/if}
+  {#if display !== 'details' && (view.primary || view.secondary || view.quiet?.length || view.helper || view.danger)}
     <div class="actions">
       {#if view.primary}<div>{@render button(view.primary, 'main')}</div>{/if}
       {#if view.secondary}<div>{@render button(view.secondary, 'alt')}</div>{/if}
-      {#if view.helper}<p class="helper">{view.helper}</p>{/if}
+      {#if view.helper && display !== 'actions'}<p class="helper">{view.helper}</p>{/if}
       {#if view.quiet?.length}<div class="quiet">{#each view.quiet as btn (btn.label)}<div>{@render button(btn, 'quiet')}</div>{/each}</div>{/if}
       {#if view.danger}<div><button type="button" class="btn btn-danger-link" disabled={pending || view.danger.disabled} onclick={() => { void view.danger?.run?.(); }}>{view.danger.label}</button></div>{/if}
     </div>
   {/if}
-  {#if view.after?.length && placement === 'dock'}
+  {#if display !== 'actions' && view.after?.length && placement === 'dock'}
     <p class="dock-after">{t('Next')}: {view.after[0]}</p>
   {/if}
 </section>
@@ -60,6 +64,12 @@
 <style>
   .next-step { display: grid; gap: 14px; padding: 22px; border-radius: var(--sk-r-box); }
   .next-step:not(.turn-panel) { background: var(--sk-surface); border: 1px solid var(--sk-line); }
+  .actions-only { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: var(--sk-surface); border: 1px solid var(--sk-turn-line); box-shadow: var(--sk-shadow-pop); padding: 10px 14px; }
+  .actions-only .actions { display: flex; align-items: center; flex-wrap: wrap; flex: 1; gap: 8px 14px; }
+  .actions-only .quiet { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin: 0; }
+  .actions-only .reason { margin-top: 4px; font-size: 12px; max-width: 280px; }
+  .actions-only .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .action-label { flex: 0 0 auto; }
   .head { display: grid; justify-items: start; gap: 8px; }
   h2 { font: 700 21px/1.2 var(--sk-fd); letter-spacing: -0.015em; }
   .step-amount { font-size: 24px; white-space: normal; }
@@ -83,8 +93,8 @@
   .dock h2 { font-size: 17px; }
   .dock .step-amount { font-size: 19px; }
   .dock .step-text { font-size: 13px; }
-  .dock .actions { grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: start; }
+  .dock:not(.actions-only) .actions { grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: start; }
   .dock .helper, .dock .quiet { grid-column: 1 / -1; }
-  .dock .quiet { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+  .dock:not(.actions-only) .quiet { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
   .dock-after { font-size: 12px; color: var(--sk-muted); }
 </style>

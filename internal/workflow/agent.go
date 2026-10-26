@@ -299,6 +299,9 @@ func decideCustomer(c AgentContext) AgentDecision {
 	}
 	state, m := c.State, c.Mandate
 	job := state.Job
+	if state.Intake != nil && state.Intake.Step == "plan_review" && CanReviseUnbookedRequest(state) {
+		return escalate("review_plan", nil)
+	}
 	code := requestStatusCode(state, c.Role)
 
 	// The professional could not take the job: find another within the same limits.
@@ -405,6 +408,9 @@ func decideCustomer(c AgentContext) AgentDecision {
 		return escalate("price_above_limit", map[string]string{"price": euros(p.AmountMinor), "limit": euros(limit)})
 
 	case "review_date":
+		if job.DateProposal != nil && rejectedVisitDay(job.DateProposal.Appointment, c.dialog().RejectedDates, c.zone()) {
+			return act("decline-visit", Action{Action: "decline-date", ProposalID: job.DateProposal.ID}, nil)
+		}
 		if job.Appointment == nil && BookingAutonomyChoiceNeeded(job) {
 			if state.Intake != nil {
 				return c.dialogBookingAutonomy()
@@ -488,6 +494,9 @@ func recommendMatch(c AgentContext) AgentDecision {
 }
 
 func decideProfessional(c AgentContext) AgentDecision {
+	if c.State.Intake != nil && c.State.Intake.Step == "plan_review" && (c.State.Job.PriceProposal == nil || c.State.Job.PriceProposal.Status != "pending" || c.State.Job.PriceProposal.Actor != "customer") {
+		return wait()
+	}
 	if c.State.Intake != nil && c.State.Intake.Step == "professional_review" {
 		return wait()
 	}

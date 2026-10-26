@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '../../ui/Icon.svelte';
-  import { canReviseUnbookedRequest, previousIntakeStep } from '../../lib/prebooking';
+  import { canReviseUnbookedRequest, previousIntakeStep, reviewingPlan } from '../../lib/prebooking';
   import { t } from '../../lib/i18n.svelte';
   import type { AppActions, AppState, WorkspaceState } from '../../lib/types';
   let {app,actions,workspace}: {app:AppState;actions:AppActions;workspace:WorkspaceState} = $props();
@@ -9,7 +9,7 @@
 {#if app.role === 'customer' && canReviseUnbookedRequest(workspace)}
   {#if workspace.job.id && workspace.intake?.step !== 'professional_review'}
     <nav class="previous" aria-label={t('Request steps')}>
-      <button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={()=>actions.act('review-professional',workspace.job.id)}><Icon name="chevron-left"/>{t('Back to professional')}</button>
+      <button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={()=>actions.act(reviewingPlan(workspace)?'review-professional':'review-planning',workspace.job.id)}><Icon name="chevron-left"/>{t(reviewingPlan(workspace)?'Back to professional':'Back to price and options')}</button>
       <button type="button" class="btn btn-quiet btn-sm" disabled={app.pending} onclick={()=>actions.act('return-to-matches')}>{t('Choose another professional')}</button>
     </nav>
   {:else if !workspace.job.id && previous}

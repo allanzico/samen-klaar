@@ -78,6 +78,12 @@ func TestProfessionalReviewRequiresCurrentCustomerConfirmation(t *testing.T) {
 	if err := Apply(&state, Action{Actor: "customer", Action: "confirm-professional", Value: state.Job.ID}); err != nil {
 		t.Fatal(err)
 	}
+	if err := Apply(&state, Action{Actor: "customer", Action: "set-booking-autonomy", Value: "manual"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(&state, Action{Actor: "customer", Action: "start-planning", Value: state.Job.ID}); err != nil {
+		t.Fatal(err)
+	}
 	d := DecideAgent(AgentContext{State: state, Role: "customer", Mandate: DefaultMandate("customer"), Now: time.Now()})
 	if d.Code != "ask-address" {
 		t.Fatalf("customer confirmation did not resume planning: %s", d.Code)

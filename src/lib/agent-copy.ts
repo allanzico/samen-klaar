@@ -44,6 +44,7 @@ export function activityText(item: AgentActivity): string {
     case 'counter-price': return t('Proposed a total of {amount}', params);
     case 'accept-price': return t('Accepted the price of {amount}', params);
     case 'approve-plan': return t('Approved the plan and price of {amount}', params);
+    case 'remember-rejected-days': return t('Remembered the visit days you rejected');
     case 'propose-visit': return t('Proposed a visit on {start}', params);
     case 'accept-visit': return t('Accepted the visit on {start}', params);
     case 'approve-extra': return t('Approved extra work of {amount}', params);
@@ -75,6 +76,7 @@ export function noteText(message: { code?: string; text: string; params?: Record
 export function questionText(item: Pick<AgentEscalation, 'code' | 'params'>): string {
   const params = fill(item.params);
   switch (item.code) {
+    case 'review_plan': return t('Review the price and payment options. Your assistant waits until you choose Continue.');
     case 'review_professional': return t('Review the selected professional and choose Continue when you are ready.');
     case 'choose_professional': return t('Review the professionals and choose who you want to continue with.');
     case 'approve_price': return t('Approve the price of {price}, or ask the professional for a different one.', params);

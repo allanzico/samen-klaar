@@ -520,7 +520,7 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 			return workflow.State{}, err
 		}
 	}
-	if current.Job.ID != "" && (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake") {
+	if current.Job.ID != "" && (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake" || input.Action == "review-planning") {
 		if err := validateBookingPaymentReleaseTx(ctx, tx, current); err != nil {
 			return workflow.State{}, err
 		}
@@ -548,7 +548,7 @@ func (s *Store) ApplyWorkspace(ctx context.Context, actorAccountID, role, worksp
 
 	// Finding another professional reopens a request the professional cancelled, so it takes
 	// a place under the open-request limit again.
-	if role == "customer" && (input.Action == "return-to-matches" && current.Cancelled || (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake") && !workflow.RequestOpen(current)) {
+	if role == "customer" && (input.Action == "return-to-matches" && current.Cancelled || (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake" || input.Action == "review-planning") && !workflow.RequestOpen(current)) {
 		open, err := lockOpenRequestCountTx(ctx, tx, ownerID, workspaceID)
 		if err != nil {
 			return workflow.State{}, err

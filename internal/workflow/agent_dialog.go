@@ -16,16 +16,17 @@ type Choice struct {
 // AgentDialog is where the customer's conversation with their assistant stands: what it last asked,
 // what the customer said about their availability, and the times it offered.
 type AgentDialog struct {
-	Stage     string        `json:"stage,omitempty"`   // address | confirm | availability | offer | move | manual | idle
-	Awaiting  bool          `json:"awaiting"`          // the assistant is waiting for the customer's reply
-	Choices   []Choice      `json:"choices,omitempty"` // quick replies for the open question
-	Windows   []TimeWindow  `json:"windows,omitempty"` // the customer's stated availability
-	Offered   []Appointment `json:"offered,omitempty"` // times the assistant offered
-	Asked     int           `json:"asked"`             // Seq of the message in which it last asked
-	Attempts  int           `json:"attempts,omitempty"`
-	Pending   string        `json:"pending,omitempty"` // what a "yes" confirms: approve-quote | accept-price | accept-date | reschedule | cancel | approve-work
-	PendingID string        `json:"pendingId,omitempty"`
-	Notified  string        `json:"notified,omitempty"` // the milestones the assistant already reported, space separated
+	RejectedDates []string      `json:"rejectedDates,omitempty"`
+	Stage         string        `json:"stage,omitempty"`   // address | confirm | availability | offer | move | manual | idle
+	Awaiting      bool          `json:"awaiting"`          // the assistant is waiting for the customer's reply
+	Choices       []Choice      `json:"choices,omitempty"` // quick replies for the open question
+	Windows       []TimeWindow  `json:"windows,omitempty"` // the customer's stated availability
+	Offered       []Appointment `json:"offered,omitempty"` // times the assistant offered
+	Asked         int           `json:"asked"`             // Seq of the message in which it last asked
+	Attempts      int           `json:"attempts,omitempty"`
+	Pending       string        `json:"pending,omitempty"` // what a "yes" confirms: approve-quote | accept-price | accept-date | reschedule | cancel | approve-work
+	PendingID     string        `json:"pendingId,omitempty"`
+	Notified      string        `json:"notified,omitempty"` // the milestones the assistant already reported, space separated
 }
 
 const reportedKeep = 12

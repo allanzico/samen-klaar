@@ -1,3 +1,4 @@
+import { reviewingPlan } from './prebooking';
 import { needsAutonomyChoice, automaticReleaseOn } from './booking-autonomy';
 import { t } from './i18n.svelte';
 import { money, sameDay, shortVisit, time, visitRange } from './format';
@@ -41,6 +42,12 @@ export function customerStep(ctx: CustomerContext): StepView | null {
     secondary: {label:t('Back to professionals'),run:()=>actions.act('return-to-matches')}
   };
 
+  if (reviewingPlan(workspace) && job.priceProposal?.status !== 'pending') return {
+    kind:'your-turn', tag:{variant:'your-turn',label:t('Your turn')}, title:t('Review the price and payment options'), amount:money(job.quote.totalMinor,job.quote.currency),
+    text:t('Take your time. Make an offer, or continue when you are ready to plan the visit. No visit is booked.'),
+    primary:{label:t('Continue to visit details'),disabled:needsAutonomyChoice(job),reason:needsAutonomyChoice(job)?t('Choose who reviews completion and releases payment'):undefined,run:()=>actions.act('start-planning',job.id)},
+    quiet:[{label:t('Make a price offer'),run:()=>actions.openProposal('price')}]
+  };
   const total = money(job.quote.totalMinor, job.quote.currency);
   const slots = workspace.availableSlots;
   const needsAddress = !!job.location && !job.serviceAddress;

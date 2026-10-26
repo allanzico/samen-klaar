@@ -1,6 +1,13 @@
 // Dutch entries for the 17 Oct 2026 redesign (glossary: docs/DESIGN_SYSTEM.md).
 // Drafts: every entry needs a native review before launch.
 export const redesignNl: Record<string, string> = {
+  "Back to price and options": "Terug naar prijs en opties",
+  "Review the price and payment options": "Bekijk de prijs en betaalopties",
+  "Take your time. Make an offer, or continue when you are ready to plan the visit. No visit is booked.": "Neem de tijd. Doe een bod of ga door wanneer je klaar bent om het bezoek te plannen. Er is geen bezoek geboekt.",
+  "Continue to visit details": "Doorgaan naar bezoekdetails",
+  "Review the price and payment options. Your assistant waits until you choose Continue.": "Bekijk de prijs en betaalopties. Je assistent wacht totdat je Doorgaan kiest.",
+  "Remembered the visit days you rejected": "De door jou afgewezen bezoekdagen onthouden",
+
   "Review the professional’s service": "Bekijk de dienst van de vakpersoon",
 
   "No suitable service identified": "Geen passende dienst gevonden",

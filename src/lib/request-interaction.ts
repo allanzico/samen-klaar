@@ -1,7 +1,8 @@
+import { reviewingPlan } from './prebooking';
 import type { WorkspaceRole, WorkspaceState } from './types';
 
 function requiresManualReview(workspace: WorkspaceState) {
-  return workspace.intake?.step === 'professional_review' || workspace.cancelled || workspace.job.paid || workspace.cancellationReview?.status === 'pending'
+  return workspace.intake?.step === 'professional_review' || reviewingPlan(workspace) || workspace.cancelled || workspace.job.paid || workspace.cancellationReview?.status === 'pending'
     || ['open', 'partial_refund_review', 'payment_reversal_review', 'refund_pending', 'refunded'].includes(workspace.job.dispute?.status ?? '')
     || (workspace.job.paymentAuthorizationTiming === 'at_booking' && workspace.job.appointmentConfirmation?.status === 'pending' && workspace.job.paymentAuthorizedVersion !== workspace.job.scopeVersion);
 }

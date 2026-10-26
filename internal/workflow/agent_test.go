@@ -619,6 +619,9 @@ func TestAssistantOffersChoicesAndAsksTheProWhenNothingFits(t *testing.T) {
 	// Asking the professional approves the plan, then proposes a time inside the customer's evening.
 	c.reply("Vraag Marieke om een andere tijd", "ask-pro")
 	d := c.step()
+	if d.Code == "remember-rejected-days" {
+		d = c.step()
+	}
 	if d.Code != "approve-plan" {
 		t.Fatalf("expected the plan to be approved first, got %+v", d)
 	}

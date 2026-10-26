@@ -609,6 +609,16 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 				}
 				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": "confirm-professional", "value": selected.Job.ID}, 200)
 				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": "set-booking-autonomy", "value": "manual"}, 200)
+				for range 2 {
+					if err := server.RunAgents(ctx, id, true); err != nil {
+						t.Fatal(err)
+					}
+				}
+				optionsPage := decodeState(request(actor, "GET", "/api/state?workspaceId="+id, nil, 200))
+				if optionsPage.Intake.Step != "plan_review" || optionsPage.AgentDialog != nil || optionsPage.Job.Appointment != nil {
+					t.Fatal("price and autonomy review advanced without Continue")
+				}
+				request(actor, "POST", "/api/actions", map[string]string{"workspaceId": id, "action": "start-planning", "value": selected.Job.ID}, 200)
 				if err := server.RunAgents(ctx, id, true); err != nil {
 					t.Fatal(err)
 				}
@@ -685,6 +695,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		selectedBlocked := decodeState(request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "select-match", "value": profile.Profile.ID}, 200))
 		request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "confirm-professional", "value": selectedBlocked.Job.ID}, 200)
 		request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "set-booking-autonomy", "value": "manual"}, 200)
+		request("customer", "POST", "/api/actions", map[string]string{"workspaceId": blockedID, "action": "start-planning", "value": selectedBlocked.Job.ID}, 200)
 		waitFor(blockedID, func(s workflow.State) bool {
 			return s.Job.AppointmentConfirmation != nil && s.Job.AppointmentConfirmation.Status == "confirmed"
 		})
@@ -1202,6 +1213,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 	urgent = urgentAction("select-match", profile.Profile.ID)
 	urgent = urgentAction("confirm-professional", urgent.Job.ID)
 	urgent = urgentAction("set-booking-autonomy", "manual")
+	urgent = urgentAction("start-planning", urgent.Job.ID)
 	if urgent.Job.Appointment != nil || urgent.Job.QuoteApproved {
 		t.Fatal("urgent selection skipped customer approval")
 	}
@@ -1456,6 +1468,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 	state = act("customer", "select-match", profile.Profile.ID, nil, 200)
 	state = act("customer", "confirm-professional", state.Job.ID, nil, 200)
 	state = act("customer", "set-booking-autonomy", "manual", nil, 200)
+	state = act("customer", "start-planning", state.Job.ID, nil, 200)
 	state = act("customer", "set-service-address", "Damrak 1, 1012 LG Amsterdam", nil, 200)
 	if len(state.AvailableSlots) != 0 || state.Job.Quote.TotalMinor != 13000 {
 		t.Fatal("unexpected initial plan")

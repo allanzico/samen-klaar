@@ -7,6 +7,9 @@ import (
 )
 
 var dutchIntakeCopy = map[string]string{
+	"Review the price and payment options, or make an offer. Continue when you are ready to plan the visit.": "Bekijk de prijs en betaalopties of doe een bod. Ga door wanneer je klaar bent om het bezoek te plannen.",
+	"You chose to plan the visit. Nothing is booked until you confirm a visit time.":                         "Je hebt gekozen om het bezoek te plannen. Er is niets geboekt totdat je een bezoektijd bevestigt.",
+
 	"We couldn’t find an approved professional with a matching service for this request in your area. You can save your request to the area waitlist. No visit has been booked.": "We hebben geen goedgekeurde vakpersoon met een passende dienst voor deze aanvraag in jouw omgeving gevonden. Je kunt je aanvraag op de wachtlijst voor deze omgeving bewaren. Er is geen bezoek geboekt.",
 
 	"I couldn’t identify a suitable service from these details. Your request is saved. You can edit the problem description; no visit has been booked.": "Ik kon op basis van deze details geen passende dienst vinden. Je aanvraag is bewaard. Je kunt de probleembeschrijving aanpassen; er is geen bezoek geboekt.",

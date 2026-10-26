@@ -90,7 +90,7 @@ func (s *MemoryStore) ApplyWorkspace(_ context.Context, accountID, role, workspa
 		return State{}, errors.New("workspace was not found for this account")
 	}
 	input.WorkspaceID = workspaceID
-	if role == "customer" && (input.Action == "return-to-matches" && state.Cancelled || (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake") && !RequestOpen(state)) {
+	if role == "customer" && (input.Action == "return-to-matches" && state.Cancelled || (input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "edit-intake" || input.Action == "review-planning") && !RequestOpen(state)) {
 		if err := CheckOpenRequestLimit(s.openRequestCount(accountID, workspaceID), 1); err != nil {
 			return State{}, err
 		}

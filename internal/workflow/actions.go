@@ -8,6 +8,9 @@ import (
 )
 
 func Apply(state *State, input Action) error {
+	if input.ByAgent && input.Actor == "customer" && state.Intake != nil && state.Intake.Step == "plan_review" && CanReviseUnbookedRequest(*state) {
+		return errors.New("the customer is reviewing price and payment options; wait for Continue")
+	}
 	if state.Intake != nil && state.Intake.Step == "professional_review" && state.Job.ID != "" {
 		switch input.Action {
 		case "cancel-request", "confirm-professional", "review-professional", "return-to-matches", "revise-intake", "edit-intake", "record-request-photo", "remove-request":
@@ -47,7 +50,7 @@ func Apply(state *State, input Action) error {
 	if input.Action == "record-request-photo" {
 		return recordRequestPhoto(state, input)
 	}
-	if input.Action == "start-intake" || input.Action == "answer-intake" || input.Action == "set-location" || input.Action == "join-waitlist" || input.Action == "refresh-matches" || input.Action == "select-match" || input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "confirm-professional" || input.Action == "review-professional" || input.Action == "edit-intake" {
+	if input.Action == "start-intake" || input.Action == "answer-intake" || input.Action == "set-location" || input.Action == "join-waitlist" || input.Action == "refresh-matches" || input.Action == "select-match" || input.Action == "return-to-matches" || input.Action == "revise-intake" || input.Action == "confirm-professional" || input.Action == "review-professional" || input.Action == "edit-intake" || input.Action == "start-planning" || input.Action == "review-planning" {
 		return applyIntake(state, input)
 	}
 	job := &state.Job
@@ -66,6 +69,12 @@ func Apply(state *State, input Action) error {
 	}
 
 	switch input.Action {
+	case "remember-visit-rejection":
+		if !customer || !input.ByAgent || state.AgentDialog == nil || input.Dialog == nil || state.AgentDialog.Stage != "offer" || state.AgentDialog.Awaiting || state.AgentDialog.Asked != input.Dialog.Asked {
+			return errors.New("only the assistant can remember the customer's current rejected visit days")
+		}
+		state.AgentDialog.RejectedDates = append([]string{}, input.Dialog.RejectedDates...)
+		state.AgentDialog.Windows = append([]TimeWindow{}, input.Dialog.Windows...)
 	case "request-withdrawal":
 		return requestWithdrawal(state, input)
 	case "acknowledge-policy":

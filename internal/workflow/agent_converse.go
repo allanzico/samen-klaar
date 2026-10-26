@@ -291,6 +291,24 @@ func (c AgentContext) zone() *time.Location {
 	return zone
 }
 
+func rejectedVisitDay(slot Appointment, dates []string, zone *time.Location) bool {
+	start, err := time.Parse(time.RFC3339, slot.StartUTC)
+	return err == nil && slices.Contains(dates, start.In(zone).Format("2006-01-02"))
+}
+func (c AgentContext) rejectedOfferDates(d AgentDialog) []string {
+	dates := slices.Clone(d.RejectedDates)
+	for _, slot := range d.Offered {
+		start, err := time.Parse(time.RFC3339, slot.StartUTC)
+		if err == nil {
+			day := start.In(c.zone()).Format("2006-01-02")
+			if !slices.Contains(dates, day) {
+				dates = append(dates, day)
+			}
+		}
+	}
+	return dates
+}
+
 // openTimes are the professional's free published times that fit the customer's stated windows.
 func (c AgentContext) openTimes(d AgentDialog, released string) (fits, others []Appointment) {
 	slots := slices.Clone(c.State.AvailableSlots)
@@ -299,7 +317,7 @@ func (c AgentContext) openTimes(d AgentDialog, released string) (fits, others []
 	horizon := c.Now.Add(90 * 24 * time.Hour)
 	for _, slot := range slots {
 		start, err := time.Parse(time.RFC3339, slot.StartUTC)
-		if err != nil || !start.After(c.Now.Add(2*time.Hour)) || start.After(horizon) || slot.StartUTC == released {
+		if err != nil || !start.After(c.Now.Add(2*time.Hour)) || start.After(horizon) || slot.StartUTC == released || rejectedVisitDay(slot, d.RejectedDates, c.zone()) {
 			continue
 		}
 		if len(d.Windows) > 0 && WindowsAllow(d.Windows, slot, c.zone()) {
@@ -351,21 +369,23 @@ func (c AgentContext) slotChoices(slots []Appointment) ([]Choice, string) {
 func (c AgentContext) offerTimes(d AgentDialog, released, prefix string) AgentDecision {
 	fits, others := c.openTimes(d, released)
 	params := map[string]string{"pro": c.proName()}
-	windows := d.Windows
+	windows, rejected := d.Windows, d.RejectedDates
 	switch {
 	case len(fits) == 1:
 		params["when"] = c.visitWhen(fits[0])
 		offered := fits[:1]
-		return c.say("ask-offer", true, prefix+c.text("offer_one", params), c.yesNo("yes_book", "no_other"), func(d *AgentDialog) {
+		return c.say("ask-offer", true, prefix+c.text("offer_one", params), append(c.yesNo("yes_book", "no_other"), Choice{ID: "ask-pro", Label: c.text("ask_pro", params)}), func(d *AgentDialog) {
 			d.Stage, d.Windows, d.Offered, d.Pending = "offer", windows, offered, ""
+			d.RejectedDates = rejected
 		})
 	case len(fits) > 1:
 		picked := spread(fits, c.zone())
 		choices, list := c.slotChoices(picked)
 		params["list"] = list
-		choices = append(choices, Choice{ID: "no", Label: c.text("none_of", nil)})
+		choices = append(choices, Choice{ID: "no", Label: c.text("none_of", nil)}, Choice{ID: "ask-pro", Label: c.text("ask_pro", params)})
 		return c.say("ask-offer", true, prefix+c.text("offer_many", params), choices, func(d *AgentDialog) {
 			d.Stage, d.Windows, d.Offered, d.Pending = "offer", windows, picked, ""
+			d.RejectedDates = rejected
 		})
 	case len(others) > 0:
 		picked := spread(others, c.zone())
@@ -381,6 +401,7 @@ func (c AgentContext) offerTimes(d AgentDialog, released, prefix string) AgentDe
 		}
 		return c.say("ask-offer", true, prefix+c.text(key, params), choices, func(d *AgentDialog) {
 			d.Stage, d.Windows, d.Offered, d.Pending = "offer", windows, picked, ""
+			d.RejectedDates = rejected
 		})
 	case c.DateProposals > 0 && !d.reported("nothing"):
 		return c.say("tell-nothing", false, prefix+c.text("offer_nothing", params), nil, func(d *AgentDialog) { d.Stage = "idle"; d.report("nothing") })
@@ -395,7 +416,7 @@ func (c AgentContext) proposeFromWindows(d AgentDialog, released string) AgentDe
 	if c.DateProposals > 0 {
 		return escalate("no_time_in_window", nil)
 	}
-	candidate, ok := c.candidateFromWindows(d.Windows, released)
+	candidate, ok := c.candidateFromWindows(d.Windows, released, d.RejectedDates)
 	if !ok {
 		return escalate("no_time_in_window", nil)
 	}
@@ -405,7 +426,7 @@ func (c AgentContext) proposeFromWindows(d AgentDialog, released string) AgentDe
 	return act("propose-visit", proposeDate(candidate, "This time suits the customer."), map[string]string{"start": candidate.StartUTC, "end": candidate.EndUTC})
 }
 
-func (c AgentContext) candidateFromWindows(windows []TimeWindow, released string) (Appointment, bool) {
+func (c AgentContext) candidateFromWindows(windows []TimeWindow, released string, excluded ...[]string) (Appointment, bool) {
 	zone, m := c.zone(), c.Mandate
 	length := visitLength(c.State.Job)
 	for day := 1; day <= max(m.MaxDaysAhead, 1)+7; day++ {
@@ -416,6 +437,9 @@ func (c AgentContext) candidateFromWindows(windows []TimeWindow, released string
 				start = time.Date(d.Year(), d.Month(), d.Day(), 8, 0, 0, 0, zone) // never propose before 08:00
 			}
 			candidate := Appointment{StartUTC: start.UTC().Format(time.RFC3339), EndUTC: start.Add(length).UTC().Format(time.RFC3339), Timezone: m.Timezone}
+			if len(excluded) > 0 && rejectedVisitDay(candidate, excluded[0], zone) {
+				continue
+			}
 			if start.Before(c.Now.Add(24*time.Hour)) || candidate.StartUTC == released || !WindowsAllow([]TimeWindow{w}, candidate, zone) {
 				continue
 			}
@@ -475,13 +499,20 @@ func (c AgentContext) dialogSchedule(released string) AgentDecision {
 				return pick(d.Offered[in.Choice-1])
 			}
 		case "ask_pro":
+			rejected := c.rejectedOfferDates(d)
+			if len(rejected) > len(d.RejectedDates) {
+				d.RejectedDates = rejected
+				return act("remember-rejected-days", Action{Action: "remember-visit-rejection", Dialog: &d}, nil)
+			}
 			return c.proposeFromWindows(d, released)
 		case "yes":
 			if len(d.Offered) == 1 {
 				return pick(d.Offered[0])
 			}
 		case "no":
-			return c.askAvailability("ask_more")
+			next := c.askAvailability("ask_more")
+			next.Action.Dialog.RejectedDates = c.rejectedOfferDates(d)
+			return next
 		case "availability":
 			d.Windows = in.Windows
 			return c.offerTimes(d, released, "")

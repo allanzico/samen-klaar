@@ -9,3 +9,7 @@ export function canReviseUnbookedRequest(state: WorkspaceState) {
 export function previousIntakeStep(step: string) {
   return ({ detail:'description', urgency:'detail', budget:'urgency', location:'budget', matches:'location', waitlist:'location', unmatched:'description' } as Record<string,string>)[step];
 }
+
+export function reviewingPlan(state: WorkspaceState) {
+  return state.intake?.step === 'plan_review' && canReviseUnbookedRequest(state);
+}

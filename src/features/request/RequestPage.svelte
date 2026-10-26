@@ -132,7 +132,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   {/if}
 {/snippet}
 
-<div class="request-page" class:with-aside={!matching && !guided}>
+<div class="request-page" class:with-progress={!!ui.step} class:with-aside={!matching && !guided}>
   <div class="rail-col">
     <RequestRail items={app.workspaces} currentID={app.workspaceId} {role} busy={app.pending || app.loading} canLoadMore={!!app.workspaceCursor}
       onSelect={(id) => actions.selectRequest(id)} onCreate={pro ? undefined : actions.createRequest} onLoadMore={actions.loadMoreWorkspaces}/>
@@ -144,7 +144,6 @@ import RelatedJobs from './RelatedJobs.svelte';
       <div class="phone-title"><p class="phone-h">{title}</p>{#if subline || area}<p class="phone-sub">{[subline, area].filter(Boolean).join(' · ')}</p>{/if}</div>
       <RequestOptions {app} {actions} {workspace} onHistory={() => { historyOpen = true; }} onNavy/>
     </header>
-    {#if ui.step}<div class="phone-strip"><Stepper step={ui.step} variant="strip"/></div>{/if}
     {#if hasJob && !workspace.cancelled}<div class="bar-wrap"><Agreement {job} {role} variant="bar"/></div>{/if}
 
     {#if !matching}
@@ -162,10 +161,10 @@ import RelatedJobs from './RelatedJobs.svelte';
           </div>
           <RequestOptions {app} {actions} {workspace} onHistory={() => { historyOpen = true; }}/>
         </div>
-        {#if ui.step}<Stepper step={ui.step} variant={stagePage || !hasJob ? 'full' : 'compact'}/>{/if}
         {#if stagePage && !workspace.cancelled}<Agreement {job} {role} variant="strip"/>{/if}
       </header>
     {/if}
+    {#if ui.step}<div class="request-progress"><div class="progress-web"><Stepper step={ui.step}/></div><div class="progress-phone"><Stepper step={ui.step} variant="strip"/></div></div>{/if}
 
       {#if !pro && job.appointment && job.bookingAutonomy && !job.paid}
         <div class="content-pad autonomy-status"><p class="helper">{automaticReleaseOn(job) ? t('Automatic completion review and payment release are on.') : job.bookingAutonomy.mode==='automatic' ? t('The agreement changed. Automatic payment release is paused.') : t('You review completion and release payment yourself.')}</p>
@@ -174,8 +173,13 @@ import RelatedJobs from './RelatedJobs.svelte';
       <div class="content-pad"><PrebookingNavigation {app} {actions} {workspace}/></div>
       {#if app.error}<div class="content-pad"><Banner kind="error" text={t(app.error)} onDismiss={actions.dismissError}/></div>{/if}
       {#if app.refreshError}<p class="content-pad helper" role="status">{t(app.refreshError)}</p>{/if}
-      {#if guided}<div id="request-action" class="ask-slot content-pad floating">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>{/if}
-      {#if view && !matching && !guided}<div id="request-action" class="dock-step content-pad" class:floating={view.kind === 'your-turn'}><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
+      {#if guided}<div id="request-action" class="ask-slot content-pad">{#if assistantBusy}<p class="replying" role="status"><span class="spinner" aria-hidden="true"></span>{t('Your assistant is replying…')}</p>{:else}<AssistantAsk {app} {actions} {workspace}/>{/if}</div>{/if}
+      {#if view && !matching && !guided}
+        {#if view.kind === 'your-turn'}
+          <div id="request-action" class="dock-step content-pad floating"><NextStep {view} pending={app.pending} placement="dock" display="actions"/></div>
+          <div class="content-pad step-context"><NextStep {view} pending={app.pending} placement="dock" display="details" extra={timing}/></div>
+        {:else}<div id="request-action" class="dock-step content-pad"><NextStep {view} pending={app.pending} placement="dock" extra={timing}/></div>{/if}
+      {/if}
     <div id="request-thread" class="conversation-flow" data-chat={!stagePage && !matching ? 'true' : undefined}>
       {#if matching && intake}
         <div class="content-pad"><AgentPanel {app} {workspace}/></div>
@@ -215,14 +219,18 @@ import RelatedJobs from './RelatedJobs.svelte';
 {#if !pro}<PolicyDialogs {app} {actions} {workspace}/>{/if}
 
 <style>
-  .request-page { display: flex; align-items: flex-start; min-height: calc(100svh - var(--sk-topbar-h)); }
+  .request-page { --sk-request-progress-h: 0px; display: flex; align-items: flex-start; min-height: calc(100svh - var(--sk-topbar-h)); }
+  .request-page.with-progress { --sk-request-progress-h: 68px; }
+  .request-progress { position: sticky; top: var(--sk-topbar-h); z-index: 25; height: var(--sk-request-progress-h); box-sizing: border-box; padding: 12px 40px; background: var(--sk-surface); border-bottom: 1px solid var(--sk-line); }
+  .progress-phone { display: none; }
+  .step-context { padding-top: 12px; }
   .rail-col { position: sticky; top: var(--sk-topbar-h); display: flex; flex: 0 0 248px; height: calc(100svh - var(--sk-topbar-h)); }
   .main-col { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: calc(100svh - var(--sk-topbar-h)); background: var(--sk-ground); }
   .main-col.page .web-head, .main-col.page .conversation-flow { background: var(--sk-surface); }
   .aside-col { position: sticky; top: var(--sk-topbar-h); display: flex; flex-direction: column; gap: 22px; flex: 0 1 320px; min-width: 280px; max-height: calc(100svh - var(--sk-topbar-h)); padding: 24px; overflow-y: auto; background: var(--sk-surface); border-left: 1px solid var(--sk-line); }
   .main-col.page ~ .aside-col { background: var(--sk-ground); border-left: 0; }
 
-  .phone-head, .phone-strip, .bar-wrap { display: none; }
+  .phone-head, .bar-wrap { display: none; }
   .web-head { display: grid; gap: 14px; padding: 22px 40px 18px; background: var(--sk-surface); border-bottom: 0.5px solid var(--sk-line); }
   .back-link { display: none; justify-self: start; margin: -8px 0 -6px -8px; text-decoration: none; }
   .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -236,8 +244,7 @@ import RelatedJobs from './RelatedJobs.svelte';
   .content { display: grid; gap: 24px; align-content: start; padding-top: 24px; padding-bottom: 28px; }
   .main-col.page .content > :global(*) { max-width: 820px; }
   .dock-step { padding-top: 16px; }
-  .floating { position: sticky; top: var(--sk-topbar-h); z-index: 20; padding-top: 12px; padding-bottom: 12px; background: var(--sk-ground); }
-  .floating > :global(*) { max-height: calc(100svh - var(--sk-topbar-h) - 40px); overflow-y: auto; }
+  .floating { position: sticky; top: calc(var(--sk-topbar-h) + var(--sk-request-progress-h)); z-index: 24; padding-top: 12px; padding-bottom: 12px; background: var(--sk-ground); }
   .ask-slot { padding-top: 16px; }
   .ask-slot:empty { display: none; }
   .replying { display: flex; align-items: center; gap: 10px; max-width: 820px; margin: 0 auto; padding: 16px 0; color: var(--sk-muted); }
@@ -269,14 +276,15 @@ import RelatedJobs from './RelatedJobs.svelte';
     .back-link { display: inline-flex; }
   }
   @media (max-width: 639px) {
-    .floating { top: 0; }
-    .floating > :global(*) { max-height: calc(100svh - 40px); }
+    .request-page.with-progress { --sk-request-progress-h: 72px; }
+    .request-progress { padding: 10px 16px; }
+    .progress-web { display: none; }
+    .progress-phone { display: block; }
     .web-head { display: none; }
     .phone-head { position: relative; z-index: 5; display: flex; align-items: center; gap: 4px; min-height: 60px; padding: 6px 4px 6px 8px; background: var(--sk-brand); color: var(--sk-on-brand); }
     .phone-title { flex: 1; min-width: 0; }
     .phone-h { font: 700 16px/1.2 var(--sk-fd); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .phone-sub { font-size: 12px; color: var(--sk-on-brand-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .phone-strip { display: block; padding: 12px 16px; background: var(--sk-surface); border-bottom: 0.5px solid var(--sk-line); }
     .bar-wrap { display: block; }
     .content-pad { padding: 0 16px; }
     .content { gap: 18px; padding-top: 16px; }
