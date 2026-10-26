@@ -58,7 +58,7 @@ func localDataCommand(action string) error {
 		if !acquired {
 			return errors.New("another Auth0 seed import is already running")
 		}
-		return seed.Import(ctx, issuer, os.Getenv("AUTH0_CLIENT_ID"), os.Getenv("AUTH0_MANAGEMENT_TOKEN"), os.Getenv("AUTH0_CONNECTION_ID"), output)
+		return seed.Import(ctx, issuer, os.Getenv("AUTH0_CLIENT_ID"), os.Getenv("AUTH0_MANAGEMENT_TOKEN"), os.Getenv("AUTH0_CONNECTION_ID"), output, os.Getenv("AUTH0_MANAGEMENT_URL"))
 	}
 	return errors.New("unknown local data action")
 }

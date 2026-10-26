@@ -7,10 +7,67 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type managementRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f managementRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestImportUsesManagementDomainWithoutChangingLoginIdentity(t *testing.T) {
+	output := t.TempDir()
+	issuer := "https://login.example.test/"
+	prepared := manifest{Version: version, Issuer: issuer, Files: []string{"batch.json"}}
+	if err := writeJSON(filepath.Join(output, "manifest.json"), prepared); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(output, "batch.json"), []authUser{{ID: "relay-pro-person", Email: "person@example.test", PasswordHash: "hash"}}); err != nil {
+		t.Fatal(err)
+	}
+	transport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = transport })
+	requests := 0
+	http.DefaultTransport = managementRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "tenant.example.test" || r.Header.Get("Authorization") != "Bearer fixture-token" {
+			t.Fatal("import used the login domain or lost authorization")
+		}
+		requests++
+		body := ""
+		switch r.URL.Path {
+		case "/api/v2/connections/con_fixture":
+			body = `{"id":"con_fixture","strategy":"auth0","options":{}}`
+		case "/api/v2/connections/con_fixture/clients":
+			body = `{"clients":[{"client_id":"app_fixture"}]}`
+		case "/api/v2/jobs/users-imports":
+			body = `{"id":"job_fixture","status":"pending"}`
+		case "/api/v2/jobs/job_fixture":
+			body = `{"id":"job_fixture","status":"completed","summary":{"inserted":1,"failed":0}}`
+		default:
+			t.Fatal("unexpected management path")
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+	})
+	if err := Import(context.Background(), issuer, "app_fixture", "fixture-token", "con_fixture", output, "https://tenant.example.test/api/v2/"); err != nil {
+		t.Fatal(err)
+	}
+	var state importState
+	data, err := os.ReadFile(filepath.Join(output, "auth0-import-status.json"))
+	if err != nil || json.Unmarshal(data, &state) != nil || state.Issuer != issuer || requests != 4 {
+		t.Fatal("canonical management requests changed the saved login identity or import journal")
+	}
+}
+
+func TestImportRejectsUnsafeManagementURLsBeforeSendingCredentials(t *testing.T) {
+	for _, endpoint := range []string{"http://tenant.example.test", "https://token@tenant.example.test", "https://tenant.example.test/api/v2?token=secret", "https://tenant.example.test/#fragment", "https://tenant.example.test/another-api"} {
+		err := Import(context.Background(), "https://login.example.test/", "app", "secret-token", "con", t.TempDir(), endpoint)
+		if err == nil || !strings.Contains(err.Error(), "AUTH0_MANAGEMENT_URL") || strings.Contains(err.Error(), "secret") {
+			t.Fatal("unsafe management URL accepted or credentials exposed")
+		}
+	}
+}
 
 func TestImportContractResumesAndDoesNotResetUsersOrSendEmails(t *testing.T) {
 	output := t.TempDir()

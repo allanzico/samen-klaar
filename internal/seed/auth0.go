@@ -69,13 +69,26 @@ func (m management) request(ctx context.Context, method, path string, body io.Re
 // Import sends password hashes through Auth0's bulk import endpoint. It never
 // updates existing Auth0 users or sends completion emails. Job IDs are persisted
 // before polling so an interrupted run resumes instead of resubmitting a batch.
-func Import(ctx context.Context, issuer, clientID, token, connection, output string) error {
+func Import(ctx context.Context, issuer, clientID, token, connection, output, managementURL string) error {
 	if strings.TrimSpace(token) == "" || strings.TrimSpace(connection) == "" {
 		return errors.New("add AUTH0_MANAGEMENT_TOKEN and AUTH0_CONNECTION_ID to .secrets/local/seed.env")
 	}
 	base, err := url.Parse(issuer)
 	if err != nil || base.Scheme != "https" || base.Host == "" || base.User != nil {
 		return errors.New("invalid AUTH0_ISSUER_URL")
+	}
+	endpoint := strings.TrimRight(issuer, "/") + "/api/v2"
+	if managementURL != "" {
+		managementBase, err := url.Parse(managementURL)
+		if err != nil || managementBase.Scheme != "https" || managementBase.Host == "" || managementBase.User != nil || managementBase.RawQuery != "" || managementBase.Fragment != "" {
+			return errors.New("AUTH0_MANAGEMENT_URL must be an HTTPS origin or Management API base URL")
+		}
+		path := strings.TrimRight(managementBase.Path, "/")
+		if path != "" && path != "/api/v2" {
+			return errors.New("AUTH0_MANAGEMENT_URL must be an HTTPS origin or Management API base URL")
+		}
+		managementBase.Path = "/api/v2"
+		endpoint = managementBase.String()
 	}
 	var manifest manifest
 	data, err := os.ReadFile(filepath.Join(output, "manifest.json"))
@@ -86,7 +99,9 @@ func Import(ctx context.Context, issuer, clientID, token, connection, output str
 	if manifest.Issuer != issuer || manifest.Version != version {
 		return errors.New("seed manifest belongs to a different Auth0 tenant or dataset")
 	}
-	m := management{strings.TrimRight(issuer, "/") + "/api/v2", token, &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	// Account identity stays bound to the login issuer. Management requests may
+	// use the tenant's canonical API domain when login uses a custom domain.
+	m := management{endpoint, token, &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	return importPrepared(ctx, m, manifest, clientID, connection, output)
 }
 
