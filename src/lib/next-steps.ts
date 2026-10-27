@@ -277,7 +277,8 @@ export function proStep(ctx: ProContext): StepView | null {
   const waitingTag = { variant: 'waiting' as const, label: t('Waiting on {name}', { name: first }) };
   const message = { label: t('Message {name}', { name: first }), run: actions.focusComposer };
   const canExtra = job.quoteApproved && !job.paid && job.change?.status !== 'pending';
-  const after = (from: number) => [t('You start the job on the day'), t('You send photos and a note when done'), t('{name} approves the work, then pays', { name: first })].slice(from);
+  const automatic = automaticReleaseOn(job);
+  const after = (from: number) => [t('You start the job on the day'), t('You send photos and a note when done'), automatic ? t('The customer’s assistant checks completion and releases the authorized payment') : t('{name} approves the work, then pays', { name: first })].slice(from);
 
   switch (code) {
     case 'quote':
@@ -348,7 +349,7 @@ export function proStep(ctx: ProContext): StepView | null {
         text: t('We check your photos and work note before sending them to the customer. Fix any gaps here first.'),
         primary: { label: app.checkingCompletion ? t('Checking photos and work note…') : t('Check and send to {name}', { name: first }), run: async () => { if (noteReady && !await saveNote()) return; await actions.act('submit-evidence'); }, disabled: !!reason, reason },
         secondary: canExtra ? { label: t('Propose extra work'), run: openExtra } : undefined,
-        helper: t('{name} approves the work, then pays {amount}.', { name: first, amount: total })
+        helper: automatic ? t('The customer’s assistant reviews your completion record and releases {amount} from their PayPal hold when documented.', { amount: total }) : t('{name} approves the work, then pays {amount}.', { name: first, amount: total })
       };
     }
     case 'waiting_change':
@@ -356,8 +357,18 @@ export function proStep(ctx: ProContext): StepView | null {
     case 'note_requested':
       return { kind: 'your-turn', tag: yourTurn, title: t('{name} asked for the work note', { name: first }), primary: { label: t('Add work note'), run: saveNote, disabled: !noteReady, reason: noteReady ? '' : t('Write at least 12 characters to continue') } };
     case 'review':
+      if (automatic) return {
+        kind: 'waiting', tag: { variant: 'pending', label: t('Automatic review') }, title: t('The customer’s assistant is checking your completion record'),
+        text: t('The customer allowed their assistant to review the photos and work note, approve documented work and release the agreed PayPal hold. Unclear evidence still needs review.'),
+        secondary: {label:t('Improve photos or work note'),run:()=>actions.act('revise-completion')},
+        after: [t('The customer’s assistant checks completion and releases the authorized payment')]
+      };
       return { kind: 'waiting', tag: { variant: 'pending', label: t('Customer checking') }, title: t('Sent for approval'), text: t('{name} checks your proof, then pays.', { name: first }), secondary:{label:t('Improve photos or work note'),run:()=>actions.act('revise-completion')}, after: [t('{name} approves the work', { name: first }), t('{name} pays {amount}', { name: first, amount: total })] };
     case 'payment':
+      if (automatic && job.completionApprovedByAgent && workspace.completionAutomation === 'releasing') return {
+        kind: 'waiting', tag: {variant:'pending',label:t('Automatic payment')}, title: t('The customer’s assistant is releasing the authorized payment'), amount: total,
+        text: t('The documented work was approved under the customer’s booking permission. Payment is being checked with PayPal.')
+      };
       return { kind: 'waiting', tag: waitingTag, title: t('Waiting for {name} to pay', { name: first }), amount: total, text: t('{name} approved the work.', { name: first }) };
     case 'paid':
       return { kind: 'info', tag: { variant: 'done', label: t('Klaar') }, title: t('Payment complete'), amount: total };

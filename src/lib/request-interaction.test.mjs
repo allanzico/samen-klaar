@@ -178,3 +178,15 @@ test('professional correction keeps the customer waiting without an approval tas
  const ctx=completionContext();ctx.code='in_progress';ctx.workspace.job.completionRevision=true;
  const view=customerStep(ctx);assert.equal(view.kind,'waiting');assert.equal(view.primary,undefined);assert.match(view.text,/nothing for you to fix/i);
 });
+
+test('professional completion steps name the delegated reviewer only for a current grant',()=>{
+ const ctx=completionContext();ctx.workspace.job.customer='Alex';ctx.workspace.job.evidence=[{assetId:'photo'}];
+ ctx.code='in_progress';assert.match(proStep(ctx).helper,/customer’s assistant/i);
+ ctx.code='review';assert.equal(proStep(ctx).tag.label,'Automatic review');assert.match(proStep(ctx).title,/assistant/i);
+ ctx.code='payment';ctx.workspace.completionAutomation='releasing';ctx.workspace.job.completionApprovedByAgent=true;
+ assert.match(proStep(ctx).title,/assistant.*releasing/i);
+ for(const edit of [job=>{job.bookingAutonomy.mode='manual'},job=>{job.bookingAutonomy.amountMinor++}]){
+  const manual=completionContext();manual.workspace.job.customer='Alex';edit(manual.workspace.job);
+  assert.equal(proStep(manual).tag.label,'Customer checking');assert.match(proStep(manual).text,/Alex checks/);
+ }
+});
