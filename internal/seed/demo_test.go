@@ -37,6 +37,9 @@ func TestDemoCandidatesCompareTheSameServiceWithRealScheduleDifferences(t *testi
 		if p.category != "Plumbing" || p.service != pros[0].service || p.description != pros[0].description || p.area != "Amsterdam" {
 			t.Fatal("the comparison accidentally includes another service or market")
 		}
+		if !strings.Contains(p.description, "replace") || !strings.Contains(p.materials, "PVC sink trap section") || !strings.Contains(p.materials, "standard seals included") && !strings.Contains(p.materials, "standard seals and") {
+			t.Fatal("each comparable offer must cover the broken trap replacement and its standard parts")
+		}
 		raw, _ := json.Marshal(p.week)
 		schedules[string(raw)] = true
 		slots, err := workflow.GenerateProfessionalAvailability(p.schedule(), anchor, p.daysOff(anchor, zone), nil)

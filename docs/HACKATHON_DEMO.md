@@ -4,20 +4,20 @@
 
 Present the working product at `https://samenklaar.com`, using the fictional people and businesses below. The owner has chosen the production URL for this presentation. Preparation is an explicit CLI operation, never an application startup task. Existing people, requests, payments and edited profiles remain unchanged.
 
-All ten professionals offer **Kitchen sink leak repair** in **Amsterdam**: inspect and repair an accessible sink trap or waste-pipe joint, then test it under running water. Each visit lasts 60 minutes. Concealed pipework, cabinet alterations and electrical work are excluded. Prices below include the published call-out fee; replacement parts follow each profile's conditions.
+All ten professionals offer **Kitchen sink leak repair** in **Amsterdam**: inspect and repair or replace an accessible damaged sink trap or waste-pipe joint, then test it under running water. Each visit lasts 60 minutes. Concealed pipework, cabinet alterations and electrical work are excluded. Every comparison price includes one standard replacement PVC trap section and seals, as well as the published call-out fee; extra fittings and other conditions vary by profile.
 
 | Person | Business | Total | Weekly availability, Amsterdam time | Distinguishing condition |
 | --- | --- | ---: | --- | --- |
 | Noor van Dijk | Helder Kraanwerk | €110 | Mon–Fri, 09:00–17:00 | One PVC trap section and standard seals included; bounded discounts |
-| Milan de Wit | Westerwater Loodgieters | €75 | Tue/Thu, 09:00–13:00 | Labour only; first four days unavailable; no discount |
-| Sara Jansen | Avondstroom Installaties | €120 | Mon–Fri, 17:00–21:00 | Standard trap washer included; evening visits |
-| Omar Bakker | Singel Sanitairservice | €120 | Sat/Sun, 10:00–16:00 | Weekend visits; parts quoted separately |
-| Lotte Meijer | Kraan & Kompas | €120 | Mon/Wed/Fri, 07:00–12:00 | Standard washer and resealing consumables included; no discount |
-| Daan Vos | Amstel Leidingwerk | €105 | Mon–Fri, 12:00–18:00 | First seven days unavailable; parts require approval |
-| Priya Smit | Waterlijn Techniek | €140 | Mon–Sat, 08:00–20:00 | Standard washer included; trap replacement quoted separately |
-| Levi Bos | De Gouden Sifon | €105 | Wed/Fri, 14:00–18:00 | Labour only; human price and visit approval |
-| Emma Vermeer | Oever Loodgieters | €135 | Mon–Wed, 09:00–15:00 | First two days unavailable; standard washer included; no discount |
-| Yusuf de Boer | Kade & Kraan | €160 | Mon–Fri, 08:00–18:00 | Standard washer included; assistant paused |
+| Milan de Wit | Westerwater Loodgieters | €75 | Tue/Thu, 09:00–13:00 | Extra adapters excluded; first four days unavailable; no discount |
+| Sara Jansen | Avondstroom Installaties | €120 | Mon–Fri, 17:00–21:00 | Evening visits; extra return visits need a new agreement |
+| Omar Bakker | Singel Sanitairservice | €120 | Sat/Sun, 10:00–16:00 | Weekend visits; removal of the old trap included |
+| Lotte Meijer | Kraan & Kompas | €120 | Mon/Wed/Fri, 07:00–12:00 | Resealing consumables included; no discount |
+| Daan Vos | Amstel Leidingwerk | €105 | Mon–Fri, 12:00–18:00 | First seven days unavailable; nonstandard connectors quoted before work |
+| Priya Smit | Waterlijn Techniek | €140 | Mon–Sat, 08:00–20:00 | Standard adapters included; custom fittings need approval |
+| Levi Bos | De Gouden Sifon | €105 | Wed/Fri, 14:00–18:00 | Additional materials need approval; human price and visit approval |
+| Emma Vermeer | Oever Loodgieters | €135 | Mon–Wed, 09:00–15:00 | Standard washers included; first two days unavailable; no discount |
+| Yusuf de Boer | Kade & Kraan | €160 | Mon–Fri, 08:00–18:00 | Other repairs excluded; assistant paused |
 
 The comparison pool contains ten candidates; the normal matching flow presents its highest-ranked results. Do not replace ranking with a presentation-only shortcut.
 
