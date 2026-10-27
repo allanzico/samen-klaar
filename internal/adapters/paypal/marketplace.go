@@ -63,7 +63,13 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 		return "", sellerConnectionError("load_seller", "PayPal seller setup could not be loaded")
 	}
 	if found && record.Status == "verified" {
-		return "", errAlreadyConnected
+		verified, err := p.fetchSellerIntegration(ctx, record.MerchantID, record.TrackingID)
+		if err != nil {
+			return "", err
+		}
+		if verified.HasPartnerFeePermission {
+			return "", errAlreadyConnected
+		}
 	}
 	if !found || record.Status == "revoked" || record.Status == "ineligible" {
 		trackingID, err := randomTrackingID()
@@ -76,15 +82,9 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 			return "", sellerConnectionError("reserve_referral", "PayPal seller setup could not be reserved")
 		}
 	}
-	if record.ReferralSelfURL != "" {
-		selfURL, _ := url.Parse(record.ReferralSelfURL)
-		data, err := p.apiWithHeaders(ctx, http.MethodGet, selfURL.RequestURI(), nil, "", p.marketplaceHeaders(p.platformMerchantID))
-		if err == nil {
-			if actionURL := referralActionURL(data); actionURL != "" {
-				return actionURL, nil
-			}
-		}
-	}
+	// A versioned idempotency key upgrades older referrals without revoking
+	// their existing payment access or reusing a link without fee consent.
+	record.RequestID = stableRequestID("seller-referral-fees-v1:" + accountID + ":" + record.TrackingID)
 
 	returnURL := p.returnURL + "/?paypal_onboarding=1"
 	payload := map[string]any{
@@ -95,7 +95,7 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 				"rest_api_integration": map[string]any{
 					"integration_method":  "PAYPAL",
 					"integration_type":    "THIRD_PARTY",
-					"third_party_details": map[string]any{"features": []string{"PAYMENT", "REFUND"}},
+					"third_party_details": map[string]any{"features": []string{"PAYMENT", "REFUND", "PARTNER_FEE"}},
 				},
 			},
 		}},
@@ -135,24 +135,6 @@ func (p *Service) BeginSellerOnboarding(ctx context.Context, accountID string) (
 		return "", sellerConnectionError("save_referral", "PayPal onboarding link could not be saved")
 	}
 	return actionURL, nil
-}
-
-func referralActionURL(data []byte) string {
-	var response struct {
-		Links []struct {
-			Href string `json:"href"`
-			Rel  string `json:"rel"`
-		} `json:"links"`
-	}
-	if json.Unmarshal(data, &response) != nil {
-		return ""
-	}
-	for _, link := range response.Links {
-		if link.Rel == "action_url" && safePayPalURL(link.Href) {
-			return link.Href
-		}
-	}
-	return ""
 }
 
 func safePayPalURL(value string) bool {
@@ -205,18 +187,19 @@ func (p *Service) SellerOnboardingStatus(ctx context.Context, accountID, merchan
 	if err := p.marketplace.UpdatePayPalSellerStatus(ctx, accountID, merchantID, newStatus, verified.PaymentsReceivable, verified.PrimaryEmailConfirmed, verified.Scopes); err != nil {
 		return status, sellerConnectionError("save_verification", "verified PayPal seller status could not be saved")
 	}
-	status = PayoutSetupStatus{Status: newStatus, Connected: ready, PaymentsReceivable: verified.PaymentsReceivable, PrimaryEmailConfirmed: verified.PrimaryEmailConfirmed}
+	status = PayoutSetupStatus{Status: newStatus, Connected: ready, PaymentsReceivable: verified.PaymentsReceivable, PrimaryEmailConfirmed: verified.PrimaryEmailConfirmed, PlatformFeeReady: verified.HasPartnerFeePermission}
 	return status, nil
 }
 
 type sellerIntegration struct {
-	MerchantID            string
-	TrackingID            string
-	PaymentsReceivable    bool
-	PrimaryEmailConfirmed bool
-	HasPaymentPermission  bool
-	HasRefundPermission   bool
-	Scopes                []string
+	MerchantID              string
+	TrackingID              string
+	PaymentsReceivable      bool
+	PrimaryEmailConfirmed   bool
+	HasPaymentPermission    bool
+	HasRefundPermission     bool
+	HasPartnerFeePermission bool
+	Scopes                  []string
 }
 
 func (p *Service) fetchSellerIntegration(ctx context.Context, merchantID, trackingID string) (sellerIntegration, error) {
@@ -259,6 +242,7 @@ func (p *Service) fetchSellerIntegration(ctx context.Context, merchantID, tracki
 			for _, scope := range thirdParty.Scopes {
 				result.HasPaymentPermission = result.HasPaymentPermission || strings.Contains(scope, "/payments/payment/authcapture")
 				result.HasRefundPermission = result.HasRefundPermission || strings.HasSuffix(scope, "/payments/refund")
+				result.HasPartnerFeePermission = result.HasPartnerFeePermission || scope == "https://uri.paypal.com/services/payments/partnerfee"
 			}
 		}
 	}
@@ -277,7 +261,7 @@ func safeMerchantID(value string) bool {
 	return true
 }
 
-func (p *Service) sellerForPayment(ctx context.Context, accountID string) (SellerAccount, error) {
+func (p *Service) sellerForPayment(ctx context.Context, accountID string, platformFeeMinor int64) (SellerAccount, error) {
 	if !p.marketplaceReady() {
 		return SellerAccount{}, errors.New("PayPal marketplace payouts are not configured")
 	}
@@ -297,6 +281,10 @@ func (p *Service) sellerForPayment(ctx context.Context, accountID string) (Selle
 		_ = p.marketplace.UpdatePayPalSellerStatus(ctx, accountID, record.MerchantID, "ineligible", verified.PaymentsReceivable, verified.PrimaryEmailConfirmed, verified.Scopes)
 		return SellerAccount{}, errors.New("the selected professional's PayPal account is not currently eligible to receive payments")
 	}
+	if platformFeeMinor > 0 && !verified.HasPartnerFeePermission {
+		return SellerAccount{}, errors.New("The professional must update PayPal permissions for the platform fee before checkout.")
+	}
+	record.Scopes = verified.Scopes
 	return record, nil
 }
 

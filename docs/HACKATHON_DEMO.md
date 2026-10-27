@@ -63,6 +63,8 @@ Use the existing platform sandbox REST application and two separate wallets:
 
 Create them in Developer Dashboard → Sandbox → Accounts. PayPal documents [Personal accounts as buyers and Business accounts as merchants](https://developer.paypal.com/sandbox-testing/accounts). The receiving PayPal email may differ from the SamenKlaar sign-in email. A pre-created Business sandbox wallet avoids the account-upgrade detour during preparation; it does not imply every real professional must own a registered company.
 
+New agreements deduct a 5% platform fee from the professional’s total, including call-out. At a negotiated €105, show €5.25 platform fee and €99.75 professional proceeds before PayPal processing fees. Verify both the receiving wallet and the platform receipt in a fresh fee-bearing job before filming. Noor must grant `PARTNER_FEE` if the connection card asks for updated permissions.
+
 Only Noor needs a receiving wallet for this presentation. The other nine profiles support service comparison and scheduling scenarios; they are not all payment-ready. Finish PayPal onboarding, email confirmation and receiving-permission checks before recording. Keep generated passwords out of chat, screenshots, the public repository and the video. The product URL is production; money movement remains **PayPal sandbox**.
 
 ## Recording plan: 2 minutes 50 seconds

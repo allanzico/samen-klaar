@@ -4,6 +4,8 @@ import ServiceEvidenceEditor from './ServiceEvidenceEditor.svelte';
   import Pill from '../../ui/Pill.svelte';
   import Banner from '../../ui/Banner.svelte';
   import PayPalPayouts from './PayPalPayouts.svelte';
+  import ProfessionalFeeBreakdown from './ProfessionalFeeBreakdown.svelte';
+  import { PLATFORM_FEE_BASIS_POINTS } from '../../lib/platform-fee';
   import ProfessionalProfileEditor from './ProfessionalProfileEditor.svelte';
   import { api } from '../../lib/api';
   import type { PayPalPayoutSetupStatus, ProfessionalProfile } from '../../lib/types';
@@ -45,6 +47,7 @@ import ServiceEvidenceEditor from './ServiceEvidenceEditor.svelte';
             <div><dt>{t('Visit length')}</dt><dd>{t('{minutes} minutes', { minutes: profile.durationMinutes })}</dd></div>
             <div class="ledger-total"><dt>{t('Customers see')}</dt><dd>{money(profile.priceMinor + profile.calloutMinor, profile.currency)}</dd></div>
           </dl>
+          <ProfessionalFeeBreakdown totalMinor={profile.priceMinor + profile.calloutMinor} currency={profile.currency} basisPoints={PLATFORM_FEE_BASIS_POINTS}/>
           <details class="disclosure"><summary>{t('Materials and what isn’t included')}</summary><p>{profile.materialsPolicy}</p>{#if profile.exclusions?.length}<p>{t('Not included: {list}', { list: profile.exclusions.join(', ') })}</p>{/if}</details>
           <ProfessionalProfileEditor {profile} onSaved={(saved) => { profile = saved; }}/>
           <ServiceEvidenceEditor/>

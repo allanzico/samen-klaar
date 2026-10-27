@@ -13,6 +13,7 @@ type ProfessionalDashboard struct {
 }
 
 type ProfessionalBalance struct {
+	PlatformFeesMinor    int64  `json:"platformFeesMinor"`
 	Currency             string `json:"currency"`
 	ReceivedMinor        int64  `json:"receivedMinor"`
 	AwaitingPaymentMinor int64  `json:"awaitingPaymentMinor"`

@@ -63,6 +63,7 @@ type ProfessionalApplication struct {
 }
 
 type PayPalPayoutSetupStatus struct {
+	PlatformFeeReady      bool   `json:"platformFeeReady"`
 	Status                string `json:"status"`
 	Connected             bool   `json:"connected"`
 	PaymentsReceivable    bool   `json:"paymentsReceivable"`
@@ -274,6 +275,7 @@ type DateProposal struct {
 }
 
 type Job struct {
+	PlatformFeeBasisPoints     int                      `json:"platformFeeBasisPoints,omitempty"`
 	BookingAutonomyRequired    bool                     `json:"bookingAutonomyRequired,omitempty"`
 	BookingAutonomy            *BookingAutonomy         `json:"bookingAutonomy,omitempty"`
 	CompletionApprovedByAgent  bool                     `json:"completionApprovedByAgent,omitempty"`

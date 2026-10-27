@@ -24,6 +24,7 @@ type paypalIntent struct {
 	JobID                  string
 	ScopeVersion           int
 	AmountMinor            int64
+	PlatformFeeMinor       int64
 	Currency               string
 	SellerMerchantID       string
 	OrderID                string
@@ -45,6 +46,7 @@ type IntentRecord struct {
 	JobID                  string
 	ScopeVersion           int
 	AmountMinor            int64
+	PlatformFeeMinor       int64
 	Currency               string
 	SellerMerchantID       string
 	OrderID                string
@@ -62,17 +64,19 @@ type IntentRecord struct {
 }
 
 type WebhookEvent struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	ResourceID  string `json:"resourceId,omitempty"`
-	MerchantID  string `json:"merchantId,omitempty"`
-	TrackingID  string `json:"trackingId,omitempty"`
-	CaptureID   string `json:"captureId,omitempty"`
-	OrderID     string `json:"orderId,omitempty"`
-	Status      string `json:"status,omitempty"`
-	Currency    string `json:"currency,omitempty"`
-	AmountMinor int64  `json:"amountMinor,omitempty"`
-	Reason      string `json:"reason,omitempty"`
+	PlatformFeeMinor    int64  `json:"platformFeeMinor,omitempty"`
+	PlatformFeeReported bool   `json:"platformFeeReported,omitempty"`
+	ID                  string `json:"id"`
+	Type                string `json:"type"`
+	ResourceID          string `json:"resourceId,omitempty"`
+	MerchantID          string `json:"merchantId,omitempty"`
+	TrackingID          string `json:"trackingId,omitempty"`
+	CaptureID           string `json:"captureId,omitempty"`
+	OrderID             string `json:"orderId,omitempty"`
+	Status              string `json:"status,omitempty"`
+	Currency            string `json:"currency,omitempty"`
+	AmountMinor         int64  `json:"amountMinor,omitempty"`
+	Reason              string `json:"reason,omitempty"`
 }
 
 type WebhookSink interface {
@@ -193,7 +197,7 @@ func (p *Service) apiMarketplace(ctx context.Context, method, path string, paylo
 		return nil, errors.New("PayPal marketplace payment context is unavailable")
 	}
 	headers := p.marketplaceHeaders(sellerMerchantID)
-	if method == http.MethodPost && strings.HasSuffix(path, "/authorize") {
+	if method == http.MethodPost && (strings.HasSuffix(path, "/authorize") || strings.HasSuffix(path, "/capture") || strings.HasSuffix(path, "/refund")) {
 		headers["Prefer"] = "return=representation"
 	}
 	return p.apiWithHeaders(ctx, method, path, payload, requestID, headers)
@@ -298,7 +302,8 @@ func validateOrderDetails(order orderDetails, intent *paypalIntent) error {
 }
 
 func intentMatchesState(intent *paypalIntent, state workflow.State) bool {
-	return intent.WorkspaceID == state.WorkspaceID && intent.JobID == state.Job.ID && intent.ScopeVersion == state.Job.ScopeVersion &&
+	fee, err := workflow.PlatformFeeAmount(state.Job.Quote.TotalMinor, state.Job.PlatformFeeBasisPoints)
+	return err == nil && fee == intent.PlatformFeeMinor && intent.WorkspaceID == state.WorkspaceID && intent.JobID == state.Job.ID && intent.ScopeVersion == state.Job.ScopeVersion &&
 		intent.AmountMinor == state.Job.Quote.TotalMinor && intent.Currency == state.Job.Quote.Currency
 }
 
@@ -331,7 +336,7 @@ func (p *Service) VerifiedAuthorization(ctx context.Context, state workflow.Stat
 	if err != nil || intent == nil || !intentMatchesState(intent, state) || intent.SellerMerchantID == "" || intent.Status != "authorized" || intent.AuthorizationID == "" || intent.AuthRequestID == "" {
 		return IntentRecord{}, errors.New("a verified PayPal authorization for the current scope is required")
 	}
-	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID)
+	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID, intent.PlatformFeeMinor)
 	if err != nil || seller.MerchantID != intent.SellerMerchantID {
 		return IntentRecord{}, errors.New("the selected professional's PayPal payout account is no longer eligible")
 	}
@@ -347,7 +352,7 @@ func (p *Service) VerifiedAuthorization(ctx context.Context, state workflow.Stat
 func intentFromRecord(record IntentRecord) *paypalIntent {
 	return &paypalIntent{
 		WorkspaceID: record.WorkspaceID, JobID: record.JobID, ScopeVersion: record.ScopeVersion,
-		AmountMinor: record.AmountMinor, Currency: record.Currency, SellerMerchantID: record.SellerMerchantID, OrderID: record.OrderID,
+		AmountMinor: record.AmountMinor, PlatformFeeMinor: record.PlatformFeeMinor, Currency: record.Currency, SellerMerchantID: record.SellerMerchantID, OrderID: record.OrderID,
 		AuthorizationID: record.AuthorizationID, AuthorizationExpiresAt: record.AuthorizationExpiresAt, CaptureID: record.CaptureID, ApprovalURL: record.ApprovalURL,
 		Status: record.Status, OrderRequestID: record.OrderRequestID, AuthRequestID: record.AuthRequestID,
 		CaptureRequestID: record.CaptureRequestID, VoidRequestID: record.VoidRequestID,
@@ -358,7 +363,7 @@ func intentFromRecord(record IntentRecord) *paypalIntent {
 func recordFromIntent(intent *paypalIntent) IntentRecord {
 	return IntentRecord{
 		WorkspaceID: intent.WorkspaceID, JobID: intent.JobID, ScopeVersion: intent.ScopeVersion,
-		AmountMinor: intent.AmountMinor, Currency: intent.Currency, SellerMerchantID: intent.SellerMerchantID, OrderID: intent.OrderID,
+		AmountMinor: intent.AmountMinor, PlatformFeeMinor: intent.PlatformFeeMinor, Currency: intent.Currency, SellerMerchantID: intent.SellerMerchantID, OrderID: intent.OrderID,
 		AuthorizationID: intent.AuthorizationID, AuthorizationExpiresAt: intent.AuthorizationExpiresAt, CaptureID: intent.CaptureID, ApprovalURL: intent.ApprovalURL,
 		Status: intent.Status, OrderRequestID: intent.OrderRequestID, AuthRequestID: intent.AuthRequestID,
 		CaptureRequestID: intent.CaptureRequestID, VoidRequestID: intent.VoidRequestID,
@@ -513,7 +518,11 @@ func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string
 	if intent != nil && intent.SellerMerchantID == "" && intent.Status != "voided" && intent.Status != "denied" && intent.Status != "expired" && intent.Status != "deferred" {
 		return "", "", errors.New("this older PayPal order is not linked to a professional payout account; reconcile it before retrying")
 	}
-	seller, err := p.sellerForPayment(ctx, job.ProfessionalAccountID)
+	fee, err := workflow.PlatformFeeAmount(job.Quote.TotalMinor, job.PlatformFeeBasisPoints)
+	if err != nil {
+		return "", "", err
+	}
+	seller, err := p.sellerForPayment(ctx, job.ProfessionalAccountID, fee)
 	if err != nil {
 		return "", "", err
 	}
@@ -553,7 +562,7 @@ func (p *Service) CreateOrder(ctx context.Context, state workflow.State) (string
 		attempt := time.Now().UTC().Format(time.RFC3339Nano)
 		intent = &paypalIntent{
 			WorkspaceID: state.WorkspaceID, JobID: job.ID, ScopeVersion: job.ScopeVersion,
-			AmountMinor: job.Quote.TotalMinor, Currency: job.Quote.Currency, SellerMerchantID: sellerMerchantID, Status: "creating",
+			AmountMinor: job.Quote.TotalMinor, PlatformFeeMinor: fee, Currency: job.Quote.Currency, SellerMerchantID: sellerMerchantID, Status: "creating",
 			OrderRequestID: stableRequestID("order:" + key + ":" + attempt), AuthRequestID: stableRequestID("authorize:" + key + ":" + attempt),
 			CaptureRequestID: stableRequestID("capture:" + key + ":" + attempt), VoidRequestID: stableRequestID("void:" + key + ":" + attempt),
 		}
@@ -622,10 +631,10 @@ func (p *Service) Authorize(ctx context.Context, state workflow.State, orderID s
 	if err != nil {
 		return errors.New("PayPal operation record could not be loaded")
 	}
-	if intent == nil || intent.OrderID != orderID || intent.AmountMinor != state.Job.Quote.TotalMinor || intent.Currency != state.Job.Quote.Currency {
+	if intent == nil || intent.OrderID != orderID || !intentMatchesState(intent, state) {
 		return errors.New("this PayPal order does not match the current approved scope")
 	}
-	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID)
+	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID, intent.PlatformFeeMinor)
 	if err != nil || seller.MerchantID != intent.SellerMerchantID {
 		return errors.New("the selected professional's PayPal payout account is no longer eligible")
 	}
@@ -686,6 +695,18 @@ func (p *Service) Authorize(ctx context.Context, state workflow.State, orderID s
 	return nil
 }
 
+func platformFeeInstruction(intent *paypalIntent) []any {
+	return []any{map[string]any{"amount": map[string]string{"currency_code": intent.Currency, "value": moneyDecimal(intent.PlatformFeeMinor)}}}
+}
+
+func captureInstruction(intent *paypalIntent) map[string]any {
+	instruction := map[string]any{"disbursement_mode": "INSTANT"}
+	if intent.PlatformFeeMinor > 0 {
+		instruction["platform_fees"] = platformFeeInstruction(intent)
+	}
+	return instruction
+}
+
 func (p *Service) Capture(ctx context.Context, state workflow.State) error {
 	if err := workflow.ValidatePaymentApproval(state.Job); err != nil {
 		return err
@@ -694,13 +715,16 @@ func (p *Service) Capture(ctx context.Context, state workflow.State) error {
 	if err != nil {
 		return errors.New("PayPal operation record could not be loaded")
 	}
+	if intent != nil && !intentMatchesState(intent, state) {
+		return errors.New("PayPal operation does not match the agreed fee and amount")
+	}
 	if intent != nil && intent.Status == "captured" && intent.CaptureID != "" {
 		return nil
 	}
-	if intent == nil || intent.Status != "authorized" || intent.AuthorizationID == "" || intent.AmountMinor != state.Job.Quote.TotalMinor || intent.Currency != state.Job.Quote.Currency {
+	if intent == nil || intent.Status != "authorized" || intent.AuthorizationID == "" {
 		return errors.New("approve this amount through PayPal sandbox before capture")
 	}
-	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID)
+	seller, err := p.sellerForPayment(ctx, state.Job.ProfessionalAccountID, intent.PlatformFeeMinor)
 	if err != nil || seller.MerchantID != intent.SellerMerchantID {
 		return errors.New("the selected professional's PayPal payout account is no longer eligible")
 	}
@@ -729,7 +753,7 @@ func (p *Service) Capture(ctx context.Context, state workflow.State) error {
 	capturePayload := map[string]any{
 		"amount":              map[string]string{"currency_code": state.Job.Quote.Currency, "value": moneyDecimal(state.Job.Quote.TotalMinor)},
 		"final_capture":       true,
-		"payment_instruction": map[string]string{"disbursement_mode": "INSTANT"},
+		"payment_instruction": captureInstruction(intent),
 	}
 	data, err := p.apiMarketplace(ctx, http.MethodPost, "/v2/payments/authorizations/"+url.PathEscape(intent.AuthorizationID)+"/capture", capturePayload, intent.CaptureRequestID, intent.SellerMerchantID)
 	if err != nil {
@@ -747,6 +771,11 @@ func (p *Service) Capture(ctx context.Context, state workflow.State) error {
 		return errors.New("PayPal capture response was not complete; reconcile before retrying")
 	}
 	intent.CaptureID, intent.Status = result.ID, "captured"
+	if err := p.verifyCaptureFee(ctx, intent, result.ID, data); err != nil {
+		intent.Status = "capture_uncertain"
+		_ = p.updateIntent(ctx, intent, "capturing")
+		return err
+	}
 	return p.updateIntent(ctx, intent, "capturing")
 }
 
@@ -888,7 +917,7 @@ func (p *Service) VoidCurrent(ctx context.Context, state workflow.State) error {
 
 func samePaymentAttempt(current *paypalIntent, expected IntentRecord) bool {
 	return current.WorkspaceID == expected.WorkspaceID && current.JobID == expected.JobID && current.ScopeVersion == expected.ScopeVersion &&
-		current.AmountMinor == expected.AmountMinor && current.Currency == expected.Currency && current.SellerMerchantID == expected.SellerMerchantID &&
+		current.AmountMinor == expected.AmountMinor && current.PlatformFeeMinor == expected.PlatformFeeMinor && current.Currency == expected.Currency && current.SellerMerchantID == expected.SellerMerchantID &&
 		current.OrderRequestID == expected.OrderRequestID && current.AuthRequestID == expected.AuthRequestID && current.VoidRequestID == expected.VoidRequestID
 }
 
@@ -1074,7 +1103,7 @@ func (p *Service) Refund(ctx context.Context, state workflow.State) (string, err
 	if err != nil {
 		return "", errors.New("PayPal payment record could not be loaded")
 	}
-	if intent == nil || intent.CaptureID == "" || intent.AmountMinor != state.Job.Quote.TotalMinor || intent.Currency != state.Job.Quote.Currency {
+	if intent == nil || intent.CaptureID == "" || !intentMatchesState(intent, state) {
 		return "", errors.New("captured PayPal payment does not match the current service scope")
 	}
 	if intent.Status == "refunded" {
@@ -1115,7 +1144,11 @@ func (p *Service) Refund(ctx context.Context, state workflow.State) (string, err
 		}
 		return "", errors.New("PayPal refund is still pending; check its status before retrying")
 	}
-	data, err := p.apiMarketplace(ctx, http.MethodPost, "/v2/payments/captures/"+url.PathEscape(intent.CaptureID)+"/refund", map[string]any{}, intent.RefundRequestID, intent.SellerMerchantID)
+	refundPayload := map[string]any{}
+	if intent.PlatformFeeMinor > 0 {
+		refundPayload["payment_instruction"] = map[string]any{"platform_fees": platformFeeInstruction(intent)}
+	}
+	data, err := p.apiMarketplace(ctx, http.MethodPost, "/v2/payments/captures/"+url.PathEscape(intent.CaptureID)+"/refund", refundPayload, intent.RefundRequestID, intent.SellerMerchantID)
 	if err != nil {
 		intent.Status = "refund_uncertain"
 		_ = p.updateIntent(ctx, intent, "refunding")

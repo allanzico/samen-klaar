@@ -59,11 +59,12 @@ func normalizeWebhook(body []byte) (WebhookEvent, error) {
 		ID        string `json:"id"`
 		EventType string `json:"event_type"`
 		Resource  struct {
-			ID         string `json:"id"`
-			MerchantID string `json:"merchant_id"`
-			TrackingID string `json:"tracking_id"`
-			Status     string `json:"status"`
-			Reason     string `json:"reason"`
+			Breakdown  sellerReceivableBreakdown `json:"seller_receivable_breakdown"`
+			ID         string                    `json:"id"`
+			MerchantID string                    `json:"merchant_id"`
+			TrackingID string                    `json:"tracking_id"`
+			Status     string                    `json:"status"`
+			Reason     string                    `json:"reason"`
 			Amount     struct {
 				Value        string `json:"value"`
 				CurrencyCode string `json:"currency_code"`
@@ -106,6 +107,17 @@ func normalizeWebhook(body []byte) (WebhookEvent, error) {
 			return WebhookEvent{}, err
 		}
 		event.AmountMinor = minor
+	}
+	if strings.HasPrefix(event.Type, "PAYMENT.CAPTURE.") && len(wire.Resource.Breakdown.PlatformFees) > 0 {
+		if len(wire.Resource.Breakdown.PlatformFees) != 1 {
+			return WebhookEvent{}, errors.New("PayPal platform fee is invalid")
+		}
+		fee := wire.Resource.Breakdown.PlatformFees[0].Amount
+		minor, err := parseMinorUnits(fee.Value)
+		if err != nil || fee.Currency != event.Currency {
+			return WebhookEvent{}, errors.New("PayPal platform fee is invalid")
+		}
+		event.PlatformFeeMinor, event.PlatformFeeReported = minor, true
 	}
 	return event, nil
 }

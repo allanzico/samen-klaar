@@ -38,6 +38,7 @@ export type ProfessionalReviewChecks = {
   insuranceRationale: string;
 };
 export type PayPalPayoutSetupStatus = {
+  platformFeeReady?: boolean;
   status: string;
   connected: boolean;
   paymentsReceivable: boolean;
@@ -77,6 +78,7 @@ export type PriceProposal = { id: string; status: string; actor: string; amountM
 export type DateProposal = { id: string; status: string; actor: string; note: string; appointment: Appointment };
 export type BookingAutonomy = { mode: 'automatic' | 'manual'; version: number; scopeVersion: number; amountMinor: number; currency: string; professionalAccountId: string; professionalProfileId: string; decidedAt: string };
 export type Job = {
+  platformFeeBasisPoints?: number;
   completionCheck?: EvidenceReview | null;
   completionRevision?: boolean;
   bookingAutonomyRequired?: boolean;
@@ -202,7 +204,7 @@ export type WorkspaceSummary = {
 };
 
 export type ProfessionalDashboard = {
-  balances: { currency: string; receivedMinor: number; awaitingPaymentMinor: number }[];
+  balances: { currency: string; receivedMinor: number; platformFeesMinor?: number; awaitingPaymentMinor: number }[];
   upcomingVisits: number;
   completedJobs: number;
   awaitingConfirmation: number;

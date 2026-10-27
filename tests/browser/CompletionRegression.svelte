@@ -10,13 +10,14 @@
   const customer=params.has('customer');
   const paid=params.has('paid');
   const frameParams=new URLSearchParams(params);frameParams.delete('mobile-check');frameParams.set('frame','');frameParams.set('nl','');
-  const storageKey=`completion-fixture-${customer?'customer':'professional'}-${paid?'paid':'draft'}`;
+  const storageKey=`completion-fixture-${customer?'customer':'professional'}-${paid?'paid':'draft'}${params.has('fee')?'-fee':''}`;
   const app=createAppState();
   app.role=customer?'customer':'professional';app.workspaceId='completion-fixture';
   app.session={configured:true,authenticated:true,activeRole:app.role,account:{id:customer?'fixture-customer':'fixture-professional'}};
   app.providerConfig={paymentsAvailable:false,evidenceUploadsAvailable:true,guidedReviewAvailable:true} as typeof app.providerConfig;
   const initial=emptyWorkspace('completion-fixture');
   Object.assign(initial.job,{id:'completion-fixture-job',title:'Repair the kitchen sink',description:'Repair a leaking sink connection',professional:'Test professional',professionalAccountId:'fixture-professional',professionalProfileId:'fixture-service',customer:'Test customer',quoteApproved:true,workStarted:true,detailAdded:true,completionRevision:customer});
+  if(params.has('fee'))initial.job.platformFeeBasisPoints=500;
   initial.job.quote={...initial.job.quote,totalMinor:12500,lines:[{label:'Repair the sink connection',amountMinor:12500,basis:'Agreed work'}]};
   initial.job.evidence=[{kind:'document',assetId:'synthetic-file',contentType:'application/pdf',scopeVersion:1,completionRound:1,label:'Synthetic completion file',description:'Fixture attachment; no real file is transmitted.'},{kind:'note',label:'Professional work note',description:'The work is complete.',scopeVersion:1,completionRound:1}];
   if(paid){

@@ -5,6 +5,7 @@
   import AgreedLedger from './AgreedLedger.svelte';
   import JobReview from './JobReview.svelte';
   import CompletedJobReport from './CompletedJobReport.svelte';
+  import ProfessionalFeeBreakdown from '../professional/ProfessionalFeeBreakdown.svelte';
   import type { AppActions, AppState, Intake, WorkspaceState } from '../../lib/types';
   import type { RequestCode } from '../../lib/request-status';
   import { firstName } from '../../lib/status-ui';
@@ -106,6 +107,10 @@
   <JobReview {app} {actions} {job}/>
 {:else if code === 'cancelled' && workspace.cancellationReview?.reason}
   <section class="box intake"><h2 class="small-title">{t('{name}’s note', { name: customer })}</h2><p class="quote">{workspace.cancellationReview.reason}</p></section>
+{/if}
+
+{#if !['paid','refund_pending','refunded','cancelled'].includes(code)}
+  <ProfessionalFeeBreakdown totalMinor={job.quote.totalMinor} currency={job.quote.currency} basisPoints={job.platformFeeBasisPoints}/>
 {/if}
 
 <style>

@@ -75,3 +75,13 @@ test('legacy records omit missing timestamps and references and localize the rep
   assert.doesNotMatch(html, /Invalid Date|PayPal-betalingskenmerk|SYNTHETIC-CAPTURE/);
   setLocale('en', false);
 });
+
+test('professional report shows the platform deduction while customer total stays unchanged',()=>{
+ setLocale('en',false);
+ const workspace=fixture();workspace.job.platformFeeBasisPoints=500;
+ const professional=stage('professional',workspace);const customer=stage('customer',workspace);
+ assert.match(professional,/SamenKlaar fee \(5%\)/);assert.match(professional,/104,50/);assert.match(professional,/5,50/);
+ assert.doesNotMatch(customer,/SamenKlaar fee|Your payout/);assert.match(customer,/110,00/);
+ workspace.job.paymentRefunded=true;const refunded=stage('professional',workspace,'refunded');
+ assert.match(refunded,/Full refunds include the platform fee/);assert.doesNotMatch(refunded,/You receive before PayPal fees/);
+});

@@ -105,6 +105,11 @@ func (p *Service) refreshAuthorization(ctx context.Context, intent *paypalIntent
 			return errors.New("PayPal reports a capture without its transaction ID; reconcile before continuing")
 		}
 		intent.CaptureID = authorization.SupplementaryData.RelatedIDs.CaptureID
+		if err := p.verifyCaptureFee(ctx, intent, intent.CaptureID, nil); err != nil {
+			intent.Status = "capture_uncertain"
+			_ = p.updateIntent(ctx, intent, from)
+			return err
+		}
 	}
 	intent.Status = status
 	return p.updateIntent(ctx, intent, from)

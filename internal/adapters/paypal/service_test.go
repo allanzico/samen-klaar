@@ -238,7 +238,7 @@ func TestSellerReferralUsesPlatformAssertionAndRequestsRequiredPermissions(t *te
 				t.Errorf("invalid referral payload: %+v (%v)", body, err)
 			}
 			features := strings.Join(body.Operations[0].Preference.REST.Details.Features, ",")
-			if features != "PAYMENT,REFUND" {
+			if features != "PAYMENT,REFUND,PARTNER_FEE" {
 				t.Errorf("requested seller features = %q", features)
 			}
 			if r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-TEST-CODE" ||

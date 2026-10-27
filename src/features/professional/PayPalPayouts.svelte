@@ -58,6 +58,7 @@
   type State = { tag: PillVariant; label: string; title: string; text: string; action?: string };
   const card = $derived.by((): State => {
     const s = status?.status ?? 'not_started';
+    if (status?.connected && status.platformFeeReady === false) return { tag: 'warn', label: t('Update permissions'), title: t('Enable the platform fee in PayPal'), text: t('Your account is connected. Update PayPal permissions to receive payments for new jobs with the 5% platform fee.'), action: t('Update PayPal permissions') };
     if (status?.connected) return { tag: 'done', label: t('Connected and eligible'), title: t('PayPal is connected'), text: t('When a customer approves the work and pays, the money goes to this PayPal account.') };
     if (awaitingEmailConfirmation) return { tag: 'warn', label: t('Confirm email'), title: t('Confirm your PayPal email'), text: t('PayPal still needs you to confirm your email address. Confirm it in PayPal, then choose Check status.') };
     if (s === 'revoked') return { tag: 'error', label: t('Access removed'), title: t('Reconnect PayPal payouts'), text: t('PayPal access was removed. Reconnect to receive payments for your jobs.'), action: t('Reconnect PayPal') };
@@ -68,7 +69,8 @@
   const checks = $derived([
     { done: !!status?.paymentsReceivable, text: t('Your account can receive payments') },
     { done: !!status?.primaryEmailConfirmed, text: t('Your email is confirmed with PayPal') },
-    { done: !!status?.connected, text: t('SamenKlaar may take payments and refunds for your jobs') }
+    { done: !!status?.connected, text: t('SamenKlaar may take payments and refunds for your jobs') },
+    { done: !!status?.platformFeeReady, text: t('PayPal may deduct SamenKlaar’s 5% platform fee') }
   ]);
 </script>
 
@@ -101,6 +103,7 @@
         {#each checks as check (check.text)}<li class:done={check.done}><span class="mark" aria-hidden="true">{#if check.done}<Icon name="check" size={13}/>{/if}</span>{check.text}<span class="visually-hidden">{check.done ? t('Done') : t('Not yet')}</span></li>{/each}
       </ul>
     {/if}
+    <p class="helper">{t('SamenKlaar deducts 5% of the agreed job total, including call-out, from your payment. PayPal processing fees are separate.')}</p>
     <div class="actions">
       {#if card.action}<button type="button" class="btn btn-primary" disabled={loading || starting} aria-busy={starting ? 'true' : undefined} onclick={connect}>{starting ? t('Opening PayPal…') : card.action}</button>{/if}
       <button type="button" class="btn btn-outline" disabled={loading || starting} onclick={() => refresh()}>{t('Check status')}</button>

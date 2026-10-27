@@ -126,6 +126,7 @@ type webhookPayment struct {
 	workspaceID, jobID, currency, captureID, status string
 	scopeVersion                                    int
 	amountMinor                                     int64
+	platformFeeMinor                                int64
 }
 
 func findWebhookPayment(ctx context.Context, tx pgx.Tx, event paypal.WebhookEvent) (webhookPayment, error) {
@@ -143,11 +144,11 @@ func findWebhookPayment(ctx context.Context, tx pgx.Tx, event paypal.WebhookEven
 		return webhookPayment{}, err
 	}
 	var payment webhookPayment
-	err := tx.QueryRow(ctx, `SELECT workspace_id,job_id,scope_version,amount_minor,currency,COALESCE(capture_id,''),status
+	err := tx.QueryRow(ctx, `SELECT workspace_id,job_id,scope_version,amount_minor,currency,COALESCE(capture_id,''),status,platform_fee_minor
 		FROM paypal_payment_operations
 		WHERE workspace_id=$3 AND (($1 <> '' AND order_id=$1) OR ($2 <> '' AND capture_id=$2))
 		ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`, event.OrderID, event.CaptureID, workspaceID).Scan(
-		&payment.workspaceID, &payment.jobID, &payment.scopeVersion, &payment.amountMinor, &payment.currency, &payment.captureID, &payment.status,
+		&payment.workspaceID, &payment.jobID, &payment.scopeVersion, &payment.amountMinor, &payment.currency, &payment.captureID, &payment.status, &payment.platformFeeMinor,
 	)
 	return payment, err
 }
@@ -165,6 +166,9 @@ func (s *Store) applyCaptureCompleted(ctx context.Context, tx pgx.Tx, event payp
 	}
 	if payment.amountMinor != event.AmountMinor || payment.currency != event.Currency || event.CaptureID == "" {
 		return false, nil
+	}
+	if payment.platformFeeMinor > 0 && payment.status != "captured" && (!event.PlatformFeeReported || event.PlatformFeeMinor != payment.platformFeeMinor) {
+		return false, nil // Reconcile the original capture; do not invent fee collection.
 	}
 	if payment.status == "refunded" {
 		return true, nil

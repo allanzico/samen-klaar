@@ -6,6 +6,7 @@
   import NextStep from './NextStep.svelte';
   import Agreement from './Agreement.svelte';
   import AgreedLedger from './AgreedLedger.svelte';
+  import ProfessionalFeeBreakdown from '../professional/ProfessionalFeeBreakdown.svelte';
   import PaymentTimingChoice from './PaymentTimingChoice.svelte';
   import BookingAutonomyChoice from './BookingAutonomyChoice.svelte';
   import PrebookingNavigation from './PrebookingNavigation.svelte';
@@ -194,6 +195,7 @@ import RelatedJobs from './RelatedJobs.svelte';
               <summary>{t('Plan and conversation')}</summary>
               <div class="supporting-content">
                 {#if hasJob}<Agreement {job} {role} variant="rows"/><AgreedLedger {job} title={job.quoteApproved ? 'What you agreed' : 'Price breakdown'}/>{/if}
+                {#if hasJob && pro}<ProfessionalFeeBreakdown totalMinor={job.quote.totalMinor} currency={job.quote.currency} basisPoints={job.platformFeeBasisPoints}/>{/if}
                 {@render conversation()}
                 {#if canCancel}<button type="button" class="btn btn-danger-link cancel" onclick={() => { requestUi.cancelling = true; }}>{pro ? t('Cancel job') : job.appointment ? t('Cancel visit') : t('Cancel request')}</button>{/if}
               </div>

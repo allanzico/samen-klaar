@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -77,7 +78,7 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 	if databaseURL == "" {
 		t.Skip("run with disposable PostgreSQL")
 	}
-	for _, scenario := range []string{"automatic", "manual", "unclear", "revoked-during-review", "lost-capture-response", "expired-authorization"} {
+	for _, scenario := range []string{"automatic", "manual", "unclear", "revoked-during-review", "lost-capture-response", "expired-authorization", "legacy-no-fee"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
@@ -172,7 +173,10 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			state.Job = workflow.Job{ID: "autonomy-" + rand.Text(), Professional: professional.DisplayName, Customer: customer.DisplayName, ProfessionalAccountID: professional.ID, ProfessionalProfileID: profile.ID, ScopeVersion: 1, BookingAutonomyRequired: true, Quote: workflow.Quote{Currency: "EUR", TotalMinor: 10000, DurationMinutes: 60, Lines: []workflow.QuoteLine{{Label: "Sink repair", AmountMinor: 10000, Basis: "Published service price"}}}}
+			state.Job = workflow.Job{PlatformFeeBasisPoints: workflow.PlatformFeeBasisPoints, ID: "autonomy-" + rand.Text(), Professional: professional.DisplayName, Customer: customer.DisplayName, ProfessionalAccountID: professional.ID, ProfessionalProfileID: profile.ID, ScopeVersion: 1, BookingAutonomyRequired: true, Quote: workflow.Quote{Currency: "EUR", TotalMinor: 10000, DurationMinutes: 60, Lines: []workflow.QuoteLine{{Label: "Sink repair", AmountMinor: 10000, Basis: "Published service price"}}}}
+			if scenario == "legacy-no-fee" {
+				state.Job.PlatformFeeBasisPoints = 0
+			}
 			data, _ := json.Marshal(state)
 			if _, err := pool.Exec(ctx, `UPDATE account_workspaces SET state_json=$2 WHERE id=$1`, state.WorkspaceID, data); err != nil {
 				t.Fatal(err)
@@ -284,11 +288,21 @@ func TestAutonomousCompletionAndReleaseJourney(t *testing.T) {
 				}
 			}
 			transport.mu.Lock()
-			captures, authorizes := transport.captures, transport.authorizes
+			captures, authorizes, capturedFee := transport.captures, transport.authorizes, transport.capturedFee
 			transport.mu.Unlock()
-			shouldPay := scenario == "automatic" || scenario == "lost-capture-response"
+			shouldPay := scenario == "automatic" || scenario == "lost-capture-response" || scenario == "legacy-no-fee"
 			if restored.Job.Paid != shouldPay || (shouldPay && (captures != 1 || !restored.Job.CompletionApprovedByAgent || !restored.Job.PaymentApprovedByAgent || restored.Job.PaymentTransactionID != "CAPTURE-1")) || (!shouldPay && captures != 0) {
 				t.Fatalf("scenario=%s paid=%v captures=%d completionByAgent=%v paymentByAgent=%v", scenario, restored.Job.Paid, captures, restored.Job.CompletionApprovedByAgent, restored.Job.PaymentApprovedByAgent)
+			}
+			if shouldPay {
+				fee, err := workflow.PlatformFeeAmount(restored.Job.Quote.TotalMinor, restored.Job.PlatformFeeBasisPoints)
+				wantRate, wantFee := 500, fmt.Sprintf("%d.%02d", fee/100, fee%100)
+				if scenario == "legacy-no-fee" {
+					wantRate, wantFee = 0, ""
+				}
+				if err != nil || restored.Job.PlatformFeeBasisPoints != wantRate || capturedFee != wantFee {
+					t.Fatalf("wrong platform settlement: rate=%d fee=%s", restored.Job.PlatformFeeBasisPoints, capturedFee)
+				}
 			}
 			if authorizes != 1 {
 				t.Fatalf("assistant created another authorization: %d", authorizes)

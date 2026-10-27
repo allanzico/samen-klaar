@@ -15,3 +15,7 @@ _Avoid_: Payment, deposit
 **Payment release**:
 Capturing an authorized amount to pay the agreed professional after completion approval. It does not authorize a new charge or a larger amount.
 _Avoid_: New payment authorization
+
+**Platform fee**:
+SamenKlaar's share of an agreed service payment, deducted from the professional's proceeds. It is separate from PayPal's processing fee and does not increase the customer's agreed total.
+_Avoid_: Customer surcharge, PayPal fee

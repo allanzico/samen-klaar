@@ -185,6 +185,7 @@ CREATE TABLE paypal_payment_operations (
     scope_version integer NOT NULL CHECK (scope_version > 0),
     workspace_id text NOT NULL REFERENCES account_workspaces(id) ON DELETE CASCADE,
     amount_minor bigint NOT NULL CHECK (amount_minor > 0),
+    platform_fee_minor bigint NOT NULL DEFAULT 0 CHECK (platform_fee_minor >= 0 AND platform_fee_minor <= amount_minor),
     currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     order_id text UNIQUE,
     authorization_id text,

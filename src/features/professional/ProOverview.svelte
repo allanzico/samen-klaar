@@ -11,7 +11,7 @@
   let loading = $state(false);
   let generation = 0;
   let disposed = false;
-  const balances = $derived(overview?.balances.length ? overview.balances : [{ currency, receivedMinor: 0, awaitingPaymentMinor: 0 }]);
+  const balances = $derived(overview?.balances.length ? overview.balances : [{ currency, receivedMinor: 0, platformFeesMinor: 0, awaitingPaymentMinor: 0 }]);
 
   async function load(signal?: AbortSignal) {
     const current = ++generation;
@@ -45,12 +45,13 @@
   {/if}
   {#if overview}
     <dl class="figures">
-      <div class="money-stat"><dt>{t('Earnings')}<small>{t('All time, before PayPal fees')}</small></dt><dd>{#each balances as balance (balance.currency)}<span>{money(balance.receivedMinor, balance.currency)}</span>{/each}</dd></div>
+      <div class="money-stat"><dt>{t('Earnings')}<small>{t('After platform fees, before PayPal fees')}</small></dt><dd>{#each balances as balance (balance.currency)}<span>{money(balance.receivedMinor, balance.currency)}</span>{/each}</dd></div>
       <div class="money-stat"><dt>{t('Awaiting payment')}<small>{t('Approved work, not yet paid')}</small></dt><dd>{#each balances as balance (balance.currency)}<span>{money(balance.awaitingPaymentMinor, balance.currency)}</span>{/each}</dd></div>
       <div><dt>{t('Upcoming visits')}</dt><dd>{overview.upcomingVisits}</dd></div>
       <div><dt>{t('Completed jobs')}</dt><dd>{overview.completedJobs}</dd></div>
       <div><dt>{t('To confirm')}</dt><dd>{overview.awaitingConfirmation}</dd></div>
     </dl>
+    {#if balances.some(balance => (balance.platformFeesMinor ?? 0) > 0)}<p class="helper">{t('Platform fees deducted')}: {#each balances.filter(balance=>(balance.platformFeesMinor??0)>0) as balance (balance.currency)}<span>{money(balance.platformFeesMinor, balance.currency)} </span>{/each}</p>{/if}
     <p class="helper">{t('Refunded payments and payments under refund or reversal review are excluded from earnings.')}</p>
   {:else if !error}
     <p class="secondary-text" role="status">{t('Loading your stats…')}</p>

@@ -5,6 +5,7 @@
   import { isCurrentEvidence } from '../../lib/evidence';
   import AgreedLedger from './AgreedLedger.svelte';
   import EvidenceRecord from './EvidenceRecord.svelte';
+  import ProfessionalFeeBreakdown from '../professional/ProfessionalFeeBreakdown.svelte';
 
   let { job, workspaceId, viewer, status = 'paid' }: {
     job: Job; workspaceId: string | null; viewer: 'customer' | 'professional'; status?: 'paid' | 'refund_pending' | 'refunded';
@@ -51,6 +52,11 @@
     </div>
   </section>
   <AgreedLedger {job}/>
+  {#if viewer === 'professional' && !refunded && status === 'paid'}
+    <ProfessionalFeeBreakdown totalMinor={job.quote.totalMinor} currency={job.quote.currency} basisPoints={job.platformFeeBasisPoints}/>
+  {:else if viewer === 'professional' && job.platformFeeBasisPoints}
+    <p class="box documentation secondary-text">{t('Full refunds include the platform fee.')}</p>
+  {/if}
   {#if current}
     <div class="box documentation"><EvidenceRecord {job} {workspaceId} {viewer} scope="current" title={t('Completion record')}/></div>
   {:else}

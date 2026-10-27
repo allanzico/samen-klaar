@@ -60,8 +60,8 @@ func (s *Store) BeginPayPalSellerReferral(ctx context.Context, accountID, tracki
 
 func (s *Store) SavePayPalSellerReferral(ctx context.Context, accountID, trackingID, selfURL string) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE paypal_seller_accounts
-		SET referral_self_url=$3, status='pending', updated_at=now()
-		WHERE account_id=$1 AND tracking_id=$2 AND status='creating'`, accountID, trackingID, selfURL)
+		SET referral_self_url=$3, status=CASE WHEN status='verified' THEN 'verified' ELSE 'pending' END, updated_at=now()
+		WHERE account_id=$1 AND tracking_id=$2 AND status IN ('creating','pending','verified')`, accountID, trackingID, selfURL)
 	if err != nil {
 		return err
 	}

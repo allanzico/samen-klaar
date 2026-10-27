@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import { build } from 'esbuild';
 
 globalThis.$state = (value) => value;
-const bundle = await build({ stdin: { contents: "export * from './src/lib/format'; export { noteText } from './src/lib/agent-copy'; export { agreementTerms } from './src/lib/agreement';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', write: false });
+const bundle = await build({ stdin: { contents: "export * from './src/lib/format'; export { professionalPayment } from './src/lib/platform-fee'; export { noteText } from './src/lib/agent-copy'; export { agreementTerms } from './src/lib/agreement';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', write: false });
 const module = { exports: {} };
 new Function('module', 'exports', bundle.outputFiles[0].text)(module, module.exports);
-const { money, decimalMoney, noteText, untilShort, agreementTerms } = module.exports;
+const { money, decimalMoney, noteText, untilShort, agreementTerms, professionalPayment } = module.exports;
 
 test('shared money formatting never displays non-finite or missing amounts as prices', () => {
   for (const value of [NaN, Infinity, -Infinity, undefined, null, '', 'NaN', {}]) {
@@ -42,4 +42,13 @@ test('a saved booking hold choice is never displayed as an already authorized pa
   assert.equal(payment(),'PayPal approval needed for the booking hold');
   job.scopeVersion = job.paymentAuthorizedVersion = 0;
   assert.equal(payment(),'PayPal approval needed for the booking hold');
+});
+
+ test('professional fee reduces proceeds without increasing the customer total',()=>{
+ assert.deepEqual(professionalPayment(10500,500),{totalMinor:10500,feeMinor:525,proceedsMinor:9975});
+ assert.deepEqual(professionalPayment(10500,0),{totalMinor:10500,feeMinor:0,proceedsMinor:10500});
+ assert.equal(professionalPayment(10,500).feeMinor,1);
+ assert.equal(professionalPayment(9,500).feeMinor,0);
+ for(const value of [NaN,Infinity,undefined,-1,Number.MAX_SAFE_INTEGER+1])assert.equal(professionalPayment(value,500),null);
+ for(const rate of [-1,NaN,10001,0.5])assert.equal(professionalPayment(10500,rate),null);
 });

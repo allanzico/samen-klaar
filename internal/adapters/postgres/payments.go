@@ -26,7 +26,7 @@ func (s *Store) GetPaymentIntent(ctx context.Context, jobID string, scopeVersion
 const paymentIntentColumns = `workspace_id, job_id, scope_version, amount_minor, currency,
  seller_merchant_id, COALESCE(order_id, ''), COALESCE(authorization_id, ''), COALESCE(capture_id, ''),
  approval_url, status, order_request_id, authorize_request_id,
- capture_request_id, void_request_id, refund_request_id, COALESCE(refund_id, ''), authorization_expires_at`
+ capture_request_id, void_request_id, refund_request_id, COALESCE(refund_id, ''), authorization_expires_at, platform_fee_minor`
 
 func scanPaymentIntent(row pgx.Row) (paypal.IntentRecord, error) {
 	var record paypal.IntentRecord
@@ -36,7 +36,7 @@ func scanPaymentIntent(row pgx.Row) (paypal.IntentRecord, error) {
 		&record.SellerMerchantID,
 		&record.OrderID, &record.AuthorizationID, &record.CaptureID, &record.ApprovalURL,
 		&record.Status, &record.OrderRequestID, &record.AuthRequestID,
-		&record.CaptureRequestID, &record.VoidRequestID, &record.RefundRequestID, &record.RefundID, &expiresAt,
+		&record.CaptureRequestID, &record.VoidRequestID, &record.RefundRequestID, &record.RefundID, &expiresAt, &record.PlatformFeeMinor,
 	)
 	if expiresAt != nil {
 		record.AuthorizationExpiresAt = expiresAt.UTC().Format(time.RFC3339Nano)
@@ -61,12 +61,12 @@ func (s *Store) CreatePaymentIntent(ctx context.Context, record paypal.IntentRec
 		INSERT INTO paypal_payment_operations (
 			workspace_id, job_id, scope_version, amount_minor, currency, seller_merchant_id, order_id,
 			authorization_id, capture_id, approval_url, status, order_request_id,
-			authorize_request_id, capture_request_id, void_request_id, refund_request_id, refund_id, authorization_expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), $10, $11, $12, $13, $14, $15, $16, NULLIF($17, ''), NULLIF($18, '')::timestamptz)
+			authorize_request_id, capture_request_id, void_request_id, refund_request_id, refund_id, authorization_expires_at, platform_fee_minor
+		) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), $10, $11, $12, $13, $14, $15, $16, NULLIF($17, ''), NULLIF($18, '')::timestamptz, $19)
 		ON CONFLICT (job_id, scope_version) DO NOTHING`,
 		record.WorkspaceID, record.JobID, record.ScopeVersion, record.AmountMinor, record.Currency,
 		record.SellerMerchantID, record.OrderID, record.AuthorizationID, record.CaptureID, record.ApprovalURL, record.Status,
-		record.OrderRequestID, record.AuthRequestID, record.CaptureRequestID, record.VoidRequestID, record.RefundRequestID, record.RefundID, record.AuthorizationExpiresAt,
+		record.OrderRequestID, record.AuthRequestID, record.CaptureRequestID, record.VoidRequestID, record.RefundRequestID, record.RefundID, record.AuthorizationExpiresAt, record.PlatformFeeMinor,
 	)
 	if err != nil {
 		return false, err
@@ -90,11 +90,11 @@ func (s *Store) UpdatePaymentIntent(ctx context.Context, record paypal.IntentRec
 		    refund_request_id = $16, refund_id = NULLIF($17, ''), authorization_expires_at = NULLIF($19, '')::timestamptz,
 		    updated_at = now()
 		WHERE job_id = $1 AND scope_version = $2 AND workspace_id = $14 AND status = ANY($15::text[])
-		  AND order_request_id=$10 AND authorize_request_id=$11 AND void_request_id=$13`,
+		  AND order_request_id=$10 AND authorize_request_id=$11 AND void_request_id=$13 AND platform_fee_minor=$20`,
 		record.JobID, record.ScopeVersion, record.AmountMinor, record.Currency,
 		record.OrderID, record.AuthorizationID, record.CaptureID, record.ApprovalURL,
 		record.Status, record.OrderRequestID, record.AuthRequestID, record.CaptureRequestID,
-		record.VoidRequestID, record.WorkspaceID, expectedStatuses, record.RefundRequestID, record.RefundID, record.SellerMerchantID, record.AuthorizationExpiresAt,
+		record.VoidRequestID, record.WorkspaceID, expectedStatuses, record.RefundRequestID, record.RefundID, record.SellerMerchantID, record.AuthorizationExpiresAt, record.PlatformFeeMinor,
 	)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (s *Store) UpdatePaymentIntent(ctx context.Context, record paypal.IntentRec
 }
 
 func (s *Store) ClaimPaymentIntent(ctx context.Context, workspaceID, jobID string, scopeVersion int, from, to string) (bool, error) {
-	return s.claimPaymentIntent(ctx, workspaceID, jobID, scopeVersion, from, to, "", "", "")
+	return s.claimPaymentIntent(ctx, workspaceID, jobID, scopeVersion, from, to, "", "", "", nil)
 }
 
 // ClaimPaymentIntentAttempt protects provider work queued for a particular
@@ -115,10 +115,10 @@ func (s *Store) ClaimPaymentIntentAttempt(ctx context.Context, attempt paypal.In
 	if attempt.OrderRequestID == "" || attempt.AuthRequestID == "" || attempt.VoidRequestID == "" {
 		return false, errors.New("PayPal attempt request identifiers are required")
 	}
-	return s.claimPaymentIntent(ctx, attempt.WorkspaceID, attempt.JobID, attempt.ScopeVersion, from, to, attempt.OrderRequestID, attempt.AuthRequestID, attempt.VoidRequestID)
+	return s.claimPaymentIntent(ctx, attempt.WorkspaceID, attempt.JobID, attempt.ScopeVersion, from, to, attempt.OrderRequestID, attempt.AuthRequestID, attempt.VoidRequestID, &attempt.PlatformFeeMinor)
 }
 
-func (s *Store) claimPaymentIntent(ctx context.Context, workspaceID, jobID string, scopeVersion int, from, to, orderRequestID, authRequestID, voidRequestID string) (bool, error) {
+func (s *Store) claimPaymentIntent(ctx context.Context, workspaceID, jobID string, scopeVersion int, from, to, orderRequestID, authRequestID, voidRequestID string, expectedFee *int64) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -131,7 +131,7 @@ func (s *Store) claimPaymentIntent(ctx context.Context, workspaceID, jobID strin
 	if err != nil {
 		return false, err
 	}
-	var amountMinor int64
+	var amountMinor, platformFeeMinor int64
 	var currency string
 	var sellerMerchantID string
 	err = tx.QueryRow(ctx, `
@@ -140,8 +140,9 @@ func (s *Store) claimPaymentIntent(ctx context.Context, workspaceID, jobID strin
 		WHERE workspace_id = $1 AND job_id = $2 AND scope_version = $3 AND status = $4
 		  AND ($4 <> 'refunding' OR $5 <> 'refunding' OR updated_at < now()-interval '2 minutes')
 		  AND ($6='' OR (order_request_id=$6 AND authorize_request_id=$7 AND void_request_id=$8))
+		  AND ($9::bigint IS NULL OR platform_fee_minor=$9)
 		  AND ($5 <> 'capturing' OR authorization_expires_at IS NULL OR authorization_expires_at > now())
-		RETURNING amount_minor,currency,seller_merchant_id`, workspaceID, jobID, scopeVersion, from, to, orderRequestID, authRequestID, voidRequestID).Scan(&amountMinor, &currency, &sellerMerchantID)
+		RETURNING amount_minor,currency,seller_merchant_id,platform_fee_minor`, workspaceID, jobID, scopeVersion, from, to, orderRequestID, authRequestID, voidRequestID, expectedFee).Scan(&amountMinor, &currency, &sellerMerchantID, &platformFeeMinor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -149,7 +150,7 @@ func (s *Store) claimPaymentIntent(ctx context.Context, workspaceID, jobID strin
 		return false, err
 	}
 	if to == "authorizing" || to == "capturing" {
-		record := paypal.IntentRecord{WorkspaceID: workspaceID, JobID: jobID, ScopeVersion: scopeVersion, AmountMinor: amountMinor, Currency: currency, SellerMerchantID: sellerMerchantID}
+		record := paypal.IntentRecord{WorkspaceID: workspaceID, JobID: jobID, ScopeVersion: scopeVersion, AmountMinor: amountMinor, PlatformFeeMinor: platformFeeMinor, Currency: currency, SellerMerchantID: sellerMerchantID}
 		if err := validatePaymentBinding(ctx, tx, state, record, to == "authorizing"); err != nil {
 			return false, err
 		}
@@ -192,11 +193,11 @@ func (s *Store) RetryPaymentIntent(ctx context.Context, record paypal.IntentReco
 		    refund_request_id = $15, refund_id = NULLIF($16, ''), authorization_expires_at = NULLIF($18, '')::timestamptz,
 		    updated_at = now()
 		WHERE job_id = $1 AND scope_version = $2 AND workspace_id = $14
-		  AND status IN ('voided', 'denied', 'expired', 'deferred')`,
+		  AND status IN ('voided', 'denied', 'expired', 'deferred') AND platform_fee_minor=$19`,
 		record.JobID, record.ScopeVersion, record.AmountMinor, record.Currency,
 		record.OrderID, record.AuthorizationID, record.CaptureID, record.ApprovalURL,
 		record.Status, record.OrderRequestID, record.AuthRequestID, record.CaptureRequestID,
-		record.VoidRequestID, record.WorkspaceID, record.RefundRequestID, record.RefundID, record.SellerMerchantID, record.AuthorizationExpiresAt,
+		record.VoidRequestID, record.WorkspaceID, record.RefundRequestID, record.RefundID, record.SellerMerchantID, record.AuthorizationExpiresAt, record.PlatformFeeMinor,
 	)
 	if err != nil {
 		return false, err
@@ -221,6 +222,10 @@ func lockPaymentWorkspace(ctx context.Context, tx pgx.Tx, workspaceID string) (w
 }
 
 func validatePaymentBinding(ctx context.Context, tx pgx.Tx, state workflow.State, record paypal.IntentRecord, authorize bool) error {
+	fee, feeErr := workflow.PlatformFeeAmount(state.Job.Quote.TotalMinor, state.Job.PlatformFeeBasisPoints)
+	if feeErr != nil || record.PlatformFeeMinor != fee {
+		return errors.New("platform fee differs from the agreed payment terms")
+	}
 	if state.Cancelled || state.CancellationReview != nil && state.CancellationReview.Status == "pending" ||
 		state.Job.ID != record.JobID || state.Job.ScopeVersion != record.ScopeVersion ||
 		state.Job.Quote.TotalMinor != record.AmountMinor || state.Job.Quote.Currency != record.Currency {

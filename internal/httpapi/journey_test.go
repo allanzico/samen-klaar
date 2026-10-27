@@ -97,6 +97,7 @@ type paymentTransport struct {
 	authorizes    int
 	failAuthorize bool
 	captures      int
+	capturedFee   string
 	failCapture   bool
 	voids         int
 }
@@ -124,7 +125,7 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, fmt.Errorf("invalid marketplace referral contract")
 		}
 		features := payload.Operations[0].Preference.REST.Details.Features
-		if len(features) != 2 || features[0] != "PAYMENT" || features[1] != "REFUND" || r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-CONTRACT" {
+		if len(features) != 3 || features[0] != "PAYMENT" || features[1] != "REFUND" || features[2] != "PARTNER_FEE" || r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-CONTRACT" {
 			return nil, fmt.Errorf("referral did not request the sandbox payment/refund permissions")
 		}
 		result = map[string]any{"links": []any{
@@ -142,7 +143,7 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 				"integration_type": "OAUTH_THIRD_PARTY", "integration_method": "PAYPAL",
 				"oauth_third_party": []any{map[string]any{
 					"partner_client_id": "contract-client",
-					"scopes":            []string{"https://uri.paypal.com/services/payments/payment/authcapture", "https://uri.paypal.com/services/payments/refund"},
+					"scopes":            []string{"https://uri.paypal.com/services/payments/payment/authcapture", "https://uri.paypal.com/services/payments/refund", "https://uri.paypal.com/services/payments/partnerfee"},
 				}},
 			}},
 		}
@@ -211,17 +212,35 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			} `json:"amount"`
 			Instruction struct {
 				DisbursementMode string `json:"disbursement_mode"`
+				PlatformFees     []struct {
+					Amount struct {
+						Value    string `json:"value"`
+						Currency string `json:"currency_code"`
+					} `json:"amount"`
+				} `json:"platform_fees"`
 			} `json:"payment_instruction"`
 		}
 		if json.NewDecoder(r.Body).Decode(&payload) != nil || payload.Amount.Value != p.orders["ORDER-1"] || payload.Instruction.DisbursementMode != "INSTANT" || r.Header.Get("PayPal-Request-Id") == "" || r.Header.Get("PayPal-Auth-Assertion") == "" {
 			return nil, fmt.Errorf("capture differs from agreed amount or omits seller settlement")
+		}
+		if len(payload.Instruction.PlatformFees) > 1 {
+			return nil, fmt.Errorf("multiple platform fees")
+		}
+		if len(payload.Instruction.PlatformFees) == 1 {
+			fee := payload.Instruction.PlatformFees[0].Amount
+			if fee.Currency != "EUR" {
+				return nil, fmt.Errorf("platform fee currency differs")
+			}
+			p.capturedFee = fee.Value
 		}
 		p.captures++
 		if p.failCapture {
 			p.failCapture = false
 			return nil, fmt.Errorf("response lost after upstream capture")
 		}
-		result = map[string]string{"id": "CAPTURE-1", "status": "COMPLETED"}
+		result = p.captureResult()
+	case r.URL.Path == "/v2/payments/captures/CAPTURE-1" && r.Method == "GET":
+		result = p.captureResult()
 	case strings.HasSuffix(r.URL.Path, "/AUTH-1") && r.Method == "GET":
 		status := "CREATED"
 		related := map[string]string{"order_id": "ORDER-1"}
@@ -240,6 +259,14 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	data, _ := json.Marshal(result)
 	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(data)), Request: r}, nil
+}
+
+func (p *paymentTransport) captureResult() map[string]any {
+	result := map[string]any{"id": "CAPTURE-1", "status": "COMPLETED", "amount": map[string]string{"currency_code": "EUR", "value": p.orders["ORDER-1"]}}
+	if p.capturedFee != "" {
+		result["seller_receivable_breakdown"] = map[string]any{"platform_fees": []any{map[string]any{"amount": map[string]string{"currency_code": "EUR", "value": p.capturedFee}}}}
+	}
+	return result
 }
 
 func (p *paymentTransport) authorizedOrder(orderID string) map[string]any {
