@@ -90,7 +90,7 @@
       <ol class="rows">
         <li class="check done">
           <span class="mark" aria-hidden="true"><Icon name="check"/></span>
-          <div class="check-main"><b>{t('Price')}</b><span class="secondary-text">{t('{amount}, {name}’s published price', { amount: money(job.quote.totalMinor, job.quote.currency), name: pro })}</span></div>
+          <div class="check-main"><b>{t('Price')}</b><span class="secondary-text">{money(job.quote.totalMinor, job.quote.currency)}</span></div>
           <button type="button" class="btn btn-quiet" disabled={app.pending} onclick={() => actions.openProposal('price')}>{t('Make an offer')}</button>
         </li>
         <li class="check" class:done={!showAddressForm} class:active={showAddressForm}>
