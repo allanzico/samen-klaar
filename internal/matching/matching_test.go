@@ -3,6 +3,7 @@ package matching
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/allanzico/samen-klaar/internal/workflow"
 	"strings"
 	"testing"
@@ -26,6 +27,41 @@ type testSelector struct{ selection Selection }
 
 func (s testSelector) SelectServices(context.Context, string, []Service) (Selection, error) {
 	return s.selection, nil
+}
+
+type variantDirectory struct{}
+
+func (variantDirectory) ServiceCatalog(context.Context, string, string, string, ...workflow.Location) ([]Service, error) {
+	services := make([]Service, 10)
+	for i := range services {
+		services[i] = Service{Name: fmt.Sprintf("Sink trap replacement %d", i), Materials: "Replacement trap included"}
+	}
+	return services, nil
+}
+
+func (variantDirectory) ServiceMatches(_ context.Context, _, _ string, service Service, _ ...workflow.Location) ([]workflow.Match, error) {
+	var index int
+	fmt.Sscanf(service.Name, "Sink trap replacement %d", &index)
+	return []workflow.Match{{ID: service.Name, ServiceName: service.Name, DistanceKnown: true, DistanceKM: float64(10 - index)}}, nil
+}
+
+func TestMatchingRanksAllEligibleVariantsBeforeLimitingResults(t *testing.T) {
+	services, _ := (variantDirectory{}).ServiceCatalog(context.Background(), "", "", "")
+	fits := make([]Fit, len(services))
+	for i := range fits {
+		fits[i] = Fit{Index: i, Reason: "This published scope includes the damaged trap replacement."}
+	}
+	matches, question, err := Find(context.Background(), variantDirectory{}, testSelector{Selection{Fits: fits}}, "Plumbing", "Replace a cracked trap", "customer", workflow.Location{Source: "mapbox"})
+	if err != nil || question != "" || len(matches) != 3 || matches[0].ID != services[9].Name || matches[2].ID != services[7].Name {
+		t.Fatalf("eligible variants blocked matching: matches=%d, question=%q, err=%v", len(matches), question, err)
+	}
+	// Invalid choices remain invalid even when they follow four eligible ones.
+	for _, invalid := range []Fit{{Index: 99, Reason: "Unknown scope"}, fits[0]} {
+		choices := append(append([]Fit{}, fits[:4]...), invalid)
+		if _, _, err := Find(context.Background(), variantDirectory{}, testSelector{Selection{Fits: choices}}, "Plumbing", "Replace a cracked trap", "customer"); err == nil {
+			t.Fatal("invalid selection beyond the fourth choice was accepted")
+		}
+	}
 }
 func TestFitPrecedesAvailability(t *testing.T) {
 	d := &testDirectory{}

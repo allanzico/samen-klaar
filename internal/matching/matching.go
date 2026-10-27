@@ -38,6 +38,9 @@ func Find(ctx context.Context, directory Directory, selector Selector, category,
 	if err != nil {
 		return nil, "", err
 	}
+	if len(services) > 200 {
+		return nil, "", errors.New("service catalog exceeds the supported search size")
+	}
 	if len(services) == 0 {
 		if len(locations) > 0 && strings.TrimSpace(locations[0].Label) != "" {
 			return nil, "No approved professional has published a matching service for this area yet. You can save the request to the area waitlist.", nil
@@ -50,7 +53,10 @@ func Find(ctx context.Context, directory Directory, selector Selector, category,
 	}
 	matches := []workflow.Match{}
 	seen := map[int]bool{}
-	if len(selection.Fits) > 4 {
+	// Different materials or exclusions can create more than four eligible
+	// variants of the same service. Rank all validated candidates together;
+	// only the final visible professional results have a display limit.
+	if len(selection.Fits) > len(services) {
 		return nil, "", errors.New("too many service selections")
 	}
 	for _, fit := range selection.Fits {

@@ -53,7 +53,7 @@ func (c *Coordinator) Clarify(ctx context.Context, category, description string)
 		MaxOutputTokens: 2048,
 		Schema: objectSchema(map[string]any{
 			"category": map[string]any{"type": "string", "enum": []string{"Plumbing", "Carpentry", "Electrical assessment", "Unclear"}},
-			"options":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"options":  map[string]any{"type": "array", "description": "Up to four short suggested answers. Each label must fit in 2 to 80 UTF-8 bytes; omit labels that need longer wording.", "items": map[string]any{"type": "string"}},
 			"question": map[string]any{"type": "string", "description": "One concise clarification question."},
 			"route":    map[string]any{"type": "string", "enum": []string{"catalog", "assessment"}},
 		}, "question", "route", "category", "options"),
@@ -69,6 +69,22 @@ func (c *Coordinator) Clarify(ctx context.Context, category, description string)
 	suggestion.Question = strings.TrimSpace(suggestion.Question)
 	suggestion.Category = canonicalEnum(suggestion.Category, "Plumbing", "Carpentry", "Electrical assessment", "Unclear")
 	suggestion.Route = canonicalEnum(suggestion.Route, "catalog", "assessment")
+	// Suggestions are optional shortcuts; a verbose label must not prevent
+	// the customer answering an otherwise valid question in their own words.
+	options := make([]string, 0, 4)
+	seen := map[string]bool{}
+	for _, option := range suggestion.Options {
+		option = strings.TrimSpace(option)
+		if len(option) < 2 || len(option) > 80 || seen[option] {
+			continue
+		}
+		options = append(options, option)
+		seen[option] = true
+		if len(options) == 4 {
+			break
+		}
+	}
+	suggestion.Options = options
 	if !workflow.ValidSuggestion(suggestion) {
 		return workflow.IntakeSuggestion{}, errors.New("AI response did not pass validation")
 	}

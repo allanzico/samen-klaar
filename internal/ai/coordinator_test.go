@@ -19,6 +19,40 @@ func (f modelFixture) GenerateJSON(_ context.Context, request GenerationRequest)
 	return f(request), nil
 }
 
+func TestClarifyDoesNotRejectAValidQuestionForOptionalAnswerLabels(t *testing.T) {
+	question := "When does water escape from the cracked sink trap?"
+	for _, options := range [][]string{
+		{"Water leaks while the basin drains", strings.Repeat("x", 91), " Not sure when it leaks ", "Water leaks while the basin drains", "Water leaks even when the tap is off", "Another symptom"},
+		{strings.Repeat("x", 91)},
+	} {
+		calls := 0
+		client := modelFixture(func(GenerationRequest) []byte {
+			calls++
+			data, _ := json.Marshal(workflow.IntakeSuggestion{Category: "Plumbing", Route: "catalog", Question: question, Options: options})
+			return data
+		})
+		result, err := New("fixture", "fixture", client).Clarify(context.Background(), "Continue clarifying the trade", "Synthetic cracked sink trap")
+		if err != nil || calls != 1 || result.Question != question || result.Category != "Plumbing" || result.Route != "catalog" || !workflow.ValidSuggestion(result) {
+			t.Fatalf("optional labels blocked a valid question: %+v, calls=%d, err=%v", result, calls, err)
+		}
+		if len(options) > 1 && !slices.Equal(result.Options, []string{"Water leaks while the basin drains", "Not sure when it leaks", "Water leaks even when the tap is off", "Another symptom"}) {
+			t.Fatalf("valid labels changed or duplicates retained: %v", result.Options)
+		}
+		if len(options) == 1 && len(result.Options) != 0 {
+			t.Fatal("oversized suggestion was retained")
+		}
+	}
+}
+
+func TestClarifyStillRejectsInvalidRoutingOrQuestions(t *testing.T) {
+	for _, output := range []string{`{"category":"Unknown","route":"catalog","question":"When does water escape?","options":[]}`, `{"category":"Plumbing","route":"pay","question":"When does water escape?","options":[]}`, `{"category":"Plumbing","route":"catalog","question":"short","options":[]}`, `{`} {
+		client := modelFixture(func(GenerationRequest) []byte { return []byte(output) })
+		if _, err := New("fixture", "fixture", client).Clarify(context.Background(), "Infer", "Synthetic request"); err == nil {
+			t.Fatal("invalid routing or question was accepted")
+		}
+	}
+}
+
 func TestEvidenceReviewRetriesInvalidStructureOnceWithoutChangingEvidence(t *testing.T) {
 	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Replace the sink trap"}}}}
 	files := []workflow.EvidenceBlob{{ID: "photo", ContentType: "image/png", Data: generatedReviewPNG(t, 32, 32)}}
