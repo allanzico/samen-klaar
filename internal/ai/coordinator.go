@@ -81,11 +81,9 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 	}
 	scopeItems := []string{}
 	scopeIDs := []string{}
-	allowedItems := map[string]bool{}
 	for _, item := range workflow.ReviewableWorkItems(job) {
 		scopeIDs = append(scopeIDs, item.ID)
 		scopeItems = append(scopeItems, item.ID+" ("+item.Description+")")
-		allowedItems[item.ID] = true
 	}
 	if len(scopeItems) == 0 {
 		return nil, errors.New("the approved scope has no work items to review")
@@ -127,10 +125,28 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 			"limitations": map[string]any{"type": "string", "description": "Concise limitations, at most 500 characters."},
 		}, "summary", "coverage", "limitations"),
 	}
-	data, err := c.client.GenerateJSON(ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrEvidenceProvider, err)
+	// Recover one malformed structured response inside the original action.
+	// Valid negative findings are final; never retry to obtain approval.
+	for attempt := 0; attempt < 2; attempt++ {
+		data, err := c.client.GenerateJSON(ctx, request)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrEvidenceProvider, err)
+		}
+		review, err := decodeEvidenceReview(job, files, data)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			continue
+		}
+		review.Model = c.model
+		review.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
+		return review, nil
 	}
+	return nil, ErrEvidenceReviewInvalid
+}
+
+func decodeEvidenceReview(job workflow.Job, files []workflow.EvidenceBlob, data []byte) (*workflow.EvidenceReview, error) {
 	var review workflow.EvidenceReview
 	if err := json.Unmarshal(data, &review); err != nil {
 		return nil, ErrEvidenceReviewInvalid
@@ -139,8 +155,13 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 	// valid evidence findings. Keep Unicode intact and validate decisions/IDs below.
 	review.Summary = boundedReviewText(review.Summary, 500)
 	review.Limitations = boundedReviewText(review.Limitations, 500)
-	if strings.TrimSpace(review.Summary) == "" || len(review.Coverage) != len(scopeItems) {
+	items := workflow.ReviewableWorkItems(job)
+	if strings.TrimSpace(review.Summary) == "" || len(review.Coverage) != len(items) {
 		return nil, ErrEvidenceReviewInvalid
+	}
+	allowedItems := map[string]bool{}
+	for _, item := range items {
+		allowedItems[item.ID] = true
 	}
 	allowedFiles := map[string]bool{}
 	for _, file := range files {
@@ -163,8 +184,6 @@ func (c *Coordinator) ReviewEvidence(ctx context.Context, job workflow.Job, file
 		}
 	}
 	workflow.BindEvidenceReview(job, &review)
-	review.Model = c.model
-	review.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
 	review.Limitations = strings.TrimSpace(review.Limitations)
 	return &review, nil
 }

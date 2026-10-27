@@ -3,6 +3,8 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +17,77 @@ type modelFixture func(GenerationRequest) []byte
 
 func (f modelFixture) GenerateJSON(_ context.Context, request GenerationRequest) ([]byte, error) {
 	return f(request), nil
+}
+
+func TestEvidenceReviewRetriesInvalidStructureOnceWithoutChangingEvidence(t *testing.T) {
+	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Replace the sink trap"}}}}
+	files := []workflow.EvidenceBlob{{ID: "photo", ContentType: "image/png", Data: generatedReviewPNG(t, 32, 32)}}
+	valid := `{"summary":"Replacement documented","coverage":[{"scopeItem":"work-1","evidenceIds":["photo"],"coverage":"documented","observation":"Replacement trap visible"}],"limitations":"Photos cannot verify workmanship or safety"}`
+	for _, invalid := range []string{`{`, `{"summary":"Review","coverage":[]}`, strings.Replace(valid, `"work-1"`, `"unknown"`, 1), strings.Replace(valid, `["photo"]`, `["unknown"]`, 1)} {
+		t.Run(invalid, func(t *testing.T) {
+			calls := 0
+			var firstRequest []byte
+			client := modelFixture(func(request GenerationRequest) []byte {
+				calls++
+				encoded, _ := json.Marshal(request)
+				if calls == 1 {
+					firstRequest = encoded
+					return []byte(invalid)
+				}
+				if string(firstRequest) != string(encoded) {
+					t.Fatal("retry changed the evidence, scope or response constraints")
+				}
+				return []byte(valid)
+			})
+			review, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files)
+			if err != nil || calls != 2 || review == nil || review.Coverage[0].Coverage != "documented" {
+				t.Fatalf("invalid response was not recovered safely: calls=%d, err=%v", calls, err)
+			}
+		})
+	}
+}
+
+func TestEvidenceReviewNeverRetriesAValidNegativeFinding(t *testing.T) {
+	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Replace the sink trap"}}}}
+	files := []workflow.EvidenceBlob{{ID: "photo", ContentType: "image/png", Data: generatedReviewPNG(t, 32, 32)}}
+	for _, coverage := range []string{"unclear", "not_shown"} {
+		calls := 0
+		client := modelFixture(func(GenerationRequest) []byte {
+			calls++
+			return []byte(fmt.Sprintf(`{"summary":"More evidence needed","coverage":[{"scopeItem":"work-1","evidenceIds":["photo"],"coverage":%q,"observation":"The repair is not documented"}]}`, coverage))
+		})
+		review, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files)
+		if err != nil || calls != 1 || review.Coverage[0].Coverage != coverage {
+			t.Fatalf("negative finding was retried or changed: calls=%d, err=%v", calls, err)
+		}
+	}
+}
+
+func TestEvidenceReviewStopsAfterTwoInvalidResponses(t *testing.T) {
+	calls := 0
+	client := modelFixture(func(GenerationRequest) []byte { calls++; return []byte(`{}`) })
+	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Replace the sink trap"}}}}
+	files := []workflow.EvidenceBlob{{ID: "photo", ContentType: "image/png", Data: generatedReviewPNG(t, 32, 32)}}
+	if review, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files); review != nil || !errors.Is(err, ErrEvidenceReviewInvalid) || calls != 2 {
+		t.Fatalf("invalid responses must stay blocked after two attempts: calls=%d, err=%v", calls, err)
+	}
+}
+
+type failingReviewModel struct{ calls int }
+
+func (m *failingReviewModel) GenerateJSON(context.Context, GenerationRequest) ([]byte, error) {
+	m.calls++
+	return nil, context.DeadlineExceeded
+}
+
+func TestEvidenceReviewDoesNotRetryProviderFailure(t *testing.T) {
+	client := &failingReviewModel{}
+	job := workflow.Job{Quote: workflow.Quote{Lines: []workflow.QuoteLine{{Label: "Replace the sink trap"}}}}
+	files := []workflow.EvidenceBlob{{ID: "photo", ContentType: "image/png", Data: generatedReviewPNG(t, 32, 32)}}
+	_, err := New("fixture", "fixture", client).ReviewEvidence(context.Background(), job, files)
+	if client.calls != 1 || !errors.Is(err, ErrEvidenceProvider) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("provider failure was retried or hidden: calls=%d, err=%v", client.calls, err)
+	}
 }
 
 func TestEvidenceReviewBoundsVerboseTextWithoutDiscardingValidFindings(t *testing.T) {
