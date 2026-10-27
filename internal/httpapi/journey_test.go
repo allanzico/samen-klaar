@@ -159,9 +159,15 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 					MerchantID string `json:"merchant_id"`
 				} `json:"payee"`
 			} `json:"purchase_units"`
-			Context struct {
-				ReturnURL string `json:"return_url"`
-			} `json:"application_context"`
+			PaymentSource struct {
+				PayPal struct {
+					Context struct {
+						ReturnURL          string `json:"return_url"`
+						UserAction         string `json:"user_action"`
+						ShippingPreference string `json:"shipping_preference"`
+					} `json:"experience_context"`
+				} `json:"paypal"`
+			} `json:"payment_source"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.Intent != "AUTHORIZE" || len(payload.Units) != 1 || payload.Units[0].Payee.MerchantID != "seller-merchant" || r.Header.Get("PayPal-Request-Id") == "" || r.Header.Get("PayPal-Auth-Assertion") == "" {
 			return nil, fmt.Errorf("invalid order contract")
@@ -172,8 +178,9 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			p.references = map[string]string{}
 		}
 		p.references[id] = payload.Units[0].ReferenceID
-		back, err := url.Parse(payload.Context.ReturnURL)
-		if err != nil || !strings.HasPrefix(payload.Context.ReturnURL, p.base+"/") || back.Query().Get("workspaceId") == "" {
+		experience := payload.PaymentSource.PayPal.Context
+		back, err := url.Parse(experience.ReturnURL)
+		if err != nil || !strings.HasPrefix(experience.ReturnURL, p.base+"/") || back.Query().Get("workspaceId") == "" || experience.UserAction != "PAY_NOW" || experience.ShippingPreference != "NO_SHIPPING" {
 			return nil, fmt.Errorf("order return URL must identify the request workspace")
 		}
 		approval := "https://www.sandbox.paypal.com/checkoutnow?token=" + id
@@ -181,7 +188,7 @@ func (p *paymentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			if p.returns == nil {
 				p.returns = map[string]string{}
 			}
-			p.returns[id] = payload.Context.ReturnURL
+			p.returns[id] = experience.ReturnURL
 			approval = p.approvalBase + "?token=" + id
 		}
 		result = map[string]any{"id": id, "links": []any{map[string]string{"rel": "approve", "href": approval}}}

@@ -485,7 +485,15 @@ func (p *Service) orderPayload(intent *paypalIntent) map[string]any {
 			"amount":       map[string]string{"currency_code": intent.Currency, "value": moneyDecimal(intent.AmountMinor)},
 			"payee":        map[string]string{"merchant_id": intent.SellerMerchantID},
 		}},
-		"application_context": map[string]string{"brand_name": p.appName, "user_action": "CONTINUE", "return_url": returnURL, "cancel_url": cancelURL},
+		// The service price is final before checkout and the visit address is
+		// managed privately in the job. PAY_NOW approves the exact order; the
+		// AUTHORIZE intent still holds funds until a separate approved capture.
+		"payment_source": map[string]any{"paypal": map[string]any{
+			"experience_context": map[string]string{
+				"brand_name": p.appName, "user_action": "PAY_NOW", "shipping_preference": "NO_SHIPPING",
+				"return_url": returnURL, "cancel_url": cancelURL,
+			},
+		}},
 	}
 }
 

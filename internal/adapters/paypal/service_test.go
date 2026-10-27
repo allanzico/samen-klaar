@@ -129,6 +129,16 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 		case "/v2/checkout/orders":
 			var body struct {
 				Intent        string `json:"intent"`
+				PaymentSource struct {
+					PayPal struct {
+						ExperienceContext struct {
+							UserAction         string `json:"user_action"`
+							ShippingPreference string `json:"shipping_preference"`
+							ReturnURL          string `json:"return_url"`
+							CancelURL          string `json:"cancel_url"`
+						} `json:"experience_context"`
+					} `json:"paypal"`
+				} `json:"payment_source"`
 				PurchaseUnits []struct {
 					Payee struct {
 						MerchantID string `json:"merchant_id"`
@@ -137,6 +147,10 @@ func TestMarketplaceCapturePaysTheVerifiedProfessional(t *testing.T) {
 			}
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body.Intent != "AUTHORIZE" || len(body.PurchaseUnits) != 1 || body.PurchaseUnits[0].Payee.MerchantID != "seller-merchant" {
 				t.Errorf("order did not target the connected professional: %+v", body)
+			}
+			experience := body.PaymentSource.PayPal.ExperienceContext
+			if experience.UserAction != "PAY_NOW" || experience.ShippingPreference != "NO_SHIPPING" || experience.ReturnURL == "" || experience.CancelURL == "" {
+				t.Errorf("fixed-price service checkout must show the final amount without delivery: %+v", experience)
 			}
 			if r.Header.Get("PayPal-Partner-Attribution-Id") != "BN-TEST-CODE" || !validSellerAssertion(r.Header.Get("PayPal-Auth-Assertion"), "test-platform-client", "seller-merchant") || r.Header.Get("PayPal-Request-Id") == "" {
 				t.Errorf("order request missing partner or idempotency headers: %v", r.Header)
