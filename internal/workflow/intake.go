@@ -430,7 +430,11 @@ func applyIntakeInput(state *State, input Action) error {
 			job.Quote.Lines[0].Basis = "Published starting price; agree the scope and price together"
 			job.ScopeHistory = []ScopeSnapshot{scopeSnapshot(job)}
 		}
-		next := State{Job: job, AvailableSlots: append([]Appointment{}, input.AvailableSlots...)}
+		next := State{
+			WorkspaceID: state.WorkspaceID, ParentRequestID: state.ParentRequestID,
+			RequestPhotos: append([]RequestPhoto(nil), state.RequestPhotos...),
+			Job:           job, AvailableSlots: append([]Appointment{}, input.AvailableSlots...),
+		}
 		selected := "Review " + match.Name + "’s service and price before continuing. You can return to the results and choose someone else. Nothing is booked yet."
 		if i.Locale == "nl" {
 			selected = "Bekijk de dienst en prijs van " + match.Name + " voordat je doorgaat. Je kunt terug naar de resultaten om iemand anders te kiezen. Er is nog niets geboekt."

@@ -1427,7 +1427,7 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 		act("professional", "start-job", "", 200)
 		act("professional", "add-evidence", "Repaired the leaking connection and checked it under running water.", 200)
 		uploadJourneyEvidence(t, client, base, id, cookies["professional"])
-		exerciseRequestPhoto(t, client, base, id, cookies)
+		exerciseRequestPhoto(t, client, base, id, cookies, true)
 		act("professional", "submit-evidence", "", 200)
 		request("customer", "POST", "/api/evidence/review?workspaceId="+id, map[string]any{}, 200)
 		completed := act("customer", "approve-completion", "", 200)
@@ -1478,7 +1478,15 @@ func runFullJourney(t *testing.T, options journeyOptions) {
 	if state.Intake.Step != "matches" || state.Intake.Location == nil || len(state.Intake.Matches) != 1 {
 		t.Fatal("published service-area matching or planning without published availability failed")
 	}
+	problemPhoto := exerciseRequestPhoto(t, client, base, id, cookies, false)
 	state = act("customer", "select-match", profile.Profile.ID, nil, 200)
+	if len(state.RequestPhotos) != 1 || state.RequestPhotos[0].AssetID != problemPhoto.AssetID {
+		t.Fatal("professional selection lost the uploaded problem photo")
+	}
+	state = act("customer", "return-to-matches", "", nil, 200)
+	state = act("customer", "select-match", profile.Profile.ID, nil, 200)
+	request("customer", "GET", "/api/request-photos/"+problemPhoto.AssetID+"?workspaceId="+id, nil, 200)
+	request("professional", "GET", "/api/request-photos/"+problemPhoto.AssetID+"?workspaceId="+id, nil, 200)
 	state = act("customer", "confirm-professional", state.Job.ID, nil, 200)
 	state = act("customer", "set-booking-autonomy", "manual", nil, 200)
 	state = act("customer", "start-planning", state.Job.ID, nil, 200)
@@ -1774,7 +1782,7 @@ func (journeyAI) SelectServices(_ context.Context, _ string, services []matching
 
 // exerciseRequestPhoto covers customer-supplied problem photos: only the owning customer can add one,
 // only the owner and the assigned professional can read it, and it is never served as job evidence.
-func exerciseRequestPhoto(t *testing.T, client *http.Client, base, workspaceID string, cookies map[string]*http.Cookie) {
+func exerciseRequestPhoto(t *testing.T, client *http.Client, base, workspaceID string, cookies map[string]*http.Cookie, professionalAssigned bool) workflow.RequestPhoto {
 	t.Helper()
 	t.Log("request photo checks running")
 	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7\x9b\xa4\x14\x00\x00\x00\x00IEND\xaeB`\x82")
@@ -1821,12 +1829,13 @@ func exerciseRequestPhoto(t *testing.T, client *http.Client, base, workspaceID s
 		_, _ = io.Copy(io.Discard, response.Body)
 		return response.StatusCode
 	}
-	if get("customer") != http.StatusOK || get("professional") != http.StatusOK {
-		t.Fatal("the owning customer and assigned professional must read the request photo")
+	if get("customer") != http.StatusOK || (get("professional") == http.StatusOK) != professionalAssigned {
+		t.Fatal("request photo access must follow ownership and current professional assignment")
 	}
 	if get("outsider") == http.StatusOK {
 		t.Fatal("an unrelated account read another customer's request photo")
 	}
+	return state.RequestPhotos[0]
 }
 
 // Imported legacy slots are fixture data. New public availability comes from working hours.

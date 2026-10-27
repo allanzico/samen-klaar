@@ -2,6 +2,30 @@ package workflow
 
 import "testing"
 
+func TestRequestPhotosSurviveProfessionalReviewAndReselection(t *testing.T) {
+	state := NewState()
+	state.WorkspaceID, state.ParentRequestID = "workspace-photo", "parent-photo"
+	state.Intake = &Intake{Step: "matches", Category: "Plumbing", Location: &Location{Label: "Amsterdam"}, Matches: testMatches("noor", "jonas")}
+	photo := Evidence{AssetID: "problem-photo", ContentType: "image/png", Label: "Photo of the problem", Kind: "photo"}
+	if err := Apply(&state, Action{Action: "record-request-photo", Actor: "customer", Evidence: photo}); err != nil {
+		t.Fatal(err)
+	}
+	for _, professional := range []string{"noor", "jonas"} {
+		if err := Apply(&state, Action{Action: "select-match", Actor: "customer", Value: professional, SelectedOffer: testOffer(professional, "Plumbing")}); err != nil {
+			t.Fatal(err)
+		}
+		if len(state.RequestPhotos) != 1 || state.RequestPhotos[0].AssetID != photo.AssetID || state.WorkspaceID != "workspace-photo" || state.ParentRequestID != "parent-photo" {
+			t.Fatal("selecting a professional dropped the request photo or its owning request identity")
+		}
+		if len(state.Job.Evidence) != 0 {
+			t.Fatal("a problem photo became completion evidence")
+		}
+		if err := Apply(&state, Action{Action: "return-to-matches", Actor: "customer", Matches: testMatches("noor", "jonas")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestCustomerRequestPhotoRules(t *testing.T) {
 	photo := Evidence{AssetID: "asset-1", ContentType: "image/png", Label: "Photo of the problem", Kind: "photo"}
 	state := NewState()
