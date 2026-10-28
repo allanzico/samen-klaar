@@ -1,42 +1,60 @@
 # SamenKlaar
 
-SamenKlaar connects customers with home-service professionals. Every person gets an assistant that clarifies the job, negotiates price and visit time within limits they set, books, and asks before anything outside those limits. Quotes, scheduling, evidence, approvals and payment stay in one conversation from first message to resolution. Payment is always the customer's decision.
+[Product](https://samenklaar.com) · [MIT license](LICENSE) · [Setup](docs/SETUP.md) · [PayPal integration](docs/PAYMENTS.md)
 
-Licensed under the [MIT License](LICENSE).
+SamenKlaar connects customers with home-service professionals and keeps the request, price negotiation, booking, repair evidence and payment in one conversation. Each person has an assistant that acts within their permissions and asks when a decision needs them.
+
+## The complete journey
+
+1. Describe the problem, attach a photo and search by address, postcode or city.
+2. Compare nearby professionals, service conditions, prices and available visits.
+3. Negotiate a price, confirm the professional and choose a visit.
+4. Approve the agreed amount in **PayPal**. A booking-time authorization holds the amount without paying the professional yet.
+5. The professional submits repair photos and a specific work note. The documentation check requests corrections before sending an incomplete record to the customer.
+6. The customer reviews completion and payment, or explicitly delegates both for that booking. A successful delegated review captures the buyer-approved PayPal authorization; unclear evidence requires human follow-up.
+
+The application uses real PayPal sandbox authorization/capture, seller onboarding and webhooks. Live-money payments are disabled. The presentation uses fictional people, generated repair photos and sandbox wallets; it does not document a real repair. Photos cannot certify workmanship or safety.
 
 ## Run locally
 
-Requirements: Docker with Compose, Make, OpenSSL, curl, and credentials for an AI provider (Gemini, OpenAI or Claude), Cloudflare R2, PayPal (sandbox) and Auth0. Go, Node.js and PostgreSQL run in containers.
+Requirements: Docker with Compose, Make, OpenSSL and curl. Go, Node.js and PostgreSQL run in containers. A full external-provider journey needs your own Auth0, AI provider, Cloudflare R2, Mapbox and PayPal sandbox settings.
 
-1. `make init-local` generates the database password and local configuration.
-2. Fill in the credentials in `.secrets/local/app.env`. Empty settings are also filled from a root `.env` (see [.env.example](.env.example)).
-3. Set `MAPBOX_ACCESS_TOKEN` for address, postcode and city search. Enable billing for Mapbox permanent geocoding. The token stays on the server; `python3 scripts/probe-mapbox.py` checks it with public examples.
-4. In Auth0 create a Regular Web Application with callback `http://localhost:8090/api/auth/callback` and logout URL `http://localhost:8090`.
-5. `make deploy-local` builds and starts the stack at [http://localhost:8090](http://localhost:8090).
+```sh
+git clone https://github.com/allanzico/samen-klaar.git
+cd samen-klaar
+cp .env.example .env
+make init-local
+# Fill the provider settings in .secrets/local/app.env.
+make deploy-local
+```
 
-`make stop-local` stops it and keeps the data; rerun `make deploy-local` after changing code or credentials.
+Open [localhost:8090](http://localhost:8090). Follow [the setup guide](docs/SETUP.md) for provider callbacks, storage, accounts and sample data. Stop with `make stop-local`; data is retained. Deployment instructions for Render and a Docker host are in [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Checks
+## Verify without provider credentials
 
-`make check-flow` builds both halves and runs the end-to-end flow against a disposable PostgreSQL database. Go tests run with `go test ./...`, and the frontend with `npm run check`.
+```sh
+make check-flow
+```
 
-## Test data
+This builds the frontend and backend, runs Go tests/vet, frontend tests and type checks, then exercises persisted HTTP journeys against disposable PostgreSQL with provider fixtures. It does not load your credentials or move money. [Browser fixtures](tests/browser/README.md) cover interactive layouts separately.
 
-Test data is loaded explicitly, never at startup. Put `SEED_PASSWORD` and the Auth0 management settings in `.secrets/local/seed.env`, then run `make seed-pros` and `make import-seed-pros-auth0`. See [docs/SEED_PROFESSIONALS.md](docs/SEED_PROFESSIONALS.md).
+## Source and assets
 
-The [presentation plan](docs/HACKATHON_DEMO.md) describes ten comparable sink-repair professionals, the customer and receiving professional, PayPal preparation and the 2:50 recording script. Its separate seed commands require explicit origin-pinned opt-in when targeting a hosted application.
+| Path | Contents |
+| --- | --- |
+| `src/` | Svelte 5 / TypeScript frontend, shared UI and state |
+| `cmd/api/` | Go API and explicit operational commands |
+| `internal/` | Workflow, agents, identity, provider adapters and seed data |
+| `db/` | Schema and queries; versioned migrations live in `internal/adapters/postgres/migrations/` |
+| `public/` | Logos and self-hosted fonts with their license notices |
+| `assets/presentation/` | The generated repair-image pair, prompts, fictional work note, narration and captions |
+| `docker/`, `render.yaml` | Reproducible build, local stack and deployment configuration |
+
+Source and project-owned assets are distributed under the [MIT License](LICENSE); font notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Provider accounts, credentials, customer uploads and private recordings are not distributed.
 
 ## Documentation
 
-- [Product spec](docs/PRODUCT_SPEC.md) and [implementation status](docs/IMPLEMENTATION.md)
-- [Architecture](docs/ARCHITECTURE.md) and [assistants](docs/AGENT_ARCHITECTURE.md)
-- [Payments](docs/PAYMENTS.md) and [design system](docs/DESIGN_SYSTEM.md)
-- [Email configuration and delivery testing](docs/EMAIL.md)
-
-## Structure
-
-- `src/` — Svelte frontend (`features/`, `ui/`, `lib/`, `state/`)
-- `cmd/api/` — Go executable
-- `internal/` — workflow, identity, HTTP API, adapters (AI, PayPal, R2, PostgreSQL), seed data
-- `db/` — schema and queries; migrations in `internal/adapters/postgres/migrations/`
-- `docker/` — Dockerfile, Compose, Caddy and scripts
+- [Product behaviour and current limits](docs/PRODUCT_SPEC.md)
+- [Architecture](docs/ARCHITECTURE.md) and [assistant decisions](docs/AGENT_ARCHITECTURE.md)
+- [PayPal payments](docs/PAYMENTS.md), [email](docs/EMAIL.md) and [design system](docs/DESIGN_SYSTEM.md)
+- [Presentation and reproducible fixtures](docs/PRESENTATION.md)

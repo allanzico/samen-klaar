@@ -29,7 +29,7 @@ help:
 	@echo 'make rollback-prod                 Restore the previous app image'
 	@echo 'make check                         Run Go and frontend checks'
 	@echo 'make check-flow                    Run workflow integration tests with disposable PostgreSQL'
-	@echo 'make seed-pros                     Seed ten named test professionals (see docs/SEED_PROFESSIONALS.md)'
+	@echo 'make seed-pros                     Seed ten named test professionals (see docs/SETUP.md)'
 	@echo 'make import-seed-pros-auth0        Import those ten into the configured Auth0 tenant'
 	@echo 'make seed-demo                     Prepare ten comparable sink-repair professionals and a customer locally'
 	@echo 'make import-seed-demo-auth0        Import the demo identities into the configured Auth0 tenant'

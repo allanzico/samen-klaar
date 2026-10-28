@@ -1,9 +1,9 @@
 <script lang="ts">
- import type {AppState,AppActions,Job,Evidence} from '../../lib/types';
+ import type {AppState,Job,Evidence} from '../../lib/types';
  import {api} from '../../lib/api';
  import {workflowApi} from '../../lib/workflow-api';
  import {t} from '../../lib/i18n.svelte';
- let {app,actions,job}:{app:AppState;actions:AppActions;job:Job}=$props();
+ let {app,job}:{app:AppState;job:Job}=$props();
  let busy=$state('');let error=$state('');let notes=$state<Record<string,string>>({});
  const round=$derived(job.completionRound||1);
  const writable=$derived(app.role==='professional'&&job.workStarted&&!job.completionApproved&&!job.paid);

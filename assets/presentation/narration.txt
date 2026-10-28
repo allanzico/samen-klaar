@@ -1,0 +1,39 @@
+SamenKlaar — request to PayPal payment
+Voice: Fenrir, conversational male
+Generated repair photos; PayPal sandbox
+
+00:00 — Customer · Describe the problem
+As a customer, I've got a cracked sink trap that's leaking. I describe the problem and send the request, so the assistant can help me find someone to fix it.
+
+00:14 — Customer · Show the problem photo
+Here's the damage. I add a photo so the plumber can see what needs replacing before we agree on the job.
+
+00:25 — Customer · Answer the intake questions
+The assistant asks a few questions about the leak and when I'd like it fixed. I can answer in the conversation without knowing the plumbing terminology.
+
+00:37 — Customer · Find nearby professionals
+Then I enter my postcode and select the location. That narrows the search to professionals who can actually come to me.
+
+00:50 — Customer · Compare scope, price and dates
+Here are the options, with different prices and available times. I open this service to see what's included: a replacement trap and seals, rather than just a callout.
+
+01:06 — Customer · Review the service and negotiate
+Before committing, I check what's included. The price is a little higher than I'd like, so I send an offer for a hundred and five euros. It's accepted. I still need to confirm the booking.
+
+01:25 — Customer · Authorize assistant review and release
+I can check the finished work myself, or let my assistant review it and release the PayPal payment. For this job, I choose the assistant. Anything unclear comes back to me.
+
+01:39 — Customer · Confirm the address and visit
+Next, I confirm the full address and arrange a time. The assistant checks availability, and I confirm the visit that works for me.
+
+01:53 — Customer · Authorize the €105 PayPal hold
+This takes me to PayPal for the agreed hundred and five euros. I approve an authorization hold. Back here, the visit is booked, but the professional hasn't been paid yet.
+
+02:11 — Professional · Submit photos and a specific work note
+Now, as a professional, I open the booking and start the job. When the repair is finished, I add the photos and explain what I replaced and how I checked it.
+
+02:29 — Review the repair photos and work note
+I send the photos and work note for review. The assistant checks them against the agreed job, so a vague note on its own isn't enough to release payment.
+
+02:44 — Finished job · PayPal payment confirmed
+The review passes, and PayPal releases the agreed payment to the professional. Back on the customer's page, the finished report shows the work, the approval, and the payment confirmation.

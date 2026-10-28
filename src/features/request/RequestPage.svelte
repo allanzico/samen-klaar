@@ -124,7 +124,7 @@ import RelatedJobs from './RelatedJobs.svelte';
 {/snippet}
 
 {#snippet conversation()}
-  {#if hasJob}<EvidenceRequirements {app} {actions} {job}/><AgentPanel {app} {workspace}/><CoordinationPanel {app} {workspace}/><SupportNotes {workspace}/>{/if}
+  {#if hasJob}<EvidenceRequirements {app} {job}/><AgentPanel {app} {workspace}/><CoordinationPanel {app} {workspace}/><SupportNotes {workspace}/>{/if}
   {#if !pro}<RelatedJobs {app} {actions}/>{/if}
   {#if welcome}
     <div class="welcome"><h2 class="section-title">{t('What needs fixing?')}</h2><p class="secondary-text">{t('Say it in your own words. We’ll ask what the pro needs to know.')}</p></div>

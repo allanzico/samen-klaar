@@ -5,7 +5,7 @@
   import DeleteRequestDialog from '../request/DeleteRequestDialog.svelte';
   import type { WorkspaceSummary } from '../../lib/types';
   import type { AppActions, AppState } from '../../lib/types';
-  import { listFilter, otherFromLabel, statusUi, type ListFilter } from '../../lib/status-ui';
+  import { listFilter, statusUi, type ListFilter } from '../../lib/status-ui';
   import { t } from '../../lib/i18n.svelte';
 
   // B02 / B03: your requests with filter tabs. Counts cover the loaded pages.

@@ -1,5 +1,5 @@
 # Render Blueprint: one web service (the Dockerfile image: Go API + built frontend) and one PostgreSQL database.
-# Secrets and provider settings live in the dashboard environment group "samenklaar-env" (see README, "Deploy on Render").
+# Secrets and provider settings live in the dashboard environment group "samenklaar-env" (see docs/DEPLOYMENT.md).
 databases:
   - name: samenklaar-db
     databaseName: samenklaar

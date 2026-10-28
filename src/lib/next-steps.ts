@@ -278,7 +278,6 @@ export function proStep(ctx: ProContext): StepView | null {
   const message = { label: t('Message {name}', { name: first }), run: actions.focusComposer };
   const canExtra = job.quoteApproved && !job.paid && job.change?.status !== 'pending';
   const automatic = automaticReleaseOn(job);
-  const after = (from: number) => [t('You start the job on the day'), t('You send photos and a note when done'), automatic ? t('The customer’s assistant checks completion and releases the authorized payment') : t('{name} approves the work, then pays', { name: first })].slice(from);
 
   switch (code) {
     case 'quote':

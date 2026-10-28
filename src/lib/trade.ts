@@ -21,16 +21,6 @@ export function tradeName(trade: Trade, plural = false): string {
   return t(names[trade][plural ? 1 : 0]);
 }
 
-export function fitsTitle(trade: Trade): string {
-  const titles: Record<Trade, string> = {
-    plumber: 'A plumber who fits',
-    carpenter: 'A carpenter who fits',
-    electrician: 'An electrician who fits',
-    professional: 'A professional who fits'
-  };
-  return t(titles[trade]);
-}
-
 export function coverTitle(trade: Trade, count: number, area: string): string {
   return t(count === 1 ? '{count} {trade} covers {area}' : '{count} {trade} cover {area}', { count, trade: tradeName(trade, count !== 1), area });
 }

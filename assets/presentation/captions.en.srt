@@ -1,0 +1,142 @@
+1
+00:00:00,550 --> 00:00:06,150
+As a customer, I've got a cracked sink
+trap that's leaking. I describe the
+
+2
+00:00:06,150 --> 00:00:12,150
+problem and send the request, so the
+assistant can help me find someone to fix
+
+3
+00:00:12,150 --> 00:00:12,550
+it.
+
+4
+00:00:14,550 --> 00:00:20,550
+Here's the damage. I add a photo so the
+plumber can see what needs replacing
+
+5
+00:00:20,550 --> 00:00:22,950
+before we agree on the job.
+
+6
+00:00:25,550 --> 00:00:32,350
+The assistant asks a few questions about
+the leak and when I'd like it fixed. I can
+
+7
+00:00:32,350 --> 00:00:35,950
+answer in the conversation without knowing
+the plumbing terminology.
+
+8
+00:00:37,550 --> 00:00:43,150
+Then I enter my postcode and select the
+location. That narrows the search to
+
+9
+00:00:43,150 --> 00:00:45,950
+professionals who can actually come to me.
+
+10
+00:00:50,550 --> 00:00:55,750
+Here are the options, with different
+prices and available times. I open this
+
+11
+00:00:55,750 --> 00:01:00,550
+service to see what's included: a
+replacement trap and seals, rather than
+
+12
+00:01:00,550 --> 00:01:01,750
+just a callout.
+
+13
+00:01:06,550 --> 00:01:11,350
+Before committing, I check what's
+included. The price is a little higher
+
+14
+00:01:11,350 --> 00:01:16,950
+than I'd like, so I send an offer for a
+hundred and five euros.
+
+15
+00:01:19,550 --> 00:01:23,150
+It's accepted. I still need to confirm the
+booking.
+
+16
+00:01:25,550 --> 00:01:31,950
+I can check the finished work myself, or
+let my assistant review it and release the
+
+17
+00:01:31,950 --> 00:01:37,550
+PayPal payment. For this job, I choose the
+assistant. Anything unclear comes back to
+
+18
+00:01:37,550 --> 00:01:37,950
+me.
+
+19
+00:01:39,550 --> 00:01:44,750
+Next, I confirm the full address and
+arrange a time. The assistant checks
+
+20
+00:01:44,750 --> 00:01:48,750
+availability, and I confirm the visit that
+works for me.
+
+21
+00:01:53,550 --> 00:01:59,550
+This takes me to PayPal for the agreed
+hundred and five euros. I approve an
+
+22
+00:01:59,550 --> 00:02:04,350
+authorization hold. Back here, the visit
+is booked, but the professional hasn't
+
+23
+00:02:04,350 --> 00:02:05,550
+been paid yet.
+
+24
+00:02:11,550 --> 00:02:17,950
+Now, as a professional, I open the booking
+and start the job. When the repair is
+
+25
+00:02:17,950 --> 00:02:23,950
+finished, I add the photos and explain
+what I replaced and how I checked it.
+
+26
+00:02:29,550 --> 00:02:35,150
+I send the photos and work note for
+review. The assistant checks them against
+
+27
+00:02:35,150 --> 00:02:41,150
+the agreed job, so a vague note on its own
+isn't enough to release payment.
+
+28
+00:02:44,550 --> 00:02:49,750
+The review passes, and PayPal releases the
+agreed payment to the professional. Back
+
+29
+00:02:49,750 --> 00:02:54,950
+on the customer's page, the finished
+report shows the work, the approval, and
+
+30
+00:02:54,950 --> 00:02:56,150
+the payment confirmation.

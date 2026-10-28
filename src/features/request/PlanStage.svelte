@@ -9,7 +9,7 @@
   import { firstName } from '../../lib/status-ui';
   import { money, dayTime } from '../../lib/format';
   import { initials } from '../../lib/trade';
-  import { effectiveSlot, requestUi } from '../../lib/request-ui.svelte';
+  import { effectiveSlot } from '../../lib/request-ui.svelte';
   import { t } from '../../lib/i18n.svelte';
   import { reviewingPlan } from '../../lib/prebooking';
 

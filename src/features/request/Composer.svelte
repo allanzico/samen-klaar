@@ -4,7 +4,7 @@
   import { draftKey, readFormDraft, saveDraft } from '../../lib/drafts';
   import { defaultVisitEnd, localDateTime, validateVisit } from '../../lib/visit-time';
   import { firstName } from '../../lib/status-ui';
-  import { money, time } from '../../lib/format';
+  import { time } from '../../lib/format';
   import { t } from '../../lib/i18n.svelte';
 
   // The composer: a layout row under the thread, never an overlay. After a match it has

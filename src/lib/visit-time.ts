@@ -1,4 +1,4 @@
-import { currentLocale, t } from './i18n.svelte';
+import { t } from './i18n.svelte';
 
 export function localDateTime(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -17,9 +17,3 @@ export function validateVisit(start: string, end: string, minimumMinutes: number
   if (endTime - startTime > 360 * 60000) return t('A visit can be at most 6 hours long.');
   return '';
 }
-export function formatVisit(start: string, end: string, timezone: string): string {
-  const locale = currentLocale() === 'nl' ? 'nl-NL' : 'en-GB';
-  const options: Intl.DateTimeFormatOptions = { timeZone: timezone, weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-  return `${new Intl.DateTimeFormat(locale, options).format(new Date(start))} – ${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(end))} (${timezone})`;
-}
-
